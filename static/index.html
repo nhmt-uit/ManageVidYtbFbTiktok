@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quản lý video</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="top">
+    <h1>Quản lý video</h1>
+    <nav class="tabs" id="gtabs" aria-label="Chung">
+      <button data-view="overview" class="active">Tổng quan</button>
+      <button data-view="fanpages">Kết nối Fanpage</button>
+      <button data-view="settings">Cài đặt chung</button>
+      <button data-view="jobs">Nhật ký</button>
+    </nav>
+    <div class="fbu" id="fbu">
+      <button type="button" class="fbu-chip ok" id="fbu-chip" aria-haspopup="true" aria-expanded="false"
+        title="Số lượt gọi Facebook của app trong 60 phút qua. Facebook giới hạn theo giờ nên app tự đếm và tự dừng trước khi bị chặn.">
+        <span class="fbu-dot" aria-hidden="true"></span><span id="fbu-text">Facebook</span>
+      </button>
+      <div class="fbu-pop" id="fbu-pop" hidden role="dialog" aria-label="Lượt gọi Facebook">
+        <h3>Lượt gọi Facebook trong 60 phút qua</h3>
+        <progress id="fbu-bar" value="0" max="1"></progress>
+        <p class="fbu-line" id="fbu-main"></p>
+        <p class="fbu-line muted" id="fbu-split"></p>
+        <p class="fbu-line muted" id="fbu-fb"></p>
+        <p class="fbu-line bad" id="fbu-pause" hidden></p>
+        <button type="button" class="ghost" id="fbu-clear" hidden title="Chỉ dùng khi bạn chắc Facebook đã hết giới hạn">Bỏ trạng thái dừng</button>
+        <p class="fbu-line muted" id="fbu-cost"></p>
+        <p class="fbu-line muted">Facebook cho khoảng 200 lượt gọi mỗi giờ với app của bạn và khóa cả app nếu vượt, nên app tự chừa dư. Đổi mức tối đa ở Cài đặt chung.</p>
+      </div>
+    </div>
+  </header>
+
+  <div class="ctx" id="ctx" hidden>
+    <div class="ctx-row">
+      <button class="ghost" id="ctx-home" type="button" title="Về trang Tổng quan của mọi Fanpage">&larr; Tổng quan</button>
+      <label class="ctx-pick">Đang làm việc với Fanpage
+        <select id="ctx-page" aria-label="Chuyển sang Fanpage khác"></select>
+      </label>
+      <nav class="tabs" id="tabs" aria-label="Trong Fanpage">
+        <button data-tab="download">Tải video</button>
+        <button data-tab="library">Thư viện &amp; Lên lịch</button>
+        <button data-tab="calendar">Lịch</button>
+        <button data-tab="stats">Thống kê</button>
+        <button data-tab="pagesettings">Cài đặt Page</button>
+        <button data-tab="jobs">Nhật ký</button>
+      </nav>
+    </div>
+    <p class="hint" id="ctx-hint"></p>
+  </div>
+
+  <main>
+    <!-- TỔNG QUAN -->
+    <section id="tab-overview" class="tab active">
+      <div class="panel ov-alert" id="ov-alert" hidden></div>
+      <div class="panel" id="ov-unassigned" hidden></div>
+      <h2 class="ov-title">Tổng quan các Fanpage</h2>
+      <p class="hint">Bấm một Fanpage để vào làm việc: tải video, thư viện, lịch và cài đặt đều tách riêng theo từng Page.</p>
+      <div id="ov-grid" class="ov-grid"></div>
+      <div id="ov-empty" class="empty" hidden>Chưa có Fanpage nào. Vào "Kết nối Fanpage" để thêm.</div>
+    </section>
+
+    <!-- TẢI VIDEO -->
+    <section id="tab-download" class="tab">
+      <div class="panel">
+        <h2>Tải video từ kênh YouTube</h2>
+        <p class="hint" id="dl-page"></p>
+        <p class="hint">Chỉ tải nội dung của kênh đã đồng ý cho bạn tải và đăng lại. Mỗi kênh lưu vào một thư mục riêng, kèm ghi chú sự đồng ý.</p>
+        <form id="dl-form" class="form">
+          <label>Đường dẫn kênh hoặc video
+            <input id="dl-url" required placeholder="https://www.youtube.com/@tenkenh">
+          </label>
+          <label>Tên thư mục lưu
+            <input id="dl-folder" list="dl-folders" autocomplete="off" placeholder="Để trống = lấy theo tên kênh; bấm vào đây để chọn thư mục có sẵn">
+            <datalist id="dl-folders"></datalist>
+          </label>
+          <div class="row">
+            <label>Tải về
+              <select id="dl-format">
+                <option value="video">Video (mp4)</option>
+                <option value="audio">Chỉ âm thanh (MP3 320 kbps)</option>
+              </select>
+            </label>
+            <label>Loại nội dung (với link kênh)
+              <select id="dl-kind">
+                <option value="shorts">Shorts</option>
+                <option value="videos">Video thường</option>
+              </select>
+            </label>
+            <label title="Số video MỚI cần tải. Video đã có trong thư mục của Page được bỏ qua và không tính vào số này.">Số video mới cần tải (0 = tất cả video mới)
+              <input id="dl-limit" type="number" min="0" value="5">
+            </label>
+          </div>
+          <label>Ghi chú sự đồng ý của chủ kênh
+            <input id="dl-note" placeholder="Ví dụ: Chủ kênh đồng ý qua tin nhắn ngày 27/10/2026">
+          </label>
+          <label class="check">
+            <input id="dl-confirm" type="checkbox">
+            <span>Tôi xác nhận đã được chủ kênh đồng ý cho tải và đăng lại nội dung này.</span>
+          </label>
+          <div class="actions">
+            <button class="primary" id="dl-btn" type="submit">Tải về</button>
+            <button class="ghost" id="dl-cancel" type="button" hidden>Dừng</button>
+          </div>
+        </form>
+        <progress id="dl-bar" value="0" max="1" hidden></progress>
+        <pre id="dl-log" class="log" hidden></pre>
+      </div>
+    </section>
+
+    <!-- THƯ VIỆN & LÊN LỊCH -->
+    <section id="tab-library" class="tab">
+      <div class="lib-bar">
+        <div class="seg" id="lib-status" role="group" aria-label="Lọc theo trạng thái">
+          <button type="button" data-st="all" class="active">Tất cả <b></b></button>
+          <button type="button" data-st="new">Chưa lên lịch <b></b></button>
+          <button type="button" data-st="pending" title="Đã hẹn giờ, đang chờ đến giờ đăng">Chờ đăng <b></b></button>
+          <button type="button" data-st="published">Đã đăng <b></b></button>
+          <button type="button" data-st="problem" title="Facebook báo lỗi, hoặc đã quá giờ hẹn mà chưa đăng">Lỗi / quá giờ <b></b></button>
+        </div>
+        <select id="lib-channel" aria-label="Lọc theo thư mục"></select>
+      </div>
+      <div class="lib-actions">
+        <button class="ghost" id="lib-selall" type="button" title="Chọn mọi video chưa lên lịch đang hiển thị">Chọn tất cả</button>
+        <details class="menu left" id="sel-menu">
+          <summary class="ghost-summary" title="Tự chọn đủ số video cho 1 tuần, 2 tuần hoặc 1 tháng, tính theo số bài mỗi ngày của Fanpage đang làm việc">Chọn đủ cho...</summary>
+          <div class="menu-pop">
+            <button class="link" type="button" data-days="7">1 tuần (7 ngày)</button>
+            <button class="link" type="button" data-days="14">2 tuần (14 ngày)</button>
+            <button class="link" type="button" data-days="28" title="Facebook chỉ cho hẹn giờ trong 29 ngày nên 1 tháng tính là 28 ngày">1 tháng (28 ngày)</button>
+          </div>
+        </details>
+        <button class="ghost" id="lib-selnone" type="button">Bỏ chọn</button>
+        <span class="count" id="lib-count"></span>
+        <button class="primary" id="lib-sched" type="button" title="Mở cửa sổ lên lịch đăng cho các video đã chọn">Lên lịch...</button>
+        <button class="ghost" id="lib-reels" type="button">Kiểm tra Reels</button>
+        <button class="ghost" id="lib-check" type="button" title="Hỏi Facebook lần lượt từng bài đã hẹn của Page này (bỏ qua bài đã đăng) để cập nhật: đã đăng, bị lỗi hay đã bị xóa.">Kiểm tra trạng thái</button>
+        <button class="ghost" id="lib-refresh" type="button" title="Đọc lại danh sách từ thư mục video trên máy (video mới tải, file bạn vừa sửa). Không hỏi Facebook.">Làm mới</button>
+        <details class="menu" id="aff-menu">
+          <summary class="ghost-summary">Link affiliate</summary>
+          <div class="menu-pop">
+            <button class="link" id="aff-tpl" type="button" title="Tải file CSV có sẵn danh sách video để điền link affiliate">Tải CSV mẫu</button>
+            <button class="link" id="aff-import" type="button" title="Nhập link affiliate riêng cho từng video từ file CSV">Nhập từ file CSV</button>
+          </div>
+        </details>
+        <input type="file" id="aff-file" accept=".csv,text/csv,text/plain" hidden>
+      </div>
+      <p class="hint" id="lib-tabhint"></p>
+      <p class="msg" id="sel-msg" role="status"></p>
+      <div class="selbar" id="selbar" hidden>
+        <span id="selbar-count"></span>
+        <button class="ghost" id="selbar-none" type="button">Bỏ chọn</button>
+        <button class="ghost btn-bad" id="selbar-rebook" type="button" hidden title="Gỡ lịch cũ của các bài lỗi / không thấy trên Facebook trong app để hẹn lại (không xóa gì trên Facebook)">Hẹn lại</button>
+        <button class="ghost btn-bad" id="selbar-cancel" type="button" hidden title="Xóa các bài hẹn trên Facebook và đưa video về Chưa lên lịch">Huỷ lịch</button>
+        <button class="primary" id="selbar-go" type="button">Lên lịch...</button>
+      </div>
+      <p class="hint" id="lib-root"></p>
+      <p class="msg bad" id="lib-unassigned" hidden></p>
+      <div id="aff-report" class="panel" hidden></div>
+      <div id="lib-grid" class="grid"></div>
+      <div id="lib-empty" class="empty" hidden>Chưa có video nào. Vào tab "Tải video" để tải về.</div>
+
+    </section>
+
+    <!-- LỊCH -->
+    <section id="tab-calendar" class="tab">
+      <div class="toolbar">
+        <button class="ghost" id="cal-prev" type="button">&laquo; Tuần trước</button>
+        <button class="ghost" id="cal-today" type="button">Tuần này</button>
+        <button class="ghost" id="cal-next" type="button">Tuần sau &raquo;</button>
+        <span class="count" id="cal-range"></span>
+      </div>
+      <p class="hint" id="cal-hint">Lịch của Fanpage đang làm việc, giờ theo múi giờ của Page. Ngày tô xám là ngày nghỉ theo quy tắc của Page. Bài chưa đăng có nút "Đổi giờ" và "Huỷ lịch" (không kéo thả được). Muốn huỷ nhiều bài một lúc, vào Thư viện, mở tab "Chờ đăng", tích chọn rồi bấm "Huỷ lịch".</p>
+      <div id="cal-grid" class="cal"></div>
+    </section>
+
+    <!-- THỐNG KÊ -->
+    <section id="tab-stats" class="tab">
+      <div class="toolbar">
+        <button class="ghost" id="st-refresh" type="button">Làm mới</button>
+        <span class="count" id="st-info"></span>
+      </div>
+      <p class="hint">Số liệu lấy từ dữ liệu có sẵn trong app (kết quả của lần "Kiểm tra trạng thái" gần nhất), không hỏi Facebook nên không tốn lượt gọi. Chưa có lượt xem hay like vì cần quyền Insights của Facebook.</p>
+      <div id="st-root"></div>
+    </section>
+
+    <!-- FANPAGE -->
+    <section id="tab-fanpage" class="tab">
+      <div class="panel">
+        <h2>Fanpage đã kết nối</h2>
+        <p class="hint">Mỗi thư mục video thuộc đúng một Fanpage, và mỗi Page có khung giờ, giới hạn, múi giờ, kho comment riêng (vào Page, tab Cài đặt Page). Xóa một Page ở đây chỉ bỏ nó khỏi app, không xóa gì trên Facebook.</p>
+        <div id="pg-list" class="pages"></div>
+        <div id="pg-empty" class="empty" hidden>Chưa có Fanpage nào. Bấm "Lấy danh sách từ Facebook" bên dưới để thêm.</div>
+      </div>
+      <div class="panel">
+        <h2>Thêm Fanpage</h2>
+        <p class="hint">Cần điền App ID, App Secret và User token ở Cài đặt &gt; Token FB trước. Khi lấy User token ở Graph API Explorer, hãy chọn tất cả Fanpage muốn quản lý trong cửa sổ cấp quyền.</p>
+        <div class="actions">
+          <button class="primary" id="pg-discover" type="button">Lấy danh sách từ Facebook</button>
+        </div>
+        <p class="msg" id="pg-msg"></p>
+        <div id="pg-cands" class="cands"></div>
+        <div class="actions" id="pg-add-row" hidden>
+          <button class="primary" id="pg-add" type="button">Thêm các Page đã chọn</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- CÀI ĐẶT PAGE -->
+    <section id="tab-pagesettings" class="tab">
+      <div id="ps-root" class="panel"></div>
+      <div class="panel" id="ps-pool">
+        <h2>Kho comment của Fanpage</h2>
+        <p class="hint">Lưu sẵn nhiều comment. Mỗi video, đến lúc đăng app chọn ngẫu nhiên một câu trong kho của Page này (cố gắng không trùng câu vừa dùng ngay trước đó). Câu đã chọn được giữ nguyên nếu phải thử lại. Video có comment riêng (nút "Sửa nội dung") thì dùng comment riêng.</p>
+        <p class="hint">Dùng <code>{link}</code> trong câu comment để chèn link affiliate riêng của từng video (nhập bằng CSV hoặc ở "Sửa nội dung"), ví dụ <code>Mua tại đây 👉 {link}</code>. Câu có <code>{link}</code> chỉ được dùng cho video đã có link. Câu không có <code>{link}</code> sẽ được thêm link xuống dòng cuối nếu video có link.</p>
+        <div id="pl-pool" class="pool"></div>
+        <div class="actions">
+          <button class="ghost" id="pl-add" type="button">+ Thêm comment</button>
+          <span class="count" id="pl-count"></span>
+        </div>
+        <div class="actions">
+          <button class="primary" id="pl-save" type="button">Lưu kho comment</button>
+        </div>
+        <p class="msg" id="pl-msg"></p>
+      </div>
+    </section>
+
+    <!-- CÀI ĐẶT CHUNG -->
+    <section id="tab-settings" class="tab">
+      <nav class="subtabs" id="subtabs">
+        <button data-sub="comment" class="active">Mặc định Page</button>
+        <button data-sub="token">Token FB</button>
+        <button data-sub="notify">Thông báo</button>
+        <button data-sub="general">Chung</button>
+      </nav>
+
+      <!-- Comment -->
+      <div id="sub-comment" class="panel subpanel active">
+        <h2>Mặc định cho mọi Fanpage</h2>
+        <p class="hint">Các giá trị dưới đây áp dụng cho Page nào chưa đặt riêng. Mỗi Page có thể đặt giới hạn, múi giờ và thời gian comment riêng ở Page đó, tab Cài đặt Page. Tự động comment bật/tắt và kho comment cũng nằm ở đó. Cần quyền <code>pages_manage_engagement</code> trong token và app phải đang chạy lúc đến giờ.</p>
+        <form id="cm-form" class="form"></form>
+        <div class="actions">
+          <button class="primary" id="cm-save" type="button">Lưu</button>
+        </div>
+        <p class="msg" id="cm-msg"></p>
+      </div>
+
+      <!-- Token FB -->
+      <div id="sub-token" class="panel subpanel">
+        <h2>Token Facebook</h2>
+        <p class="hint">App ID, App Secret và User token lưu trong file <code>.env</code> trên máy bạn. Page token của từng Fanpage lưu riêng trong <code>pages.json</code>. Giao diện chỉ cho biết "đã lưu", không hiện lại giá trị.</p>
+        <form id="tok-form" class="form"></form>
+        <div class="actions">
+          <button class="primary" id="tok-save" type="button">Lưu</button>
+          <button class="ghost" id="tok-check" type="button">Kiểm tra User token</button>
+        </div>
+        <p class="msg" id="tok-msg"></p>
+        <details class="guide">
+          <summary>Cách lấy token Facebook</summary>
+          <ol>
+            <li>Mở Graph API Explorer, chọn app, thêm quyền <code>pages_show_list</code>, <code>pages_read_engagement</code>, <code>pages_manage_posts</code>, <code>publish_video</code>, <code>pages_manage_engagement</code> (cho comment), bấm Generate Access Token và chọn <b>tất cả Fanpage</b> muốn quản lý.</li>
+            <li>Dán token đó vào ô <b>User token</b>, điền <b>App ID</b> và <b>App Secret</b> (App settings &gt; Basic), bấm <b>Lưu</b>.</li>
+            <li>Sang tab <b>Fanpage</b>, bấm <b>Lấy danh sách từ Facebook</b>, tick các Page muốn dùng rồi bấm <b>Thêm</b>. App tự đổi sang token dài hạn và lưu Page token của từng Page.</li>
+            <li>User token ngắn hạn hết hạn sau khoảng 1 giờ. Khi cần thêm Page mới hoặc làm mới token, chỉ việc dán User token mới rồi lấy danh sách lại.</li>
+          </ol>
+        </details>
+      </div>
+
+      <!-- Thông báo -->
+      <div id="sub-notify" class="panel subpanel">
+        <h2>Thông báo sự cố</h2>
+        <p class="hint">App báo cho bạn khi: Page bị Facebook giới hạn tần suất, bài đăng bị lỗi, comment thất bại, Page sắp hết video, tải video bị dừng. Mỗi sự cố chỉ báo một lần trong vài giờ để không làm phiền. Cần để app đang chạy.</p>
+        <form id="nt-form" class="form"></form>
+        <div class="actions">
+          <button class="primary" id="nt-save" type="button">Lưu</button>
+          <button class="ghost" id="nt-test" type="button">Gửi thử</button>
+          <button class="ghost" id="nt-chat" type="button" title="Nhắn bot một tin trong Telegram trước, rồi bấm nút này để app tự điền chat ID">Tự lấy chat ID</button>
+        </div>
+        <p class="msg" id="nt-msg"></p>
+        <details class="guide">
+          <summary>Cách tạo bot Telegram</summary>
+          <ol>
+            <li>Trong Telegram, nhắn <b>@BotFather</b>, gõ <code>/newbot</code>, đặt tên. BotFather trả về một <b>token</b>, dán vào ô Token bot ở trên.</li>
+            <li>Mở bot vừa tạo (bấm đường dẫn BotFather đưa), bấm <b>Start</b> hoặc nhắn một tin bất kỳ.</li>
+            <li>Bấm <b>Lưu</b> rồi bấm <b>Tự lấy chat ID</b> để app tự điền, sau đó bấm <b>Gửi thử</b>.</li>
+          </ol>
+        </details>
+      </div>
+
+      <!-- Chung -->
+      <div id="sub-general" class="panel subpanel">
+        <h2>Cài đặt chung</h2>
+        <form id="set-form" class="form"></form>
+        <div class="actions">
+          <button class="primary" id="set-save" type="button">Lưu cài đặt</button>
+        </div>
+        <p class="msg" id="set-msg"></p>
+        <div class="yt-box">
+          <h3>yt-dlp (công cụ tải video)</h3>
+          <p class="hint" id="yt-info">Đang đọc phiên bản...</p>
+          <div class="actions">
+            <button class="ghost" id="yt-update" type="button">Kiểm tra và cập nhật</button>
+            <button class="ghost" id="yt-restart" type="button" hidden>Khởi động lại app</button>
+          </div>
+          <p class="msg" id="yt-msg"></p>
+          <pre id="yt-log" class="log" hidden></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- NHẬT KÝ -->
+    <section id="tab-jobs" class="tab">
+      <div class="panel">
+        <h2>Nhật ký tác vụ</h2>
+        <div id="jobs-list" class="jobs"></div>
+        <pre id="jobs-log" class="log" hidden></pre>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="rt-dlg" class="modal small" aria-labelledby="rt-title">
+    <div class="sched-inner">
+      <div class="sched-head">
+        <h2 id="rt-title">Đổi giờ đăng</h2>
+        <button class="ghost" id="rt-close" type="button" aria-label="Đóng">Đóng</button>
+      </div>
+      <p class="hint" id="rt-info"></p>
+      <label>Giờ đăng mới <span class="sub" id="rt-tz"></span>
+        <input id="rt-when" type="datetime-local">
+      </label>
+      <div class="actions">
+        <button class="primary" id="rt-save" type="button">Lưu giờ mới</button>
+      </div>
+      <p class="msg" id="rt-msg"></p>
+      <pre class="log" id="rt-log" hidden></pre>
+    </div>
+  </dialog>
+
+  <dialog id="sched-dlg" class="modal" aria-labelledby="sched-title">
+    <div class="sched-inner" id="sched-panel">
+      <div class="sched-head">
+        <h2 id="sched-title">Lên lịch đăng lên Fanpage</h2>
+        <button class="ghost" id="sc-close" type="button" aria-label="Đóng">Đóng</button>
+      </div>
+      <p class="hint" id="fb-status"></p>
+      <p class="hint bad" id="sc-block-note" hidden></p>
+      <div class="row">
+        <label>Kiểu hẹn giờ
+          <select id="sc-mode">
+            <option value="interval">Cách nhau cố định</option>
+            <option value="auto">Tự xếp vào khung giờ của Page</option>
+          </select>
+        </label>
+        <label><span id="sc-start-label">Giờ đăng video đầu tiên</span>
+          <input id="sc-start" type="datetime-local">
+        </label>
+        <label id="sc-interval-wrap">Cách nhau (giờ)
+          <input id="sc-interval" type="number" min="0.5" step="0.5" value="6">
+        </label>
+        <label>Thứ tự đăng
+          <select id="sc-order">
+            <option value="oldest">Video cũ trước</option>
+            <option value="newest">Video mới trước</option>
+            <option value="random">Ngẫu nhiên</option>
+            <option value="selected">Theo thứ tự tôi tích chọn</option>
+          </select>
+        </label>
+        <label title="Múi giờ của Page, đổi ở Cài đặt Page">Múi giờ của Page
+          <input id="sc-tz" disabled>
+        </label>
+      </div>
+      <p class="hint" id="sc-auto-hint" hidden></p>
+      <label class="check" id="sc-partial-wrap" hidden>
+        <input id="sc-partial" type="checkbox">
+        <span>Nếu không đủ chỗ trống trong 29 ngày, chỉ xếp phần vừa đủ (phần còn lại để lần sau)</span>
+      </label>
+      <label class="check">
+        <input id="sc-confirm" type="checkbox">
+        <span>Tôi có quyền đăng các video đã chọn lên Fanpage đã chọn.</span>
+      </label>
+      <div class="actions">
+        <span class="count" id="sc-count">Đã chọn 0 video</span>
+        <button class="ghost" id="sc-dry" type="button">Xem trước kế hoạch</button>
+        <button class="primary" id="sc-go" type="button">Lên lịch đăng</button>
+        <button class="ghost" id="sc-cancel" type="button" hidden>Dừng</button>
+      </div>
+      <progress id="sc-bar" value="0" max="1" hidden></progress>
+      <pre id="sc-log" class="log" hidden></pre>
+      <p class="msg" id="sc-result" role="status"></p>
+    </div>
+  </dialog>
+
+  <dialog id="edit-dlg">
+    <form method="dialog" class="form" id="edit-form">
+      <h3>Nội dung bài đăng</h3>
+      <p class="hint">Mặc định lấy từ mô tả của video (đã có sẵn hashtag). Sửa nếu cần, nội dung này sẽ được đăng lên Fanpage.</p>
+      <label>Nội dung <textarea id="ed-caption" rows="9"></textarea></label>
+      <p class="hint" id="ed-count"></p>
+      <label>Link affiliate của video này
+        <input id="ed-link" type="url" placeholder="https://s.shopee.vn/..." maxlength="500">
+      </label>
+      <p class="hint">Link này thay vào chỗ <code>{link}</code> trong comment của kho. Nếu câu comment không có <code>{link}</code>, link được thêm xuống dòng cuối.</p>
+      <label>Comment tự động sau khi bài đăng (link affiliate...)
+        <textarea id="ed-comment" rows="3" placeholder="Để trống = chọn ngẫu nhiên trong kho comment (Cài đặt &gt; Comment)"></textarea>
+      </label>
+      <p class="hint">Gõ một dấu <code>-</code> nếu video này không cần comment. Comment chỉ được gửi khi bật "Tự động comment" trong Cài đặt &gt; Comment.</p>
+      <div class="actions">
+        <button class="ghost" id="ed-reset" type="button" hidden>Khôi phục mặc định</button>
+        <button class="ghost" value="cancel" type="submit">Hủy</button>
+        <button class="primary" id="ed-save" type="button">Lưu</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" hidden></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+.env
+comment_default.txt
+comment_pool*.json
+pages.json
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
+notify_state.json
+logs/
+ytdlp_state.json
+fbgate_state.json
