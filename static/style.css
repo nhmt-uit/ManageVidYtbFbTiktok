@@ -385,3 +385,32 @@ small.bad { color: var(--bad); }
 .st-recent li:last-child { border-bottom: 0; }
 .st-recent small { color: var(--muted); margin-left: 6px; }
 .st-recent .muted, .st-table .muted { color: var(--muted); }
+
+/* Chỉnh sửa video */
+.ve-grid { display: grid; grid-template-columns: minmax(220px, 300px) 1fr; gap: 16px; align-items: start; }
+.ve-side { position: sticky; top: 0; display: grid; gap: 8px; }
+.ve-vwrap { position: relative; background: #000; border-radius: 10px; overflow: hidden; }
+.ve-vwrap video { width: 100%; max-height: 60vh; display: block; background: #000; }
+#ve-cap { position: absolute; left: 6%; right: 6%; bottom: 16%; text-align: center; color: #fff; font-weight: 700; font-size: 15px; line-height: 1.25; text-shadow: 0 0 4px #000, 0 0 4px #000, 1px 1px 2px #000; pointer-events: none; white-space: pre-line; }
+.ve-switch { display: flex; gap: 14px; flex-wrap: wrap; font-size: 14px; }
+.ve-steps { display: grid; gap: 12px; min-width: 0; }
+.ve-sec { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.ve-sec h3 { margin: 0 0 6px; font-size: 15px; }
+.ve-sec .hint { margin: 2px 0 10px; }
+.ve-sec .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+.ve-cues { display: grid; gap: 6px; max-height: 300px; overflow: auto; margin-bottom: 8px; }
+.ve-cue { display: grid; grid-template-columns: 24px 64px 64px 1fr auto; gap: 6px; align-items: start; }
+.ve-cue input, .ve-cue textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 14px; }
+.ve-cue textarea { resize: vertical; }
+.ve-opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 8px; }
+.ve-opts label { display: grid; gap: 4px; font-size: 14px; }
+.ve-opts .ve-chk { display: flex; gap: 8px; align-items: center; }
+#ve-bar { width: 100%; }
+@media (max-width: 760px) {
+  .ve-grid { grid-template-columns: 1fr; }
+  .ve-side { position: static; }
+  .ve-vwrap video { max-height: 45vh; }
+  .ve-cue { grid-template-columns: 24px 1fr 1fr; }
+  .ve-cue .ve-t { grid-column: 1 / -1; }
+  .ve-cue .ve-del { grid-column: 2 / -1; justify-self: end; }
+}

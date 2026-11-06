@@ -505,7 +505,7 @@ function renderLibrary() {
   grid.innerHTML = list.map((v) => `
     <article class="card${lib.selected.has(v.rel) ? " sel" : ""}" data-rel="${esc(v.rel)}">
       ${v.scheduled && !selKind(v) ? "" : `<label class="pick"><input type="checkbox" ${lib.selected.has(v.rel) ? "checked" : ""} ${selKind(v) ? "" : "disabled"}></label>`}
-      <video data-src="${esc(mediaUrl(v.rel))}" controls playsinline muted preload="none"></video>
+      <video data-src="${esc(mediaUrl(v.rel) + (v.edited ? "?e=" + v.size_mb : ""))}" controls playsinline muted preload="none"></video>
       <div class="meta">
         <h4 title="${esc(v.title)}">${esc(v.title)}</h4>
         <p class="sub">${esc(v.date)} · ${v.size_mb} MB${v.channel ? " · " + esc(v.channel) : ""}</p>
@@ -516,10 +516,12 @@ function renderLibrary() {
           ${v.affiliate ? '<span class="badge">Có link affiliate</span>' : ""}
           ${v.has_audio ? '<span class="badge" title="Đã tải kèm file audio.mp3 trong thư mục video này">Có MP3</span>' : ""}
           ${v.custom_caption ? '<span class="badge">Đã sửa nội dung</span>' : ""}
+          ${v.edited ? '<span class="badge ok" title="Hẹn giờ đăng sẽ dùng bản đã chỉnh sửa (video gốc vẫn được giữ)">Đã chỉnh sửa video</span>' : ""}
           ${commentBadge(v)}
           ${v.has_permission ? "" :'<span class="badge warn" title="Chưa có ghi chú đồng ý của chủ kênh trong thư mục này">Chưa ghi nhận quyền</span>'}
         </div>
         <button class="link edit" type="button">Sửa nội dung</button>
+        ${v.scheduled ? "" : '<button class="link vedit" type="button">Chỉnh sửa video</button>'}
         ${safeLink(v.permalink) ? `<a class="link" href="${esc(safeLink(v.permalink))}" target="_blank" rel="noopener">Xem bài trên Facebook</a>` : ""}
         ${["error", "missing"].includes(v.publish_status) ? '<button class="link resched" type="button">Hẹn lại</button>' : ""}
         ${canManage(v) ? '<button class="link retime" type="button">Đổi giờ</button> <button class="link cancelsch" type="button">Huỷ lịch</button>' : ""}
@@ -623,6 +625,7 @@ $("#lib-grid").addEventListener("change", (e) => {
 
 $("#lib-grid").addEventListener("click", (e) => {
   if (e.target.classList.contains("edit")) openEdit(e.target.closest(".card").dataset.rel);
+  if (e.target.classList.contains("vedit")) openVideoEdit(e.target.closest(".card").dataset.rel);
   if (e.target.classList.contains("cnow")) commentNow(e.target.closest(".card").dataset.rel);
   if (e.target.classList.contains("resched")) reschedule(e.target.closest(".card").dataset.rel);
   const card = e.target.closest(".card");
@@ -1046,6 +1049,183 @@ async function saveCaption(caption, msg, comment, link) {
 $("#ed-save").addEventListener("click", () =>
   saveCaption($("#ed-caption").value, "Đã lưu nội dung.", $("#ed-comment").value, $("#ed-link").value));
 $("#ed-reset").addEventListener("click", () => saveCaption("", "Đã khôi phục nội dung mặc định."));
+
+/* ---------- Chỉnh sửa video: phiên âm, phụ đề, giọng đọc, xuất 9:16 ---------- */
+const ve = { rel: "", st: null, cues: [], busy: false, view: "orig" };
+const fmtSec = (n) => (Math.round(n * 10) / 10).toString();
+
+function veSettings() {
+  return {
+    framing: $("#ve-framing").value, subs: $("#ve-subs").checked, position: $("#ve-position").value, size: $("#ve-size").value,
+    color: $("#ve-color").value, box: $("#ve-box").checked, loudnorm: $("#ve-loud").checked,
+    orig_volume: Number($("#ve-ov").value), voice_volume: 100,
+  };
+}
+function veBusy(on, msg) {
+  ve.busy = on;
+  ["#ve-trans", "#ve-render", "#ve-reset", "#ve-savecues", "#ve-addcue", "#ve-voicefile", "#ve-voicedel"].forEach((s) => { $(s).disabled = on || (ve.st && ve.st.scheduled); });
+  if (!on) $("#ve-bar").hidden = true;
+  if (msg !== undefined) $("#ve-msg").textContent = msg;
+}
+function veSetView(v) {
+  ve.view = v;
+  const vid = $("#ve-video"), st = ve.st;
+  const t = vid.currentTime || 0;
+  vid.src = (v === "edited" && st.edited.exists ? mediaUrl(ve.rel) + "?e=" + st.edited.mtime : mediaUrl(ve.rel) + "?orig=1") + "#t=0.1";   // #t: để trình duyệt vẽ khung hình đầu
+  if (t > 0.2) vid.addEventListener("loadedmetadata", () => { try { vid.currentTime = t; } catch (e) { /* bỏ qua */ } }, { once: true });
+  document.querySelector(`input[name=ve-view][value=${v}]`).checked = true;
+  veCap();
+}
+function veCap() {
+  const vid = $("#ve-video"), cap = $("#ve-cap");
+  const c = ve.view === "orig" && $("#ve-subs").checked ? ve.cues.find((x) => vid.currentTime >= x.start && vid.currentTime < x.end) : null;
+  cap.hidden = !c;
+  if (c) cap.textContent = c.text;
+}
+function veRenderCues() {
+  $("#ve-cuecount").textContent = ve.cues.length ? `(${ve.cues.length} dòng)` : "(chưa có)";
+  $("#ve-cues").innerHTML = ve.cues.length ? ve.cues.map((c, i) => `
+    <div class="ve-cue" data-i="${i}">
+      <button class="link ve-play" type="button" title="Nghe lại đoạn này">▶</button>
+      <input class="ve-s" type="number" min="0" step="0.1" value="${fmtSec(c.start)}" aria-label="Bắt đầu (giây)">
+      <input class="ve-e" type="number" min="0" step="0.1" value="${fmtSec(c.end)}" aria-label="Kết thúc (giây)">
+      <textarea class="ve-t" rows="2" maxlength="200" aria-label="Nội dung">${esc(c.text)}</textarea>
+      <button class="link ve-del" type="button" title="Xóa dòng này">Xóa</button>
+    </div>`).join("") : '<p class="hint">Chưa có phụ đề. Bấm "Phiên âm" ở bước 1, hoặc tự thêm từng dòng.</p>';
+}
+function veReadCues() {
+  return [...document.querySelectorAll("#ve-cues .ve-cue")].map((r) => ({
+    start: Number(r.querySelector(".ve-s").value), end: Number(r.querySelector(".ve-e").value), text: r.querySelector(".ve-t").value,
+  }));
+}
+function veRender() {
+  const st = ve.st, t = st.tools;
+  const problems = [];
+  if (!t.ffmpeg.ok || !t.ffmpeg.libass) problems.push(t.ffmpeg.problem);
+  if (!t.whisper.ok) problems.push(t.whisper.problem + " (vẫn tự gõ phụ đề và xuất video được.)");
+  $("#ve-problem").hidden = !problems.length;
+  $("#ve-problem").textContent = problems.join(" ");
+  $("#ve-locked").hidden = !st.scheduled;
+  const s = st.source;
+  $("#ve-vinfo").textContent = s.width ? `Gốc: ${s.width}x${s.height}, ${Math.round(s.duration)} giây${s.has_audio ? "" : ", không có âm thanh"}. Xuất ra 1080x1920 (9:16).` : "";
+  $("#ve-lang").innerHTML = Object.entries(st.langs).map(([k, n]) => `<option value="${k}"${k === (st.language || "vi") ? " selected" : ""}>${esc(n)}</option>`).join("");
+  $("#ve-src-wrap").hidden = !st.voice.name;
+  veRenderCues();
+  const v = st.voice;
+  $("#ve-voicedel").hidden = !v.name;
+  $("#ve-voiceinfo").textContent = v.name ? `Đang dùng: ${v.name} (${v.duration} giây, ${v.size_mb} MB).` + (s.duration && v.duration > s.duration + 0.5 ? " Giọng dài hơn video nên sẽ bị cắt cho vừa." : "") : "Chưa có giọng đọc.";
+  $("#ve-ov-wrap").hidden = !v.name;
+  const set = st.settings;
+  $("#ve-framing").value = set.framing; $("#ve-position").value = set.position; $("#ve-size").value = set.size; $("#ve-color").value = set.color;
+  $("#ve-subs").checked = set.subs; $("#ve-box").checked = set.box; $("#ve-loud").checked = set.loudnorm;
+  $("#ve-ov").value = set.orig_volume; $("#ve-ov-n").textContent = set.orig_volume + "%";
+  $("#ve-view-ed").disabled = !st.edited.exists;
+  $("#ve-reset").hidden = !st.edited.exists;
+  veBusy(false);
+  const ed = st.edited;
+  $("#ve-msg").textContent = ed.exists ? `Đã có bản chỉnh sửa (${ed.size_mb} MB).` + (ed.stale ? " Phụ đề đã đổi sau lần xuất, hãy xuất lại." : " Hẹn giờ đăng sẽ dùng bản này.") : "Chưa xuất bản chỉnh sửa: hẹn giờ đăng đang dùng video gốc.";
+}
+async function veLoad(keepView) {
+  ve.st = await api("/api/edit/status?rel=" + encodeURIComponent(ve.rel));
+  ve.cues = ve.st.cues;
+  veRender();
+  veSetView(keepView && ve.st.edited.exists ? keepView : ve.st.edited.exists ? "edited" : "orig");
+}
+async function openVideoEdit(rel) {
+  ve.rel = rel;
+  const v = lib.videos.find((x) => x.rel === rel);
+  $("#ve-name").textContent = v ? v.title : rel;
+  try {
+    await veLoad();
+    $("#ve-dlg").showModal();
+  } catch (e) {
+    toast(e.message);
+  }
+}
+async function veRunJob(path, body, label) {
+  veBusy(true, label);
+  $("#ve-bar").hidden = false; $("#ve-bar").value = 0;
+  try {
+    const r = await api(path, "POST", body);
+    const j = await waitJob(r.job, (s) => { if (s.progress.total) $("#ve-bar").value = Math.round(100 * s.progress.done / s.progress.total); });
+    if (j.status === "error") throw new Error(j.result);
+    toast(j.result, 6000);
+    return j;
+  } finally {
+    veBusy(false);
+  }
+}
+async function veSaveCues() {
+  const r = await api("/api/edit/subs", "POST", { rel: ve.rel, cues: veReadCues() });
+  ve.cues = r.cues; ve.st.cues = r.cues;
+  veRenderCues();
+  return r.cues;
+}
+$("#ve-close").addEventListener("click", () => $("#ve-dlg").close());
+$("#ve-dlg").addEventListener("close", () => { $("#ve-video").pause(); loadLibrary(); });
+$("#ve-dlg").addEventListener("click", (e) => { if (e.target === $("#ve-dlg") && !ve.busy) $("#ve-dlg").close(); });
+document.querySelectorAll("input[name=ve-view]").forEach((r) => r.addEventListener("change", (e) => veSetView(e.target.value)));
+$("#ve-video").addEventListener("timeupdate", veCap);
+$("#ve-subs").addEventListener("change", veCap);
+$("#ve-ov").addEventListener("input", () => { $("#ve-ov-n").textContent = $("#ve-ov").value + "%"; });
+$("#ve-cues").addEventListener("click", (e) => {
+  const row = e.target.closest(".ve-cue");
+  if (!row) return;
+  const i = Number(row.dataset.i);
+  if (e.target.classList.contains("ve-del")) { ve.cues = veReadCues(); ve.cues.splice(i, 1); veRenderCues(); }
+  if (e.target.classList.contains("ve-play")) {
+    veSetView("orig");
+    const vid = $("#ve-video"), start = Number(row.querySelector(".ve-s").value) || 0;
+    vid.addEventListener("loadedmetadata", () => { vid.currentTime = start; vid.play(); }, { once: true });
+    if (vid.readyState >= 1) { vid.currentTime = start; vid.play(); }
+  }
+});
+$("#ve-addcue").addEventListener("click", () => {
+  ve.cues = veReadCues();
+  const last = ve.cues[ve.cues.length - 1];
+  const start = last ? last.end : Math.floor($("#ve-video").currentTime * 10) / 10;
+  ve.cues.push({ start, end: start + 2, text: "" });
+  veRenderCues();
+  const ta = document.querySelectorAll("#ve-cues .ve-t"); ta[ta.length - 1].focus();
+});
+$("#ve-savecues").addEventListener("click", async () => {
+  try { const c = await veSaveCues(); toast(`Đã lưu ${c.length} dòng phụ đề.`); } catch (e) { toast(e.message); }
+});
+$("#ve-trans").addEventListener("click", async () => {
+  if (ve.cues.length && !confirm("Phiên âm lại sẽ thay toàn bộ phụ đề hiện có (kể cả phần bạn đã sửa). Tiếp tục?")) return;
+  try {
+    await veRunJob("/api/edit/transcribe", { rel: ve.rel, lang: $("#ve-lang").value, source: $("#ve-src").value }, "Đang phiên âm...");
+    await veLoad(ve.view);
+  } catch (e) { $("#ve-msg").textContent = e.message; toast(e.message, 8000); }
+});
+$("#ve-voicefile").addEventListener("change", async (e) => {
+  const f = e.target.files[0];
+  e.target.value = "";
+  if (!f) return;
+  veBusy(true, "Đang tải giọng đọc lên...");
+  try {
+    const r = await fetch("/api/edit/voice?" + new URLSearchParams({ rel: ve.rel, name: f.name }), { method: "POST", headers: { "X-Upload": "1", "Content-Type": "application/octet-stream" }, body: f });
+    let d = {}; try { d = await r.json(); } catch (x) { /* không phải JSON */ }
+    if (!r.ok) throw new Error(d.error || "Lỗi " + r.status);
+    await veLoad(ve.view);
+    toast("Đã thêm giọng đọc.");
+  } catch (err) { toast(err.message, 7000); veBusy(false, err.message); }
+});
+$("#ve-voicedel").addEventListener("click", async () => {
+  if (!confirm("Gỡ giọng đọc khỏi video này?")) return;
+  try { await api("/api/edit/voice", "DELETE", { rel: ve.rel }); await veLoad(ve.view); } catch (e) { toast(e.message); }
+});
+$("#ve-render").addEventListener("click", async () => {
+  try {
+    if ($("#ve-subs").checked && document.querySelector("#ve-cues .ve-cue")) await veSaveCues();
+    await veRunJob("/api/edit/render", { rel: ve.rel, settings: veSettings() }, "Đang xuất video...");
+    await veLoad("edited");
+  } catch (e) { $("#ve-msg").textContent = e.message; toast(e.message, 8000); }
+});
+$("#ve-reset").addEventListener("click", async () => {
+  if (!confirm("Bỏ bản đã chỉnh sửa và dùng lại video gốc? Phụ đề và giọng đọc vẫn được giữ để chỉnh lại sau.")) return;
+  try { await api("/api/edit/reset", "POST", { rel: ve.rel }); await veLoad("orig"); } catch (e) { toast(e.message); }
+});
 
 /* ---------- Lên lịch ---------- */
 // Giờ mặc định: kiểu cố định = 19:00 ngày mai; kiểu tự xếp = ngay bây giờ (app tự chọn khung giờ trống gần nhất)

@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import config
+from .videofile import video_file
 
 CACHE_FILE = "reels_check.json"
 MIN_W, MIN_H = 540, 960
@@ -138,7 +139,7 @@ def state_of(res: dict) -> str:
 
 def cached(folder: Path) -> dict | None:
     """Kết quả đã lưu nếu file video chưa đổi, ngược lại None."""
-    video = folder / "video.mp4"
+    video = video_file(folder)
     try:
         data = json.loads((folder / CACHE_FILE).read_text(encoding="utf-8"))
         if data.get("sig") == _sig(video) and isinstance(data.get("result"), dict):
@@ -160,7 +161,7 @@ def ensure(folder: Path, force: bool = False) -> dict | None:
     """Kết quả kiểm tra của một video, chạy ffprobe nếu chưa có cache. None nếu không kiểm tra được (thiếu ffprobe, tắt kiểm tra)."""
     if not available():
         return None
-    video = folder / "video.mp4"
+    video = video_file(folder)
     if not video.exists():
         return None
     if not force:

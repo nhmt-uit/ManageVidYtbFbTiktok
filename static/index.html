@@ -415,6 +415,76 @@
     </form>
   </dialog>
 
+  <dialog id="ve-dlg" class="modal" aria-labelledby="ve-title">
+    <div class="sched-inner ve">
+      <div class="sched-head">
+        <h2 id="ve-title">Chỉnh sửa video</h2>
+        <button class="ghost" id="ve-close" type="button" aria-label="Đóng">Đóng</button>
+      </div>
+      <p class="hint" id="ve-name"></p>
+      <p class="hint bad" id="ve-problem" hidden></p>
+      <p class="hint bad" id="ve-locked" hidden>Video này đã lên lịch nên không chỉnh sửa được (Facebook đã nhận bản cũ). Huỷ lịch trước, chỉnh sửa xong rồi hẹn lại.</p>
+      <div class="ve-grid">
+        <div class="ve-side">
+          <div class="ve-vwrap"><video id="ve-video" controls playsinline preload="metadata"></video><div id="ve-cap" hidden></div></div>
+          <div class="ve-switch" role="radiogroup" aria-label="Bản xem trước">
+            <label><input type="radio" name="ve-view" value="orig" checked> Video gốc</label>
+            <label><input type="radio" name="ve-view" value="edited" id="ve-view-ed" disabled> Bản đã chỉnh</label>
+          </div>
+          <p class="hint" id="ve-vinfo"></p>
+        </div>
+        <div class="ve-steps">
+          <section class="ve-sec">
+            <h3>1. Phiên âm tự động</h3>
+            <div class="row">
+              <label>Ngôn ngữ trong video <select id="ve-lang"></select></label>
+              <label id="ve-src-wrap" hidden>Phiên âm từ <select id="ve-src"><option value="auto">Giọng đọc của tôi</option><option value="video">Âm thanh của video</option></select></label>
+              <button class="primary" id="ve-trans" type="button">Phiên âm</button>
+            </div>
+            <p class="hint">whisper.cpp chạy ngay trên máy bạn (không gửi video đi đâu). Video dài 1 phút mất khoảng vài chục giây.</p>
+          </section>
+          <section class="ve-sec">
+            <h3>2. Phụ đề <span class="count" id="ve-cuecount"></span></h3>
+            <p class="hint">Sửa lỗi chính tả, chỉnh thời gian (giây). Bấm ▶ để nghe lại đoạn đó.</p>
+            <div id="ve-cues" class="ve-cues"></div>
+            <div class="actions">
+              <button class="ghost" id="ve-addcue" type="button">+ Thêm dòng</button>
+              <button class="ghost" id="ve-savecues" type="button">Lưu phụ đề</button>
+            </div>
+          </section>
+          <section class="ve-sec">
+            <h3>3. Giọng đọc / bình luận của bạn (tuỳ chọn)</h3>
+            <p class="hint">Thu giọng của bạn (điện thoại hay máy tính đều được) rồi tải lên. Giọng được trộn vào video, âm thanh gốc nhỏ lại.</p>
+            <div class="row">
+              <input id="ve-voicefile" type="file" accept=".mp3,.m4a,.wav,.aac,.ogg,.flac,.opus,audio/*">
+              <button class="ghost" id="ve-voicedel" type="button" hidden>Gỡ giọng đọc</button>
+            </div>
+            <p class="hint" id="ve-voiceinfo"></p>
+          </section>
+          <section class="ve-sec">
+            <h3>4. Kiểu hiển thị và xuất video</h3>
+            <div class="ve-opts">
+              <label>Khung hình <select id="ve-framing"><option value="auto">Tự chọn (khuyên dùng)</option><option value="fit">Nền mờ, video ở giữa</option><option value="crop">Cắt giữa cho đầy khung</option><option value="scale">Giữ nguyên, viền đen</option></select></label>
+              <label>Vị trí phụ đề <select id="ve-position"><option value="bottom">Dưới</option><option value="middle">Giữa</option><option value="top">Trên</option></select></label>
+              <label>Cỡ chữ <select id="ve-size"><option value="small">Nhỏ</option><option value="medium">Vừa</option><option value="large">Lớn</option></select></label>
+              <label>Màu chữ <select id="ve-color"><option value="white">Trắng</option><option value="yellow">Vàng</option><option value="cyan">Xanh lơ</option></select></label>
+              <label class="ve-chk"><input type="checkbox" id="ve-subs" checked> In phụ đề vào video</label>
+              <label class="ve-chk"><input type="checkbox" id="ve-box"> Nền mờ sau chữ</label>
+              <label class="ve-chk"><input type="checkbox" id="ve-loud" checked> Chuẩn hóa âm lượng</label>
+              <label id="ve-ov-wrap">Âm gốc khi có giọng đọc <input type="range" id="ve-ov" min="0" max="100" step="5" value="25"> <span id="ve-ov-n">25%</span></label>
+            </div>
+            <div class="actions">
+              <button class="ghost" id="ve-reset" type="button" hidden>Dùng lại video gốc</button>
+              <button class="primary" id="ve-render" type="button">Xuất video</button>
+            </div>
+            <progress id="ve-bar" value="0" max="100" hidden></progress>
+            <p class="msg" id="ve-msg" role="status"></p>
+          </section>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
   <div class="toast" id="toast" hidden></div>
   <script src="/static/app.js"></script>
 </body>

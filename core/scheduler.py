@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 import requests
 
 from . import commenter, config, fbgate, library, pages, planner, ratelimit, reelcheck
+from .videofile import video_file
 
 
 class FacebookError(RuntimeError):
@@ -281,7 +282,7 @@ def run(job, page_id: str, rels: list[str], start: str, interval_hours: float, t
             continue
         try:
             video_id = schedule_reel(
-                page_id, token, folder / "video.mp4", library.build_caption(folder), int(when.timestamp())
+                page_id, token, video_file(folder), library.build_caption(folder), int(when.timestamp())
             )
         except fbgate.RateLimited as exc:
             raise RuntimeError(

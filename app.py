@@ -12,7 +12,8 @@ from datetime import datetime
 
 from flask import Flask, abort, jsonify, request, send_from_directory
 
-from core import affiliate, commenter, config, downloader, fbgate, library, manage, notify, pages, planner, publish, reelcheck, scheduler, stats, stock, tokens, ytdlp_update
+from core import affiliate, commenter, editor, config, downloader, fbgate, library, manage, notify, pages, planner, publish, reelcheck, scheduler, stats, stock, tokens, ytdlp_update
+from core import videofile
 from core.jobs import manager
 
 config.load_env()
@@ -27,8 +28,8 @@ def guard():
     host = request.host.rsplit(":", 1)[0].strip("[]")
     if host not in ALLOWED_HOSTS:
         abort(403)
-    if request.method in ("POST", "PUT", "DELETE") and not request.is_json:
-        abort(415)
+    if request.method in ("POST", "PUT", "DELETE") and not request.is_json and request.headers.get("X-Upload") != "1":
+        abort(415)   # tải file lên dùng header X-Upload (trang web khác không gửi được header lạ nếu không qua CORS)
 
 
 @app.after_request
@@ -216,8 +217,105 @@ def api_stats():
 
 @app.get("/media/<path:rel>")
 def media(rel):
+    """Phát video: bản đã chỉnh sửa nếu có (thêm ?orig=1 để xem video gốc)."""
     root = config.output_dir()
-    return send_from_directory(root, f"{rel}/video.mp4", conditional=True)
+    try:
+        folder = library.resolve(rel)
+    except ValueError:
+        abort(404)
+    name = "video.mp4" if request.args.get("orig") == "1" else videofile.video_file(folder).name
+    return send_from_directory(root, f"{rel}/{name}", conditional=True)
+
+
+# ---------- Chỉnh sửa video: phiên âm, phụ đề, xuất bản 9:16 ----------
+def _edit_rel(d: dict | None = None) -> str:
+    return str((d if d is not None else request.args).get("rel", ""))
+
+
+@app.get("/api/edit/status")
+def api_edit_status():
+    try:
+        return jsonify(editor.status(_edit_rel()))
+    except ValueError as e:
+        return err(str(e), 404)
+
+
+@app.post("/api/edit/transcribe")
+def api_edit_transcribe():
+    d = body()
+    try:
+        folder = library.resolve(_edit_rel(d))
+    except ValueError as e:
+        return err(str(e), 404)
+    if manager.has_running("edit"):
+        return err("Đang có một tác vụ chỉnh sửa khác chạy. Đợi nó xong rồi thử lại.", 409)
+    t = editor.tools(refresh=True)
+    for key in ("ffmpeg", "whisper"):
+        if not t[key]["ok"]:
+            return err(t[key]["problem"], 409)
+    lang = str(d.get("lang") or "vi")
+    job = manager.start("edit", f"Phiên âm: {folder.name}", editor.transcribe_job, _edit_rel(d), lang, str(d.get("source") or "auto"))
+    return jsonify({"job": job.id})
+
+
+@app.post("/api/edit/subs")
+def api_edit_subs():
+    d = body()
+    try:
+        return jsonify(editor.save_subs(_edit_rel(d), d.get("cues")))
+    except ValueError as e:
+        return err(str(e), 404)
+    except editor.EditError as e:
+        return err(str(e))
+
+
+@app.post("/api/edit/voice")
+def api_edit_voice_upload():
+    """Tải file giọng đọc lên (nội dung file là thân yêu cầu, tên file ở ?name=, cần header X-Upload: 1)."""
+    try:
+        return jsonify(editor.save_voice(_edit_rel(), request.args.get("name", ""), request.stream, request.content_length))
+    except ValueError as e:
+        return err(str(e), 404)
+    except editor.EditError as e:
+        return err(str(e))
+
+
+@app.delete("/api/edit/voice")
+def api_edit_voice_delete():
+    try:
+        editor.remove_voice(_edit_rel(body()))
+    except ValueError as e:
+        return err(str(e), 404)
+    return jsonify({"ok": True})
+
+
+@app.post("/api/edit/render")
+def api_edit_render():
+    d = body()
+    try:
+        folder = library.resolve(_edit_rel(d))
+    except ValueError as e:
+        return err(str(e), 404)
+    if editor.is_scheduled(folder):
+        return err("Video này đã lên lịch (Facebook đã nhận bản cũ). Huỷ lịch trước, chỉnh sửa xong rồi hẹn lại.", 409)
+    if manager.has_running("edit"):
+        return err("Đang có một tác vụ chỉnh sửa khác chạy. Đợi nó xong rồi thử lại.", 409)
+    t = editor.tools(refresh=True)
+    if not t["ffmpeg"]["ok"]:
+        return err(t["ffmpeg"]["problem"], 409)
+    job = manager.start("edit", f"Xuất video đã chỉnh: {folder.name}", editor.render_job, _edit_rel(d), d.get("settings"))
+    return jsonify({"job": job.id})
+
+
+@app.post("/api/edit/reset")
+def api_edit_reset():
+    try:
+        editor.reset(_edit_rel(body()))
+    except ValueError as e:
+        return err(str(e), 404)
+    except editor.EditError as e:
+        return err(str(e), 409)
+    return jsonify({"ok": True})
 
 
 @app.get("/api/caption")
