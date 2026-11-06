@@ -505,7 +505,7 @@ function renderLibrary() {
   grid.innerHTML = list.map((v) => `
     <article class="card${lib.selected.has(v.rel) ? " sel" : ""}" data-rel="${esc(v.rel)}">
       ${v.scheduled && !selKind(v) ? "" : `<label class="pick"><input type="checkbox" ${lib.selected.has(v.rel) ? "checked" : ""} ${selKind(v) ? "" : "disabled"}></label>`}
-      <video data-src="${esc(mediaUrl(v.rel) + (v.edited ? "?e=" + v.size_mb : ""))}" controls playsinline muted preload="none"></video>
+      <video data-src="${esc(mediaUrl(v.rel) + ("?e=" + v.size_mb))}" controls playsinline muted preload="none"></video>
       <div class="meta">
         <h4 title="${esc(v.title)}">${esc(v.title)}</h4>
         <p class="sub">${esc(v.date)} · ${v.size_mb} MB${v.channel ? " · " + esc(v.channel) : ""}</p>
@@ -516,7 +516,8 @@ function renderLibrary() {
           ${v.affiliate ? '<span class="badge">Có link affiliate</span>' : ""}
           ${v.has_audio ? '<span class="badge" title="Đã tải kèm file audio.mp3 trong thư mục video này">Có MP3</span>' : ""}
           ${v.custom_caption ? '<span class="badge">Đã sửa nội dung</span>' : ""}
-          ${v.edited ? '<span class="badge ok" title="Hẹn giờ đăng sẽ dùng bản đã chỉnh sửa (video gốc vẫn được giữ)">Đã chỉnh sửa video</span>' : ""}
+          ${v.has_draft ? '<span class="badge warn" title="Có bản chỉnh sửa nháp chưa duyệt. Hẹn giờ vẫn dùng video hiện tại. Mở Chỉnh sửa video để xem và duyệt.">Chờ duyệt bản chỉnh</span>' : ""}
+          ${v.edited ? '<span class="badge ok" title="Video này đã được chỉnh sửa và duyệt (đã thay video gốc)">Đã chỉnh sửa video</span>' : ""}
           ${commentBadge(v)}
           ${v.has_permission ? "" :'<span class="badge warn" title="Chưa có ghi chú đồng ý của chủ kênh trong thư mục này">Chưa ghi nhận quyền</span>'}
         </div>
@@ -1063,7 +1064,7 @@ function veSettings() {
 }
 function veBusy(on, msg) {
   ve.busy = on;
-  ["#ve-trans", "#ve-render", "#ve-reset", "#ve-savecues", "#ve-addcue", "#ve-voicefile", "#ve-voicedel"].forEach((s) => { $(s).disabled = on || (ve.st && ve.st.scheduled); });
+  ["#ve-trans", "#ve-render", "#ve-discard", "#ve-approve", "#ve-savecues", "#ve-addcue", "#ve-voicefile", "#ve-voicedel"].forEach((s) => { $(s).disabled = on || (ve.st && ve.st.scheduled); });
   if (!on) $("#ve-bar").hidden = true;
   if (msg !== undefined) $("#ve-msg").textContent = msg;
 }
@@ -1071,7 +1072,7 @@ function veSetView(v) {
   ve.view = v;
   const vid = $("#ve-video"), st = ve.st;
   const t = vid.currentTime || 0;
-  vid.src = (v === "edited" && st.edited.exists ? mediaUrl(ve.rel) + "?e=" + st.edited.mtime : mediaUrl(ve.rel) + "?orig=1") + "#t=0.1";   // #t: để trình duyệt vẽ khung hình đầu
+  vid.src = (v === "draft" && st.draft.exists ? mediaUrl(ve.rel) + "?draft=1&e=" + st.draft.mtime : mediaUrl(ve.rel) + "?e=" + st.source.size) + "#t=0.1";   // #t: để trình duyệt vẽ khung hình đầu
   if (t > 0.2) vid.addEventListener("loadedmetadata", () => { try { vid.currentTime = t; } catch (e) { /* bỏ qua */ } }, { once: true });
   document.querySelector(`input[name=ve-view][value=${v}]`).checked = true;
   veCap();
@@ -1119,17 +1120,20 @@ function veRender() {
   $("#ve-framing").value = set.framing; $("#ve-position").value = set.position; $("#ve-size").value = set.size; $("#ve-color").value = set.color;
   $("#ve-subs").checked = set.subs; $("#ve-box").checked = set.box; $("#ve-loud").checked = set.loudnorm;
   $("#ve-ov").value = set.orig_volume; $("#ve-ov-n").textContent = set.orig_volume + "%";
-  $("#ve-view-ed").disabled = !st.edited.exists;
-  $("#ve-reset").hidden = !st.edited.exists;
+  $("#ve-view-ed").disabled = !st.draft.exists;
+  $("#ve-discard").hidden = !st.draft.exists;
+  $("#ve-approve").hidden = !st.draft.exists;
   veBusy(false);
-  const ed = st.edited;
-  $("#ve-msg").textContent = ed.exists ? `Đã có bản chỉnh sửa (${ed.size_mb} MB).` + (ed.stale ? " Phụ đề đã đổi sau lần xuất, hãy xuất lại." : " Hẹn giờ đăng sẽ dùng bản này.") : "Chưa xuất bản chỉnh sửa: hẹn giờ đăng đang dùng video gốc.";
+  const ed = st.draft;
+  $("#ve-msg").textContent = ed.exists
+    ? `Có bản nháp (${ed.size_mb} MB), chưa duyệt: hẹn giờ vẫn dùng video hiện tại.` + (ed.stale ? " Phụ đề đã đổi sau lần xuất, nên xuất lại." : " Xem thử rồi bấm Duyệt để thay video gốc.")
+    : st.approved ? "Video này đã được chỉnh sửa và duyệt. Xuất lần nữa sẽ chồng thêm lên bản hiện tại (phụ đề cũ đã in cố định)." : "Chưa có bản nháp: hẹn giờ đăng đang dùng video gốc.";
 }
 async function veLoad(keepView) {
   ve.st = await api("/api/edit/status?rel=" + encodeURIComponent(ve.rel));
   ve.cues = ve.st.cues;
   veRender();
-  veSetView(keepView && ve.st.edited.exists ? keepView : ve.st.edited.exists ? "edited" : "orig");
+  veSetView(keepView && (keepView !== "draft" || ve.st.draft.exists) ? keepView : ve.st.draft.exists ? "draft" : "orig");
 }
 async function openVideoEdit(rel) {
   ve.rel = rel;
@@ -1219,12 +1223,21 @@ $("#ve-render").addEventListener("click", async () => {
   try {
     if ($("#ve-subs").checked && document.querySelector("#ve-cues .ve-cue")) await veSaveCues();
     await veRunJob("/api/edit/render", { rel: ve.rel, settings: veSettings() }, "Đang xuất video...");
-    await veLoad("edited");
+    await veLoad("draft");
   } catch (e) { $("#ve-msg").textContent = e.message; toast(e.message, 8000); }
 });
-$("#ve-reset").addEventListener("click", async () => {
-  if (!confirm("Bỏ bản đã chỉnh sửa và dùng lại video gốc? Phụ đề và giọng đọc vẫn được giữ để chỉnh lại sau.")) return;
-  try { await api("/api/edit/reset", "POST", { rel: ve.rel }); await veLoad("orig"); } catch (e) { toast(e.message); }
+$("#ve-discard").addEventListener("click", async () => {
+  if (!confirm("Bỏ bản nháp? Video hiện tại không đổi; phụ đề và giọng đọc vẫn được giữ để xuất lại.")) return;
+  try { await api("/api/edit/discard", "POST", { rel: ve.rel }); await veLoad("orig"); } catch (e) { toast(e.message); }
+});
+$("#ve-approve").addEventListener("click", async () => {
+  if (!confirm("DUYỆT bản nháp?\n\nBản chỉnh sửa sẽ THAY THẾ video gốc. Video gốc bị XOÁ vĩnh viễn, không khôi phục được.\nPhụ đề và giọng đọc đã dùng cũng được dọn đi.")) return;
+  veBusy(true, "Đang thay video gốc...");
+  try {
+    const r = await api("/api/edit/approve", "POST", { rel: ve.rel, confirm: true });
+    toast(r.message, 6000);
+    await veLoad("orig");
+  } catch (e) { veBusy(false, e.message); toast(e.message, 8000); }
 });
 
 /* ---------- Lên lịch ---------- */

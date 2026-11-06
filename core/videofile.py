@@ -1,18 +1,18 @@
-"""Chọn file video thật sự dùng để xem trước, kiểm tra Reels và đăng: bản đã chỉnh sửa nếu có, không thì video gốc."""
+"""Tên file của bước Chỉnh sửa video.
+
+video.mp4          video đang dùng (xem trước, kiểm tra Reels, hẹn giờ đăng)
+video.draft.mp4    bản nháp do "Xuất video" tạo ra; chưa ảnh hưởng gì cho tới khi bấm Duyệt
+edit_approved.json dấu cho biết video.mp4 là bản đã chỉnh sửa và được duyệt
+"""
 from __future__ import annotations
 
 from pathlib import Path
 
 ORIGINAL = "video.mp4"
-EDITED = "video.edited.mp4"
+DRAFT = "video.draft.mp4"
+APPROVED = "edit_approved.json"
 
 
 def video_file(folder: Path) -> Path:
-    """video.edited.mp4 (do bước Chỉnh sửa tạo ra) nếu có và không rỗng, ngược lại video.mp4."""
-    edited = folder / EDITED
-    try:
-        if edited.is_file() and edited.stat().st_size > 0:
-            return edited
-    except OSError:
-        pass
+    """File video thật sự dùng để xem trước, kiểm tra Reels và đăng."""
     return folder / ORIGINAL

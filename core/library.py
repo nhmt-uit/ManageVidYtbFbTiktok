@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 from . import commenter, config, pages, publish, reelcheck
-from .videofile import EDITED, video_file
+from .videofile import APPROVED, DRAFT, video_file
 
 DATE_RE = re.compile(r"^(\d{8}) - ")
 TAG_BODY = r"[\ẁ-ͯ]+"   # chữ + dấu rời (tiếng Việt gõ kiểu NFD: "a" + dấu) để không cắt hashtag giữa chữ
@@ -167,7 +167,8 @@ def _video_info(root: Path, vdir: Path, channel_dir: Path | None) -> dict:
         page_name = pages.page_label(sched)
     has_permission = bool(channel_dir and (channel_dir / "permission.json").exists())
     size = video_file(vdir).stat().st_size
-    edited = video_file(vdir).name == EDITED
+    edited = (vdir / APPROVED).exists()
+    has_draft = (vdir / DRAFT).exists()
     plain = re.sub(r"\s+", " ", HASHTAG_RE.sub("", build_caption(vdir))).strip()
     return {
         "rel": rel,
@@ -192,6 +193,7 @@ def _video_info(root: Path, vdir: Path, channel_dir: Path | None) -> dict:
         "has_permission": has_permission,
         "has_audio": (vdir / "audio.mp3").exists(),
         "edited": edited,
+        "has_draft": has_draft,
         "has_subs": (vdir / "subs.json").exists(),
         "reel_check": reelcheck.summary(vdir),
     }

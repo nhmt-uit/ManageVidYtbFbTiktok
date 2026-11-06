@@ -1,10 +1,11 @@
 """Chỉnh sửa video trước khi đăng: phiên âm (whisper.cpp) -> sửa phụ đề -> xuất bản 9:16 bằng FFmpeg.
 
-Mỗi thư mục video có thể có thêm (video gốc video.mp4 KHÔNG bao giờ bị sửa):
+Mỗi thư mục video có thể có thêm:
   subs.json          phụ đề: {"language", "model", "cues": [{"start", "end", "text"}]} (giây)
   voice.<đuôi>       giọng đọc / bình luận của bạn (tùy chọn), được trộn vào âm thanh
   edit.json          cài đặt lần xuất gần nhất
-  video.edited.mp4   kết quả; khi có file này, xem trước, kiểm tra Reels và hẹn giờ đăng dùng nó thay cho video.mp4
+  video.draft.mp4    bản nháp do "Xuất video" tạo; video.mp4 vẫn nguyên cho tới khi bạn bấm Duyệt
+  edit_approved.json dấu "đã duyệt"; sau khi Duyệt, bản nháp THAY THẾ video.mp4 (video gốc bị xoá, không khôi phục được)
 
 Công cụ ngoài: ffmpeg (có bộ lọc subtitles/libass) và whisper-cli (whisper.cpp) cùng một file model ggml.
 Đường dẫn tự tìm; đặt FFMPEG_PATH, WHISPER_CLI, WHISPER_MODEL (đường dẫn hoặc tên như large-v3-turbo) trong .env nếu ở chỗ khác.
@@ -23,7 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import config, library, reelcheck
-from .videofile import EDITED, ORIGINAL
+from .videofile import APPROVED, DRAFT, ORIGINAL
 
 SUBS_FILE = "subs.json"
 SETTINGS_FILE = "edit.json"
@@ -312,29 +313,65 @@ def is_scheduled(folder: Path) -> bool:
 def status(rel: str) -> dict:
     folder = library.resolve(rel)
     t = tools()
-    src = probe_media(folder / ORIGINAL)
+    src = dict(probe_media(folder / ORIGINAL))
+    try:
+        src["size"] = (folder / ORIGINAL).stat().st_size   # để trình duyệt không dùng bản video cũ trong bộ nhớ đệm
+    except OSError:
+        src["size"] = 0
     subs = load_subs(folder)
-    edited = folder / EDITED
-    ed = {"exists": False}
-    if edited.is_file() and edited.stat().st_size > 0:
-        st = edited.stat()
+    draft = folder / DRAFT
+    dr = {"exists": False}
+    if draft.is_file() and draft.stat().st_size > 0:
+        st = draft.stat()
         info = _read_json(folder / SETTINGS_FILE)
-        ed = {"exists": True, "size_mb": round(st.st_size / 1048576, 1), "mtime": int(st.st_mtime), "settings": info.get("settings", {}),
+        dr = {"exists": True, "size_mb": round(st.st_size / 1048576, 1), "mtime": int(st.st_mtime), "settings": info.get("settings", {}),
               "stale": subs.get("edited_at", subs.get("created_at", "")) > info.get("edited_at", "") if subs.get("cues") else False}
     settings = clean_settings(_read_json(folder / SETTINGS_FILE).get("settings"))
     return {"rel": rel, "tools": t, "source": src, "cues": subs["cues"], "language": subs.get("language", ""),
-            "transcribed": bool(subs.get("created_at")), "voice": voice_info(folder), "edited": ed, "settings": settings,
+            "transcribed": bool(subs.get("created_at")), "voice": voice_info(folder), "draft": dr,
+            "approved": _read_json(folder / APPROVED).get("approved_at", ""), "settings": settings,
             "scheduled": is_scheduled(folder), "langs": LANGS, "busy": _busy.locked()}
 
 
-def reset(rel: str) -> None:
-    """Bỏ bản đã chỉnh: từ nay dùng lại video gốc. Phụ đề và giọng đọc được giữ để chỉnh lại sau."""
+def discard(rel: str) -> None:
+    """Bỏ bản nháp. Video đang dùng (video.mp4) không đổi; phụ đề và giọng đọc được giữ để xuất lại."""
+    folder = library.resolve(rel)
+    if not _busy.acquire(blocking=False):
+        raise EditError("Đang có tác vụ chỉnh sửa khác chạy, đợi xong rồi thử lại.")
+    try:
+        (folder / DRAFT).unlink(missing_ok=True)
+    finally:
+        _busy.release()
+
+
+def approve(rel: str) -> str:
+    """Duyệt bản nháp: nó THAY THẾ video.mp4 (video cũ bị xoá hẳn). Phụ đề, giọng đọc và cài đặt cũ không còn ý nghĩa với video mới nên bị dọn."""
     folder = library.resolve(rel)
     if is_scheduled(folder):
-        raise EditError("Video này đã lên lịch. Huỷ lịch trước rồi mới đổi bản được.")
-    (folder / EDITED).unlink(missing_ok=True)
-    if reelcheck.available():
-        reelcheck.ensure(folder, force=True)
+        raise EditError("Video này đã lên lịch. Huỷ lịch trước rồi mới duyệt được.")
+    if not _busy.acquire(blocking=False):
+        raise EditError("Đang có tác vụ chỉnh sửa khác chạy, đợi xong rồi thử lại.")
+    try:
+        draft = folder / DRAFT
+        if not draft.is_file() or draft.stat().st_size == 0:
+            raise EditError("Chưa có bản nháp để duyệt. Hãy xuất video trước.")
+        info = probe_media(draft)
+        if not info["width"] or not info["duration"]:
+            raise EditError("Bản nháp không đọc được (file hỏng?). Hãy xuất lại.")
+        settings = _read_json(folder / SETTINGS_FILE).get("settings", {})
+        os.replace(draft, folder / ORIGINAL)   # nguyên tử: video.mp4 luôn là một file đầy đủ
+        for name in (SUBS_FILE, SETTINGS_FILE):
+            (folder / name).unlink(missing_ok=True)
+        remove_voice(rel)
+        _write_json(folder / APPROVED, {"approved_at": datetime.now(timezone.utc).isoformat(), "settings": settings})
+        if reelcheck.available():
+            try:
+                reelcheck.ensure(folder, force=True)
+            except Exception:   # noqa: BLE001  kiểm tra Reels chỉ là phụ
+                pass
+        return f"Đã duyệt: bản chỉnh sửa đã thay thế video gốc ({info['width']}x{info['height']}, {info['duration']:.0f} giây)."
+    finally:
+        _busy.release()
 
 
 # ---------- phiên âm ----------
@@ -534,7 +571,7 @@ def render_job(job, rel: str, settings: dict | None = None) -> str:
             tmpd = Path(tmp)
             if cues:
                 (tmpd / "subs.ass").write_text(build_ass(cues, s), encoding="utf-8")
-            out_tmp = folder / "video.edited.render.tmp.mp4"
+            out_tmp = folder / "video.draft.render.tmp.mp4"
             cmd = [t["ffmpeg"]["path"], "-nostdin", "-v", "error", "-nostats", "-y", "-i", str(src_path)]
             if voice:
                 cmd += ["-i", str(voice)]
@@ -561,16 +598,11 @@ def render_job(job, rel: str, settings: dict | None = None) -> str:
             if proc.returncode != 0 or not out_tmp.exists() or out_tmp.stat().st_size == 0:
                 out_tmp.unlink(missing_ok=True)
                 raise EditError("FFmpeg báo lỗi: " + (_tail(errf) or f"mã {proc.returncode}"))
-        out_tmp.replace(folder / EDITED)
+        out_tmp.replace(folder / DRAFT)
         _write_json(folder / SETTINGS_FILE, {"settings": s, "edited_at": datetime.now(timezone.utc).isoformat(), "voice": voice.name if voice else "",
                                               "cues": len(cues)})
         job.set_progress(100, 100)
-        if reelcheck.available():
-            try:
-                reelcheck.ensure(folder, force=True)
-            except Exception:   # noqa: BLE001  kiểm tra Reels chỉ là phụ, không làm hỏng kết quả xuất
-                pass
-        mb = (folder / EDITED).stat().st_size / 1048576
-        return f"Đã xuất video đã chỉnh ({mb:.1f} MB). Từ giờ xem trước và hẹn giờ đăng sẽ dùng bản này."
+        mb = (folder / DRAFT).stat().st_size / 1048576
+        return f"Đã xuất bản nháp ({mb:.1f} MB). Xem thử rồi bấm Duyệt để thay video gốc; chưa duyệt thì hẹn giờ vẫn dùng video gốc."
     finally:
         _busy.release()

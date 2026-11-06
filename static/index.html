@@ -429,7 +429,7 @@
           <div class="ve-vwrap"><video id="ve-video" controls playsinline preload="metadata"></video><div id="ve-cap" hidden></div></div>
           <div class="ve-switch" role="radiogroup" aria-label="Bản xem trước">
             <label><input type="radio" name="ve-view" value="orig" checked> Video gốc</label>
-            <label><input type="radio" name="ve-view" value="edited" id="ve-view-ed" disabled> Bản đã chỉnh</label>
+            <label><input type="radio" name="ve-view" value="draft" id="ve-view-ed" disabled> Bản nháp (chưa duyệt)</label>
           </div>
           <p class="hint" id="ve-vinfo"></p>
         </div>
@@ -474,7 +474,8 @@
               <label id="ve-ov-wrap">Âm gốc khi có giọng đọc <input type="range" id="ve-ov" min="0" max="100" step="5" value="25"> <span id="ve-ov-n">25%</span></label>
             </div>
             <div class="actions">
-              <button class="ghost" id="ve-reset" type="button" hidden>Dùng lại video gốc</button>
+              <button class="ghost" id="ve-discard" type="button" hidden>Bỏ bản nháp</button>
+              <button class="primary danger" id="ve-approve" type="button" hidden>Duyệt &amp; thay video gốc</button>
               <button class="primary" id="ve-render" type="button">Xuất video</button>
             </div>
             <progress id="ve-bar" value="0" max="100" hidden></progress>

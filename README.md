@@ -148,11 +148,11 @@ Tab **Thống kê** của từng Page giúp cân nhắc trước khi hẹn thêm
 Facebook giảm phân phối video đăng lại nguyên bản. Nút **Chỉnh sửa video** trên mỗi thẻ ở Thư viện (chỉ hiện với video chưa lên lịch) giúp thêm giá trị thật vào video trước khi đăng:
 
 1. **Phiên âm tự động** bằng whisper.cpp (chạy trên máy, dùng GPU Metal của Mac Apple Silicon). Chọn ngôn ngữ trong video; nếu đã thêm giọng đọc thì phiên âm từ giọng đó.
-2. **Sửa phụ đề**: sửa chữ, chỉnh giây bắt đầu/kết thúc, thêm/xóa dòng, bấm ▶ để nghe lại. Khung xem trước hiện phụ đề đè lên video gốc.
+2. **Sửa phụ đề**: sửa chữ, chỉnh giây bắt đầu/kết thúc, thêm/xóa dòng, bấm ▶ để nghe lại. Khung xem trước hiện phụ đề đè lên video hiện tại.
 3. **Giọng đọc / bình luận của bạn** (tùy chọn): tải file mp3, m4a, wav... lên; giọng được trộn vào, âm gốc nhỏ lại (chỉnh được).
 4. **Xuất video**: 1080x1920 (9:16), H.264 + AAC, chuẩn hóa âm lượng. Video ngang được đặt giữa nền mờ (hoặc cắt giữa, hoặc viền đen). Phụ đề in vào hình, có tiếng Việt đủ dấu; chọn vị trí, cỡ chữ, màu, nền mờ.
 
-Kết quả lưu thành `video.edited.mp4` trong thư mục video; **video gốc không bao giờ bị sửa**. Khi có file này, xem trước, kiểm tra Reels và hẹn giờ đăng đều dùng bản đã chỉnh. Nút "Dùng lại video gốc" xóa bản đã chỉnh (phụ đề và giọng đọc vẫn được giữ trong `subs.json`, `voice.*`). Video đã lên lịch thì không chỉnh được (Facebook đã nhận bản cũ): huỷ lịch, chỉnh, rồi hẹn lại. Mỗi lúc chỉ chạy một tác vụ chỉnh sửa.
+Xuất xong chỉ ra **bản nháp** `video.draft.mp4`; chưa duyệt thì video thật (`video.mp4`), kiểm tra Reels và hẹn giờ đăng vẫn dùng video hiện tại. Xem thử bản nháp trong hộp thoại rồi chọn: **Bỏ bản nháp** (không đổi gì, phụ đề và giọng đọc vẫn giữ để xuất lại) hoặc **Duyệt & thay video gốc**. **Duyệt là không hoàn tác được**: bản nháp ghi đè `video.mp4`, video gốc bị xoá hẳn, phụ đề/giọng đọc đã dùng được dọn đi, và thẻ có nhãn "Đã chỉnh sửa video" (file `edit_approved.json`). Video đã lên lịch thì không xuất/duyệt được (Facebook đã nhận bản cũ): huỷ lịch, chỉnh, rồi hẹn lại. Mỗi lúc chỉ chạy một tác vụ chỉnh sửa.
 
 Cài công cụ một lần: `bash tools/install_editor_tools.sh` (FFmpeg, whisper.cpp + model, Node 22, HyperFrames). Bản `ffmpeg` thường của Homebrew thiếu bộ lọc phụ đề (libass): cần `brew uninstall ffmpeg && brew install ffmpeg-full`. App tự tìm công cụ; nếu để chỗ khác, đặt trong `.env`: `FFMPEG_PATH`, `WHISPER_CLI`, `WHISPER_MODEL` (đường dẫn, hoặc tên như `large-v3-turbo`), `WHISPER_DIR`, `EDIT_FONT` (mặc định Arial). Phiên âm tiếng Việt cần model đa ngôn ngữ (không phải `.en`); `large-v3-turbo` cho kết quả tốt nhất, `small` hay `medium` nhanh hơn. Whisper nhận lời nói chưa hoàn hảo nên luôn xem lại phụ đề trước khi xuất.
 
@@ -301,10 +301,11 @@ OfflineYtb/
         ├── affiliate.txt               # (tùy chọn) link affiliate của video, thay vào {link}
         ├── scheduled.json              # có sau khi đã hẹn giờ, kèm Page, trạng thái đăng và comment
         ├── scheduled.old.json          # (tùy chọn) lịch cũ sau khi bấm Hẹn lại
-        ├── subs.json                   # (tùy chọn) phụ đề do bước Chỉnh sửa tạo / bạn sửa
+        ├── subs.json                   # (tùy chọn) phụ đề của bước Chỉnh sửa (xoá sau khi duyệt)
         ├── voice.mp3                   # (tùy chọn) giọng đọc của bạn (đuôi có thể khác)
         ├── edit.json                   # (tùy chọn) cài đặt lần xuất gần nhất
-        └── video.edited.mp4            # (tùy chọn) bản đã chỉnh sửa; có file này thì hẹn giờ đăng dùng nó thay video.mp4
+        ├── video.draft.mp4             # (tùy chọn) bản nháp chưa duyệt; hẹn giờ đăng chưa dùng nó
+        └── edit_approved.json          # (tùy chọn) dấu đã duyệt: video.mp4 là bản đã chỉnh sửa
 ```
 
 Video tải bằng script cũ nằm thẳng trong thư mục gốc vẫn hiện trong Thư viện.

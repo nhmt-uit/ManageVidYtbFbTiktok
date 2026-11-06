@@ -414,3 +414,5 @@ small.bad { color: var(--bad); }
   .ve-cue .ve-t { grid-column: 1 / -1; }
   .ve-cue .ve-del { grid-column: 2 / -1; justify-self: end; }
 }
+
+button.primary.danger { background: var(--bad, #c0392b); color: #fff; }

@@ -217,13 +217,13 @@ def api_stats():
 
 @app.get("/media/<path:rel>")
 def media(rel):
-    """Phát video: bản đã chỉnh sửa nếu có (thêm ?orig=1 để xem video gốc)."""
+    """Phát video.mp4; thêm ?draft=1 để xem bản nháp chưa duyệt."""
     root = config.output_dir()
     try:
         folder = library.resolve(rel)
     except ValueError:
         abort(404)
-    name = "video.mp4" if request.args.get("orig") == "1" else videofile.video_file(folder).name
+    name = videofile.DRAFT if request.args.get("draft") == "1" else videofile.video_file(folder).name
     return send_from_directory(root, f"{rel}/{name}", conditional=True)
 
 
@@ -307,15 +307,30 @@ def api_edit_render():
     return jsonify({"job": job.id})
 
 
-@app.post("/api/edit/reset")
-def api_edit_reset():
+@app.post("/api/edit/discard")
+def api_edit_discard():
     try:
-        editor.reset(_edit_rel(body()))
+        editor.discard(_edit_rel(body()))
     except ValueError as e:
         return err(str(e), 404)
     except editor.EditError as e:
         return err(str(e), 409)
     return jsonify({"ok": True})
+
+
+@app.post("/api/edit/approve")
+def api_edit_approve():
+    """Duyệt bản nháp: nó thay thế video.mp4 (video cũ bị xoá hẳn)."""
+    d = body()
+    if d.get("confirm") is not True:   # chặn gọi nhầm: việc này không hoàn tác được
+        return err("Cần xác nhận: video gốc sẽ bị xoá và thay bằng bản chỉnh sửa.", 400)
+    try:
+        msg = editor.approve(_edit_rel(d))
+    except ValueError as e:
+        return err(str(e), 404)
+    except editor.EditError as e:
+        return err(str(e), 409)
+    return jsonify({"ok": True, "message": msg})
 
 
 @app.get("/api/caption")
