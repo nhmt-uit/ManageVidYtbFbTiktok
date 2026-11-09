@@ -128,7 +128,7 @@ function curPage() { return pg.list.find((p) => p.id === app.page); }
 function pageTz(p = curPage()) { return (p && p.effective && p.effective.tz) || DEFAULT_TZ; }
 function setHash(h) { history.replaceState(null, "", "#" + h); }
 
-const SUBS = ["comment", "token", "notify", "general"];
+const SUBS = ["comment", "token", "notify", "translate", "general"];
 function showSub(sub) {
   if (!SUBS.includes(sub)) sub = "comment";
   $$("#subtabs button").forEach((b) => b.classList.toggle("active", b.dataset.sub === sub));
@@ -1064,9 +1064,10 @@ function veSettings() {
 }
 function veBusy(on, msg) {
   ve.busy = on;
-  ["#ve-trans", "#ve-render", "#ve-discard", "#ve-approve", "#ve-savecues", "#ve-addcue", "#ve-voicefile", "#ve-voicedel"].forEach((s) => { $(s).disabled = on || (ve.st && ve.st.scheduled); });
+  ["#ve-trans", "#ve-render", "#ve-discard", "#ve-approve", "#ve-tr-auto", "#ve-tr-paste", "#ve-tr-undo", "#ve-tr-apply", "#ve-savecues", "#ve-addcue", "#ve-voicefile", "#ve-voicedel"].forEach((s) => { $(s).disabled = on || (ve.st && ve.st.scheduled); });
   if (!on) $("#ve-bar").hidden = true;
   if (msg !== undefined) $("#ve-msg").textContent = msg;
+  if (ve.st && ve.st.translate) veTrUi();
 }
 function veSetView(v) {
   ve.view = v;
@@ -1091,13 +1092,60 @@ function veRenderCues() {
       <input class="ve-s" type="number" min="0" step="0.1" value="${fmtSec(c.start)}" aria-label="Bắt đầu (giây)">
       <input class="ve-e" type="number" min="0" step="0.1" value="${fmtSec(c.end)}" aria-label="Kết thúc (giây)">
       <textarea class="ve-t" rows="2" maxlength="200" aria-label="Nội dung">${esc(c.text)}</textarea>
-      <button class="link ve-del" type="button" title="Xóa dòng này">Xóa</button>
+      <span class="ve-acts"><button class="link ve-copy" type="button" title="Sao chép câu gốc để dịch ở nơi khác">Sao chép</button><button class="link ve-del" type="button" title="Xóa dòng này">Xóa</button></span>
+      ${c.src ? `<div class="ve-src"><span>Gốc: ${esc(c.src)}</span></div>` : ""}
     </div>`).join("") : '<p class="hint">Chưa có phụ đề. Bấm "Phiên âm" ở bước 1, hoặc tự thêm từng dòng.</p>';
+  if (ve.st && ve.st.translate) veTrUi();
 }
+function veTrUi() {
+  const st = ve.st, any = ve.cues.length > 0, hasSrc = ve.cues.some((c) => c.src);
+  $("#ve-tr-auto").disabled = !any || ve.busy || !!st.scheduled; $("#ve-tr-copy").disabled = !any; $("#ve-tr-paste").disabled = !any || !!st.scheduled;
+  $("#ve-tr-undo").hidden = !hasSrc;
+  const tr = st.translate;
+  $("#ve-tr-hint").textContent = !any ? "" : hasSrc
+    ? `Đã dịch${st.translator ? " bằng " + st.translator : " (tay hoặc AI)"}. Dưới mỗi câu có câu gốc để đối chiếu. Hãy đọc lại: AI có thể dịch sai tên riêng hay thuật ngữ.`
+    : tr.ok ? `Dịch tự động bằng ${tr.label} (${tr.model}), hoặc dịch tay: sao chép bản gốc đi dịch rồi dán lại.`
+    : `Dịch tự động chưa dùng được: ${tr.problem} Vẫn dịch tay được: sao chép bản gốc, dịch ở nơi khác rồi bấm "Dán bản dịch…".`;
+}
+// "1. câu" / "1) câu" / "[1] câu" / "1: câu" / "1 - câu"
+const VE_NUM = /^\s*[\[(]?(\d{1,4})(?:[\]).:\-]\s+|\]\s*)(.*)$/;   // cần khoảng trắng sau dấu, để "2.5 triệu" không bị coi là câu số 2
+function veParseTranslation(text, n) {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) throw new Error("Chưa dán gì cả.");
+  const first = VE_NUM.exec(lines[0]);
+  let items;
+  if (first && Number(first[1]) === 1) {   // có đánh số: câu nhiều dòng được nối vào câu trước
+    items = [];
+    for (const l of lines) {
+      const m = VE_NUM.exec(l);
+      if (m && Number(m[1]) === items.length + 1) items.push(m[2].trim());
+      else items[items.length - 1] += "\n" + l;
+    }
+  } else {
+    items = lines;
+  }
+  if (items.length !== n) throw new Error(`Bản dịch có ${items.length} câu nhưng phụ đề có ${n} dòng. Mỗi dòng phụ đề cần đúng một câu dịch (câu nào trống thì ghi lại câu gốc).`);
+  if (items.some((x) => !x)) throw new Error("Có câu dịch bị trống.");
+  return items;
+}
+async function veCopy(text, okMsg) {
+  try { await navigator.clipboard.writeText(text); }
+  catch (e) {
+    const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); } finally { ta.remove(); }
+  }
+  toast(okMsg);
+}
+const VE_VI = /[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]/i;
 function veReadCues() {
-  return [...document.querySelectorAll("#ve-cues .ve-cue")].map((r) => ({
-    start: Number(r.querySelector(".ve-s").value), end: Number(r.querySelector(".ve-e").value), text: r.querySelector(".ve-t").value,
-  }));
+  const notVi = ve.st && ve.st.language && ve.st.language !== "vi";   // phiên âm từ ngôn ngữ khác: gõ tiếng Việt đè lên = bạn đang dịch
+  return [...document.querySelectorAll("#ve-cues .ve-cue")].map((r) => {
+    const i = Number(r.dataset.i), prev = ve.cues[i] || {}, text = r.querySelector(".ve-t").value;
+    const c = { start: Number(r.querySelector(".ve-s").value), end: Number(r.querySelector(".ve-e").value), text };
+    if (prev.src) c.src = prev.src;
+    else if (notVi && prev.text && VE_VI.test(text) && !VE_VI.test(prev.text)) c.src = prev.text;   // dịch tay: giữ câu gốc để đối chiếu (sửa lỗi chính tả tiếng Anh thì KHÔNG tính là dịch)
+    return c;
+  });
 }
 function veRender() {
   const st = ve.st, t = st.tools;
@@ -1112,6 +1160,7 @@ function veRender() {
   $("#ve-lang").innerHTML = Object.entries(st.langs).map(([k, n]) => `<option value="${k}"${k === (st.language || "vi") ? " selected" : ""}>${esc(n)}</option>`).join("");
   $("#ve-src-wrap").hidden = !st.voice.name;
   veRenderCues();
+  veTrUi();
   const v = st.voice;
   $("#ve-voicedel").hidden = !v.name;
   $("#ve-voiceinfo").textContent = v.name ? `Đang dùng: ${v.name} (${v.duration} giây, ${v.size_mb} MB).` + (s.duration && v.duration > s.duration + 0.5 ? " Giọng dài hơn video nên sẽ bị cắt cho vừa." : "") : "Chưa có giọng đọc.";
@@ -1183,6 +1232,45 @@ $("#ve-cues").addEventListener("click", (e) => {
     vid.addEventListener("loadedmetadata", () => { vid.currentTime = start; vid.play(); }, { once: true });
     if (vid.readyState >= 1) { vid.currentTime = start; vid.play(); }
   }
+});
+$("#ve-tr-copy").addEventListener("click", () => {
+  const cues = veReadCues();
+  veCopy(cues.map((c, i) => `${i + 1}. ${(c.src || c.text).replace(/\n/g, " ")}`).join("\n"), `Đã sao chép ${cues.length} câu gốc. Dịch xong, bấm "Dán bản dịch…".`);
+});
+$("#ve-tr-paste").addEventListener("click", () => { $("#ve-tr-box").hidden = false; $("#ve-tr-pmsg").textContent = ""; $("#ve-tr-text").focus(); });
+$("#ve-tr-cancel").addEventListener("click", () => { $("#ve-tr-box").hidden = true; });
+$("#ve-tr-apply").addEventListener("click", async () => {
+  const cues = veReadCues();
+  let items;
+  try { items = veParseTranslation($("#ve-tr-text").value, cues.length); }
+  catch (e) { $("#ve-tr-pmsg").textContent = e.message; $("#ve-tr-pmsg").className = "msg bad"; return; }
+  ve.cues = cues.map((c, i) => ({ start: c.start, end: c.end, text: items[i], src: c.src || c.text }));
+  veRenderCues();   // veSaveCues đọc từ các ô nhập, nên phải vẽ lại trước khi lưu
+  try { await veSaveCues(); } catch (e) { toast(e.message); return; }
+  $("#ve-tr-text").value = ""; $("#ve-tr-box").hidden = true;
+  veTrUi();
+  toast(`Đã áp dụng ${items.length} câu dịch. Đọc lại rồi xuất video.`);
+});
+$("#ve-tr-undo").addEventListener("click", async () => {
+  if (!confirm("Trả toàn bộ phụ đề về bản gốc? Các câu dịch hiện tại sẽ mất.")) return;
+  ve.cues = veReadCues().map((c) => ({ start: c.start, end: c.end, text: c.src || c.text }));
+  veRenderCues();
+  try { await veSaveCues(); veTrUi(); } catch (e) { toast(e.message); }
+});
+$("#ve-tr-auto").addEventListener("click", async () => {
+  const tr = ve.st.translate;
+  if (!tr.ok) { toast(tr.problem + " Vào Cài đặt chung > Dịch phụ đề, hoặc dịch tay.", 8000); return; }
+  if (ve.cues.some((c) => c.src) && !confirm("Dịch lại sẽ thay các câu đã dịch (kể cả phần bạn đã sửa). Tiếp tục?")) return;
+  try {
+    await veSaveCues();
+    await veRunJob("/api/edit/translate", { rel: ve.rel, to: "vi" }, "Đang dịch phụ đề...");
+    await veLoad(ve.view);
+  } catch (e) { $("#ve-msg").textContent = e.message; toast(e.message, 8000); }
+});
+$("#ve-cues").addEventListener("click", (e) => {
+  if (!e.target.classList.contains("ve-copy")) return;
+  const c = veReadCues()[Number(e.target.closest(".ve-cue").dataset.i)];
+  if (c) veCopy(c.src || c.text, "Đã sao chép câu gốc.");
 });
 $("#ve-addcue").addEventListener("click", () => {
   ve.cues = veReadCues();
@@ -1402,6 +1490,10 @@ const FIELDS = [
   ["TELEGRAM_BOT_TOKEN", "Token bot Telegram (tạo bằng @BotFather)", "secret", "nt"],
   ["TELEGRAM_CHAT_ID", "Chat ID Telegram nhận tin", "text", "nt"],
   ["LOW_STOCK_DAYS", "Báo \"sắp hết video\" khi Page chỉ còn đủ bài cho dưới bao nhiêu ngày", "number", "nt"],
+  ["TRANSLATE_PROVIDER", "Nhà cung cấp", "select", "tr", [["anthropic", "Anthropic (Claude)"], ["openai", "Tương thích OpenAI (OpenAI, Gemini, OpenRouter, Groq, Ollama...)"]]],
+  ["TRANSLATE_API_KEY", "Khóa API (để trống nếu chạy model trên máy)", "secret", "tr"],
+  ["TRANSLATE_MODEL", "Model", "text", "tr", null, "Để trống = mặc định của hãng (claude-haiku-5-5 / gpt-4o-mini)"],
+  ["TRANSLATE_BASE_URL", "Địa chỉ API (tuỳ chọn)", "text", "tr", null, "Để trống = địa chỉ chính thức của hãng"],
   ["FB_APP_ID", "Facebook App ID", "text", "tok"],
   ["FB_APP_SECRET", "Facebook App Secret", "secret", "tok"],
   ["FB_USER_TOKEN", "User token (dán từ Graph API Explorer, hết hạn sau khoảng 1 giờ)", "secret", "tok"],
@@ -1411,7 +1503,12 @@ const FIELDS = [
   ["COMMENT_GAP_SECONDS", "Mặc định: nghỉ giữa hai comment liên tiếp (giây)", "number", "cm"],
 ];
 
-function fieldHtml([key, label, type], s) {
+function fieldHtml([key, label, type, , opts, ph], s) {
+  if (type === "select") {
+    const cur = s.values[key] || opts[0][0];
+    return `<label>${esc(label)}
+      <select data-key="${key}">${opts.map(([v, n]) => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${esc(n)}</option>`).join("")}</select></label>`;
+  }
   if (type === "onoff") {
     const on = !["0", "false", "off", "no"].includes(String(s.values[key] || "1").toLowerCase());
     return `<label>${esc(label)}
@@ -1423,13 +1520,13 @@ function fieldHtml([key, label, type], s) {
       <input data-key="${key}" type="password" autocomplete="off" placeholder="${has ? "Đã lưu (để trống nếu không đổi)" : "Chưa có"}"></label>`;
   }
   return `<label>${esc(label)}
-    <input data-key="${key}" type="${type}" value="${esc(s.values[key] || "")}"></label>`;
+    <input data-key="${key}" type="${type}" value="${esc(s.values[key] || "")}"${ph ? ` placeholder="${esc(ph)}"` : ""}></label>`;
 }
 
 async function loadSettings() {
   try {
     const s = await api("/api/settings");
-    ["set", "tok", "cm", "nt"].forEach((g) => {
+    ["set", "tok", "cm", "nt", "tr"].forEach((g) => {
       $(`#${g}-form`).innerHTML = FIELDS.filter((f) => f[3] === g).map((f) => fieldHtml(f, s)).join("");
     });
   } catch (e) {
@@ -1559,6 +1656,22 @@ $("#set-save").addEventListener("click", async () => {
   } catch (e) { setMsg("set", e.message, false); }
 });
 
+$("#tr-save").addEventListener("click", async () => {
+  try {
+    await saveGroup("tr");
+    setMsg("tr", "Đã lưu.", true);
+    loadSettings();
+  } catch (e) { setMsg("tr", e.message, false); }
+});
+$("#tr-test").addEventListener("click", async () => {
+  setMsg("tr", "Đang dịch thử...", true);
+  try {
+    await saveGroup("tr");   // thử đúng những gì đang nhập, không cần bấm Lưu trước
+    const r = await api("/api/translate/test", "POST");
+    setMsg("tr", `Dùng được. ${r.label} (${r.model}) dịch "Hello, how are you today?" thành: ${r.sample}`, true);
+    loadSettings();
+  } catch (e) { setMsg("tr", e.message, false); }
+});
 $("#nt-save").addEventListener("click", async () => {
   try {
     await saveGroup("nt");

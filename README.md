@@ -154,6 +154,11 @@ Facebook giảm phân phối video đăng lại nguyên bản. Nút **Chỉnh s�
 
 Xuất xong chỉ ra **bản nháp** `video.draft.mp4`; chưa duyệt thì video thật (`video.mp4`), kiểm tra Reels và hẹn giờ đăng vẫn dùng video hiện tại. Xem thử bản nháp trong hộp thoại rồi chọn: **Bỏ bản nháp** (không đổi gì, phụ đề và giọng đọc vẫn giữ để xuất lại) hoặc **Duyệt & thay video gốc**. **Duyệt là không hoàn tác được**: bản nháp ghi đè `video.mp4`, video gốc bị xoá hẳn, phụ đề/giọng đọc đã dùng được dọn đi, và thẻ có nhãn "Đã chỉnh sửa video" (file `edit_approved.json`). Video đã lên lịch thì không xuất/duyệt được (Facebook đã nhận bản cũ): huỷ lịch, chỉnh, rồi hẹn lại. Mỗi lúc chỉ chạy một tác vụ chỉnh sửa.
 
+**Dịch phụ đề sang tiếng Việt** (video tiếng Anh, Nhật, Hàn, Trung...): phiên âm với đúng ngôn ngữ trong video, rồi dùng một trong hai cách ở bước 2:
+- **Dịch tự động bằng AI**: nhà cung cấp tuỳ bạn chọn ở *Cài đặt chung > Dịch phụ đề*: Anthropic (Claude), hoặc mọi dịch vụ theo chuẩn OpenAI (OpenAI, Google Gemini, OpenRouter, Groq, Ollama chạy trên máy...). Nhập khóa API, model, địa chỉ API (nếu cần) rồi bấm *Thử dịch*. Cấu hình lưu vào `.env` (`TRANSLATE_PROVIDER`, `TRANSLATE_API_KEY`, `TRANSLATE_MODEL`, `TRANSLATE_BASE_URL`); khóa không bao giờ hiện lại trên giao diện. App chỉ gửi chữ của phụ đề, không gửi video hay âm thanh. Mốc thời gian giữ nguyên; mỗi câu dịch có câu gốc hiện bên dưới để đối chiếu.
+- **Dịch tay**: bấm *Sao chép bản gốc* (các câu được đánh số), dịch ở đâu cũng được (ChatGPT, Google Dịch, tự dịch...), rồi bấm *Dán bản dịch…* và dán lại, mỗi câu một dòng đúng thứ tự (có hoặc không có số đầu dòng). Hoặc sửa thẳng từng ô: với video không phải tiếng Việt, câu bạn gõ đè lên được coi là bản dịch và câu gốc được giữ lại.
+*Trả về bản gốc* hoàn tác bản dịch. Hình xuất ra chỉ in bản dịch. AI có thể dịch sai tên riêng hay thuật ngữ nên luôn đọc lại.
+
 Cài công cụ một lần: `bash tools/install_editor_tools.sh` (FFmpeg, whisper.cpp + model, Node 22, HyperFrames). Bản `ffmpeg` thường của Homebrew thiếu bộ lọc phụ đề (libass): cần `brew uninstall ffmpeg && brew install ffmpeg-full`. App tự tìm công cụ; nếu để chỗ khác, đặt trong `.env`: `FFMPEG_PATH`, `WHISPER_CLI`, `WHISPER_MODEL` (đường dẫn, hoặc tên như `large-v3-turbo`), `WHISPER_DIR`, `EDIT_FONT` (mặc định Arial). Phiên âm tiếng Việt cần model đa ngôn ngữ (không phải `.en`); `large-v3-turbo` cho kết quả tốt nhất, `small` hay `medium` nhanh hơn. Whisper nhận lời nói chưa hoàn hảo nên luôn xem lại phụ đề trước khi xuất.
 
 ## Kho video còn đủ mấy ngày
@@ -301,7 +306,7 @@ OfflineYtb/
         ├── affiliate.txt               # (tùy chọn) link affiliate của video, thay vào {link}
         ├── scheduled.json              # có sau khi đã hẹn giờ, kèm Page, trạng thái đăng và comment
         ├── scheduled.old.json          # (tùy chọn) lịch cũ sau khi bấm Hẹn lại
-        ├── subs.json                   # (tùy chọn) phụ đề của bước Chỉnh sửa (xoá sau khi duyệt)
+        ├── subs.json                   # (tùy chọn) phụ đề của bước Chỉnh sửa, gồm cả câu gốc nếu đã dịch (xoá sau khi duyệt)
         ├── voice.mp3                   # (tùy chọn) giọng đọc của bạn (đuôi có thể khác)
         ├── edit.json                   # (tùy chọn) cài đặt lần xuất gần nhất
         ├── video.draft.mp4             # (tùy chọn) bản nháp chưa duyệt; hẹn giờ đăng chưa dùng nó

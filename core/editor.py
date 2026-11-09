@@ -23,7 +23,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import config, library, reelcheck
+from . import config, library, reelcheck, translate
 from .videofile import APPROVED, DRAFT, ORIGINAL
 
 SUBS_FILE = "subs.json"
@@ -210,6 +210,11 @@ def clean_settings(raw: dict | None) -> dict:
     return s
 
 
+def _clean_text(value) -> str:
+    text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", str(value or ""))
+    return "\n".join(line.strip() for line in text.replace("\r", "").split("\n") if line.strip())[:MAX_CUE_CHARS].strip()
+
+
 def clean_cues(cues, duration: float = 0.0) -> list[dict]:
     """Chuẩn hóa danh sách phụ đề: bỏ dòng rỗng/hỏng, sắp theo thời gian, không chồng lấn, nằm trong độ dài video."""
     if not isinstance(cues, list):
@@ -220,8 +225,8 @@ def clean_cues(cues, duration: float = 0.0) -> list[dict]:
     for c in cues:
         if not isinstance(c, dict):
             continue
-        text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", str(c.get("text", "")))
-        text = "\n".join(line.strip() for line in text.replace("\r", "").split("\n") if line.strip())[:MAX_CUE_CHARS].strip()
+        text = _clean_text(c.get("text", ""))
+        src = _clean_text(c.get("src", ""))   # câu gốc (trước khi dịch), chỉ để đối chiếu; video chỉ in `text`
         try:
             start, end = float(c.get("start")), float(c.get("end"))
         except (TypeError, ValueError):
@@ -234,7 +239,10 @@ def clean_cues(cues, duration: float = 0.0) -> list[dict]:
             if start >= duration:
                 continue
             end = min(end, duration)
-        out.append({"start": round(start, 2), "end": round(end, 2), "text": text})
+        cue = {"start": round(start, 2), "end": round(end, 2), "text": text}
+        if src and src != text:
+            cue["src"] = src
+        out.append(cue)
     out.sort(key=lambda x: (x["start"], x["end"]))
     for a, b in zip(out, out[1:]):
         if a["end"] > b["start"]:
@@ -250,6 +258,8 @@ def load_subs(folder: Path) -> dict:
 
 def save_subs(rel: str, cues) -> dict:
     folder = library.resolve(rel)
+    if _busy.locked():   # đang phiên âm/dịch/xuất/duyệt: ghi chen vào sẽ bị tác vụ đó ghi đè hoặc làm hỏng file đầu vào
+        raise EditError("Đang có tác vụ chỉnh sửa chạy. Đợi nó xong rồi thử lại.")
     dur = probe_media(folder / ORIGINAL)["duration"]
     clean = clean_cues(cues, dur)
     data = load_subs(folder)
@@ -261,6 +271,8 @@ def save_subs(rel: str, cues) -> dict:
 # ---------- giọng đọc ----------
 def save_voice(rel: str, filename: str, stream, length: int | None) -> dict:
     folder = library.resolve(rel)
+    if _busy.locked():   # đang phiên âm/dịch/xuất/duyệt: ghi chen vào sẽ bị tác vụ đó ghi đè hoặc làm hỏng file đầu vào
+        raise EditError("Đang có tác vụ chỉnh sửa chạy. Đợi nó xong rồi thử lại.")
     ext = Path(filename or "").suffix.lower()
     if ext not in VOICE_EXTS:
         raise EditError("Chỉ nhận file âm thanh: " + ", ".join(VOICE_EXTS))
@@ -292,10 +304,16 @@ def save_voice(rel: str, filename: str, stream, length: int | None) -> dict:
     return voice_info(folder)
 
 
-def remove_voice(rel: str) -> None:
-    folder = library.resolve(rel)
+def _remove_voice_files(folder: Path) -> None:
     for ext in VOICE_EXTS:
         (folder / f"{VOICE_STEM}{ext}").unlink(missing_ok=True)
+
+
+def remove_voice(rel: str) -> None:
+    folder = library.resolve(rel)
+    if _busy.locked():   # đang phiên âm/dịch/xuất/duyệt: ghi chen vào sẽ bị tác vụ đó ghi đè hoặc làm hỏng file đầu vào
+        raise EditError("Đang có tác vụ chỉnh sửa chạy. Đợi nó xong rồi thử lại.")
+    _remove_voice_files(folder)
 
 
 def voice_info(folder: Path) -> dict:
@@ -328,7 +346,8 @@ def status(rel: str) -> dict:
               "stale": subs.get("edited_at", subs.get("created_at", "")) > info.get("edited_at", "") if subs.get("cues") else False}
     settings = clean_settings(_read_json(folder / SETTINGS_FILE).get("settings"))
     return {"rel": rel, "tools": t, "source": src, "cues": subs["cues"], "language": subs.get("language", ""),
-            "transcribed": bool(subs.get("created_at")), "voice": voice_info(folder), "draft": dr,
+            "transcribed": bool(subs.get("created_at")), "voice": voice_info(folder), "draft": dr, "translate": {k: v for k, v in translate.settings().items() if k != "base"}, "translated_to": subs.get("translated_to", ""),
+            "translator": subs.get("translator", ""),
             "approved": _read_json(folder / APPROVED).get("approved_at", ""), "settings": settings,
             "scheduled": is_scheduled(folder), "langs": LANGS, "busy": _busy.locked()}
 
@@ -362,7 +381,7 @@ def approve(rel: str) -> str:
         os.replace(draft, folder / ORIGINAL)   # nguyên tử: video.mp4 luôn là một file đầy đủ
         for name in (SUBS_FILE, SETTINGS_FILE):
             (folder / name).unlink(missing_ok=True)
-        remove_voice(rel)
+        _remove_voice_files(folder)
         _write_json(folder / APPROVED, {"approved_at": datetime.now(timezone.utc).isoformat(), "settings": settings})
         if reelcheck.available():
             try:
@@ -475,6 +494,47 @@ def transcribe_job(job, rel: str, lang: str = "vi", source: str = "auto") -> str
         if not cues:
             return "Phiên âm xong nhưng không nhận ra lời nói nào (video có thể chỉ có nhạc). Bạn có thể tự thêm phụ đề."
         return f"Đã phiên âm {len(cues)} dòng phụ đề. Xem lại và sửa trước khi xuất video."
+    finally:
+        _busy.release()
+
+
+# ---------- dịch phụ đề ----------
+def translate_job(job, rel: str, to: str = "vi") -> str:
+    """Dịch toàn bộ dòng phụ đề sang ngôn ngữ `to`. Câu gốc được giữ trong trường src để đối chiếu hoặc hoàn tác."""
+    if not _busy.acquire(blocking=False):
+        raise EditError("Đang có một tác vụ chỉnh sửa khác chạy. Đợi nó xong rồi thử lại.")
+    try:
+        if to not in translate.TARGETS:
+            to = "vi"
+        folder = library.resolve(rel)
+        data = load_subs(folder)
+        cues = clean_cues(data["cues"], 0.0)
+        if not cues:
+            raise EditError("Chưa có phụ đề để dịch. Phiên âm trước hoặc tự thêm dòng.")
+        cfg = translate.settings()
+        if not cfg["ok"]:
+            raise EditError(cfg["problem"])
+        source = str(data.get("language") or "")
+        if source == to:
+            raise EditError("Phụ đề đã ở đúng ngôn ngữ cần dịch.")
+        originals = [c.get("src") or c["text"] for c in cues]
+        job.log(f"Dịch {len(cues)} dòng bằng {cfg['label']} ({cfg['model']})...")
+        try:
+            result = translate.translate_lines(originals, source if source in translate.SOURCES else "auto", to,
+                                               progress=job.set_progress, cancelled=lambda: job.cancelled)
+        except translate.TranslateError as exc:
+            if job.cancelled:
+                return "Đã dừng theo yêu cầu. Phụ đề giữ nguyên."
+            raise EditError(str(exc)) from exc
+        new = []
+        for c, orig, tr in zip(cues, originals, result):
+            new.append({"start": c["start"], "end": c["end"], "text": _clean_text(tr) or orig, "src": orig})
+        dur = probe_media(folder / ORIGINAL)["duration"]
+        data.update(cues=clean_cues(new, dur), translated_to=to, translator=f"{cfg['label']} / {cfg['model']}",
+                    edited_at=datetime.now(timezone.utc).isoformat())
+        _write_json(folder / SUBS_FILE, data)
+        job.set_progress(100, 100)
+        return f"Đã dịch {len(new)} dòng sang {translate.TARGETS[to]}. Đọc lại và sửa trước khi xuất (AI có thể dịch sai tên riêng hay thuật ngữ)."
     finally:
         _busy.release()
 

@@ -295,9 +295,13 @@ def resolve(rel: str) -> Path:
     if not isinstance(rel, str) or not rel.strip():
         raise ValueError(f"Không tìm thấy video: {rel}")
     root = config.output_dir().resolve()
-    path = (root / rel).resolve()
-    if root not in path.parents or not (path / "video.mp4").exists():
-        raise ValueError(f"Không tìm thấy video: {rel}")
+    try:
+        path = (root / rel).resolve()
+        found = root in path.parents and (path / "video.mp4").exists()
+    except (OSError, ValueError):   # tên quá dài, ký tự lạ...: coi như không có video này (đừng để thành lỗi 500)
+        found = False
+    if not found:
+        raise ValueError(f"Không tìm thấy video: {rel[:80]}")
     return path
 
 

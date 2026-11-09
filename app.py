@@ -12,7 +12,7 @@ from datetime import datetime
 
 from flask import Flask, abort, jsonify, request, send_from_directory
 
-from core import affiliate, commenter, editor, config, downloader, fbgate, library, manage, notify, pages, planner, publish, reelcheck, scheduler, stats, stock, tokens, ytdlp_update
+from core import affiliate, commenter, editor, translate, config, downloader, fbgate, library, manage, notify, pages, planner, publish, reelcheck, scheduler, stats, stock, tokens, ytdlp_update
 from core import videofile
 from core.jobs import manager
 
@@ -258,6 +258,34 @@ def api_edit_transcribe():
     return jsonify({"job": job.id})
 
 
+@app.post("/api/edit/translate")
+def api_edit_translate():
+    d = body()
+    try:
+        folder = library.resolve(_edit_rel(d))
+    except ValueError as e:
+        return err(str(e), 404)
+    if manager.has_running("edit"):
+        return err("Đang có một tác vụ chỉnh sửa khác chạy. Đợi nó xong rồi thử lại.", 409)
+    cfg = translate.settings()
+    if not cfg["ok"]:
+        return err(cfg["problem"], 409)
+    job = manager.start("edit", f"Dịch phụ đề: {folder.name}", editor.translate_job, _edit_rel(d), str(d.get("to") or "vi"))
+    return jsonify({"job": job.id})
+
+
+@app.post("/api/translate/test")
+def api_translate_test():
+    """Dịch thử một câu bằng cấu hình đang lưu để kiểm tra khóa, địa chỉ và model."""
+    cfg = translate.settings()
+    if not cfg["ok"]:
+        return err(cfg["problem"], 409)
+    try:
+        return jsonify({"ok": True, "sample": translate.test_connection(), "label": cfg["label"], "model": cfg["model"]})
+    except translate.TranslateError as e:
+        return err(str(e), 502)
+
+
 @app.post("/api/edit/subs")
 def api_edit_subs():
     d = body()
@@ -286,6 +314,8 @@ def api_edit_voice_delete():
         editor.remove_voice(_edit_rel(body()))
     except ValueError as e:
         return err(str(e), 404)
+    except editor.EditError as e:
+        return err(str(e), 409)
     return jsonify({"ok": True})
 
 
@@ -296,6 +326,8 @@ def api_edit_render():
         folder = library.resolve(_edit_rel(d))
     except ValueError as e:
         return err(str(e), 404)
+    if manager.has_running("schedule"):
+        return err("Đang hẹn giờ đăng video. Đợi xong rồi hãy xuất video (tránh đăng nhầm bản cũ).", 409)
     if editor.is_scheduled(folder):
         return err("Video này đã lên lịch (Facebook đã nhận bản cũ). Huỷ lịch trước, chỉnh sửa xong rồi hẹn lại.", 409)
     if manager.has_running("edit"):
@@ -324,6 +356,8 @@ def api_edit_approve():
     d = body()
     if d.get("confirm") is not True:   # chặn gọi nhầm: việc này không hoàn tác được
         return err("Cần xác nhận: video gốc sẽ bị xoá và thay bằng bản chỉnh sửa.", 400)
+    if manager.has_running("schedule"):
+        return err("Đang hẹn giờ đăng video. Đợi xong rồi hãy duyệt (tránh đăng nhầm bản cũ).", 409)
     try:
         msg = editor.approve(_edit_rel(d))
     except ValueError as e:

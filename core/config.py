@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parent.parent
 ENV_FILE = ROOT / ".env"
 
 # Khóa bí mật: không bao giờ trả về giao diện, không in ra log
-SECRET_KEYS = {"FB_APP_SECRET", "FB_USER_TOKEN", "TELEGRAM_BOT_TOKEN"}
+SECRET_KEYS = {"FB_APP_SECRET", "FB_USER_TOKEN", "TELEGRAM_BOT_TOKEN", "TRANSLATE_API_KEY"}
 # Các khóa cho phép sửa từ giao diện
 EDITABLE_KEYS = [
     "OUTPUT_DIR",
@@ -34,6 +34,10 @@ EDITABLE_KEYS = [
     "NOTIFY_MAC",
     "TELEGRAM_BOT_TOKEN",
     "TELEGRAM_CHAT_ID",
+    "TRANSLATE_PROVIDER",
+    "TRANSLATE_API_KEY",
+    "TRANSLATE_MODEL",
+    "TRANSLATE_BASE_URL",
 ]
 COMMENT_DEFAULT_FILE = ROOT / "comment_default.txt"  # bản cũ, chỉ để nâng cấp lên pages.json
 COMMENT_POOL_FILE = ROOT / "comment_pool.json"      # bản cũ, chỉ để nâng cấp lên pages.json
@@ -54,6 +58,7 @@ DEFAULTS = {
     "YTDLP_AUTO_UPDATE": "1",
     "LOW_STOCK_DAYS": "3",
     "NOTIFY_MAC": "1",
+    "TRANSLATE_PROVIDER": "anthropic",
 }
 
 

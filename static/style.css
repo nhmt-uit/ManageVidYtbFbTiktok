@@ -400,6 +400,11 @@ small.bad { color: var(--bad); }
 .ve-sec .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
 .ve-cues { display: grid; gap: 6px; max-height: 300px; overflow: auto; margin-bottom: 8px; }
 .ve-cue { display: grid; grid-template-columns: 24px 64px 64px 1fr auto; gap: 6px; align-items: start; }
+.ve-cue .ve-src { grid-column: 4 / 5; font-size: 12px; color: var(--muted, #6b7280); display: flex; gap: 6px; align-items: baseline; }
+.ve-cue .ve-src span { flex: 1; overflow-wrap: anywhere; }
+.ve-acts { display: flex; flex-direction: column; gap: 2px; align-items: flex-end; }
+.ve-trbox textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 14px; }
+.ve-tr { flex-wrap: wrap; }
 .ve-cue input, .ve-cue textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 14px; }
 .ve-cue textarea { resize: vertical; }
 .ve-opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 8px; }
@@ -412,7 +417,8 @@ small.bad { color: var(--bad); }
   .ve-vwrap video { max-height: 45vh; }
   .ve-cue { grid-template-columns: 24px 1fr 1fr; }
   .ve-cue .ve-t { grid-column: 1 / -1; }
-  .ve-cue .ve-del { grid-column: 2 / -1; justify-self: end; }
+  .ve-cue .ve-acts { grid-column: 2 / -1; flex-direction: row; justify-self: end; }
+  .ve-cue .ve-src { grid-column: 1 / -1; }
 }
 
-button.primary.danger { background: var(--bad, #c0392b); color: #fff; }
+button.primary.danger { background: #b91c1c; color: #fff; }

@@ -234,6 +234,7 @@
         <button data-sub="comment" class="active">Mặc định Page</button>
         <button data-sub="token">Token FB</button>
         <button data-sub="notify">Thông báo</button>
+        <button data-sub="translate">Dịch phụ đề</button>
         <button data-sub="general">Chung</button>
       </nav>
 
@@ -287,6 +288,28 @@
             <li>Mở bot vừa tạo (bấm đường dẫn BotFather đưa), bấm <b>Start</b> hoặc nhắn một tin bất kỳ.</li>
             <li>Bấm <b>Lưu</b> rồi bấm <b>Tự lấy chat ID</b> để app tự điền, sau đó bấm <b>Gửi thử</b>.</li>
           </ol>
+        </details>
+      </div>
+
+      <!-- Dịch phụ đề -->
+      <div id="sub-translate" class="panel subpanel">
+        <h2>Dịch phụ đề bằng AI</h2>
+        <p class="hint">Dùng khi video không phải tiếng Việt: bấm <b>Dịch tự động</b> trong hộp thoại Chỉnh sửa video. Chọn nhà cung cấp bất kỳ có API. App chỉ gửi <b>chữ của phụ đề</b> đi (không gửi video hay âm thanh). Không muốn dùng API thì vẫn dịch tay được ngay trong hộp thoại đó. Khóa API chỉ lưu trong file <code>.env</code> trên máy bạn.</p>
+        <form id="tr-form" class="form"></form>
+        <div class="actions">
+          <button class="primary" id="tr-save" type="button">Lưu</button>
+          <button class="ghost" id="tr-test" type="button" title="Dịch thử một câu bằng cài đặt đang nhập">Thử dịch</button>
+        </div>
+        <p class="msg" id="tr-msg"></p>
+        <details class="guide">
+          <summary>Điền thế nào cho từng nhà cung cấp</summary>
+          <ul>
+            <li><b>Anthropic (Claude)</b>: nhà cung cấp "Anthropic", model ví dụ <code>claude-haiku-5-5</code> (rẻ, nhanh) hoặc <code>claude-sonnet-5-5</code> (dịch tự nhiên hơn). Địa chỉ để trống.</li>
+            <li><b>OpenAI</b>: "Tương thích OpenAI", model ví dụ <code>gpt-4o-mini</code>. Địa chỉ để trống.</li>
+            <li><b>Google Gemini</b>: "Tương thích OpenAI", địa chỉ <code>https://generativelanguage.googleapis.com/v1beta/openai</code>, model ví dụ <code>gemini-2.5-flash</code>, khóa lấy ở Google AI Studio.</li>
+            <li><b>OpenRouter</b>: "Tương thích OpenAI", địa chỉ <code>https://openrouter.ai/api/v1</code>, model dạng <code>nhà/tên</code>.</li>
+            <li><b>Groq</b>: địa chỉ <code>https://api.groq.com/openai/v1</code>. <b>Chạy trên máy (Ollama)</b>: địa chỉ <code>http://localhost:11434/v1</code>, khóa để trống, model là tên model bạn đã tải (model nhỏ dịch tiếng Việt thường kém).</li>
+          </ul>
         </details>
       </div>
 
@@ -446,6 +469,18 @@
           <section class="ve-sec">
             <h3>2. Phụ đề <span class="count" id="ve-cuecount"></span></h3>
             <p class="hint">Sửa lỗi chính tả, chỉnh thời gian (giây). Bấm ▶ để nghe lại đoạn đó.</p>
+            <div class="actions ve-tr">
+              <button class="ghost" id="ve-tr-auto" type="button">Dịch tự động sang tiếng Việt</button>
+              <button class="ghost" id="ve-tr-copy" type="button" title="Sao chép toàn bộ câu gốc (đánh số) để dịch ở nơi khác">Sao chép bản gốc</button>
+              <button class="ghost" id="ve-tr-paste" type="button" title="Dán bản dịch, mỗi câu một dòng theo đúng thứ tự">Dán bản dịch…</button>
+              <button class="ghost" id="ve-tr-undo" type="button" hidden>Trả về bản gốc</button>
+            </div>
+            <p class="hint" id="ve-tr-hint"></p>
+            <div id="ve-tr-box" class="ve-trbox" hidden>
+              <textarea id="ve-tr-text" rows="6" placeholder="Dán bản dịch tiếng Việt. Mỗi câu một dòng, đúng thứ tự (có thể có số thứ tự đầu dòng như 1. 2. 3.)"></textarea>
+              <div class="actions"><button class="primary" id="ve-tr-apply" type="button">Áp dụng</button><button class="ghost" id="ve-tr-cancel" type="button">Hủy</button></div>
+              <p class="msg" id="ve-tr-pmsg"></p>
+            </div>
             <div id="ve-cues" class="ve-cues"></div>
             <div class="actions">
               <button class="ghost" id="ve-addcue" type="button">+ Thêm dòng</button>
