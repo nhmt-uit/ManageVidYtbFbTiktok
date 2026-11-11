@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from . import commenter, config, fbgate, library, pages, planner, ratelimit, reelcheck
+from . import commenter, config, fbgate, library, pages, planner, ratelimit, reelcheck, series
 from .videofile import video_file
 
 
@@ -199,6 +199,20 @@ def run(job, page_id: str, rels: list[str], start: str, interval_hours: float, t
         random.shuffle(folders)
     elif order == "selected":
         pass
+    elif order == "episode":
+        # phim nhiều tập: tập nhỏ đăng trước. Giữ nguyên vị trí tương đối giữa các phim (phim nào được chọn trước thì đứng trước)
+        infos = []
+        for d in folders:
+            i = series.info_for(d)
+            i["channel"] = d.parent.name
+            infos.append(i)
+        series.finalize(infos)   # cùng cách gộp nhóm với thư viện
+        keys = {d: (i["series_key"] or f"~{d.name}") for d, i in zip(folders, infos)}
+        info_of = dict(zip(folders, infos))
+        first_at = {}   # không đặt tên "first": biến đó là giờ đăng đầu tiên, dùng ở dưới
+        for i, d in enumerate(folders):
+            first_at.setdefault(keys[d], i)
+        folders.sort(key=lambda d: (first_at[keys[d]], series.order_key(info_of[d]), d.name))
     else:
         folders.sort(key=lambda d: d.name)
 

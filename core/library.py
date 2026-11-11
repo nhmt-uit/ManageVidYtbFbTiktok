@@ -5,7 +5,7 @@ import json
 import re
 from pathlib import Path
 
-from . import commenter, config, pages, publish, reelcheck
+from . import commenter, config, pages, publish, reelcheck, series
 from .videofile import APPROVED, DRAFT, video_file
 
 DATE_RE = re.compile(r"^(\d{8}) - ")
@@ -14,7 +14,7 @@ HASHTAG_RE = re.compile(r"#" + TAG_BODY, re.UNICODE)
 MAX_CAPTION = 2000
 
 
-YT_ID_RE = re.compile(r"\[([\w-]{11})\]\s*$")
+YT_ID_RE = re.compile(r"\[([\w-]{11}|\d{15,20}|[0-9a-f]{24})\]\s*$")   # YouTube (11 ký tự), TikTok (dãy số dài), Rednote (24 ký tự hex)
 
 
 OWNER_FILE = "channel.json"   # nằm trong thư mục kênh, ghi Page sở hữu thư mục: {"page_id": "..."}
@@ -37,7 +37,7 @@ def set_owner(channel_dir, page_id: str) -> None:
 
 
 def yt_id(folder: Path) -> str:
-    """ID YouTube của video: lấy từ meta.json, hoặc từ đuôi [id] trong tên thư mục."""
+    """ID video (YouTube hoặc TikTok): lấy từ meta.json, hoặc từ đuôi [id] trong tên thư mục."""
     try:
         meta = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
         if isinstance(meta, dict) and meta.get("id"):
@@ -196,6 +196,7 @@ def _video_info(root: Path, vdir: Path, channel_dir: Path | None) -> dict:
         "has_draft": has_draft,
         "has_subs": (vdir / "subs.json").exists(),
         "reel_check": reelcheck.summary(vdir),
+        **series.info_for(vdir),   # phim / tập nhận từ tiêu đề (hoặc sửa tay); series.finalize gộp nhóm sau
     }
 
 
@@ -242,6 +243,12 @@ def scan(page_id: str | None = None) -> dict:
             "scheduled": sum(1 for v in group if v["scheduled"]),
             "pages": sorted({v["page_id"] for v in group if v["scheduled"] and v["page_id"]}),
         })
+
+    by_channel: dict[str, list[dict]] = {}
+    for v in videos:
+        by_channel.setdefault(v["channel"], []).append(v)
+    for group_videos in by_channel.values():   # phim nhiều tập: gộp theo từng thư mục kênh (mỗi thư mục thuộc đúng một Page)
+        series.finalize(group_videos)
 
     unassigned = [i for i in infos if not i["owner"]]
     if page_id:

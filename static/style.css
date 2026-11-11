@@ -422,3 +422,18 @@ small.bad { color: var(--bad); }
 }
 
 button.primary.danger { background: #b91c1c; color: #fff; }
+
+/* Nhóm theo phim */
+label.lib-group { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; white-space: nowrap; }
+.grp { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 14px; padding: 10px 12px; margin-top: 10px; border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px; background: var(--panel); }
+.grp:first-child { margin-top: 0; }
+.grp-main { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
+.grp-main strong { overflow-wrap: anywhere; }
+.grp-n, .grp-r { font-size: 13px; color: var(--muted); }
+.grp-act { display: flex; gap: 12px; }
+.badge.ep { color: var(--accent); border-color: var(--accent); }
+label.lib-group input { margin-top: 0; }
+
+details.rn-tool { margin: 6px 0 10px; }
+details.rn-tool summary { cursor: pointer; font-weight: 600; }
+details.rn-tool ol { margin: 6px 0 8px 18px; padding: 0; }

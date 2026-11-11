@@ -11,6 +11,7 @@
     <h1>Quản lý video</h1>
     <nav class="tabs" id="gtabs" aria-label="Chung">
       <button data-view="overview" class="active">Tổng quan</button>
+      <button data-view="download">Tải video</button>
       <button data-view="fanpages">Kết nối Fanpage</button>
       <button data-view="settings">Cài đặt chung</button>
       <button data-view="jobs">Nhật ký</button>
@@ -66,13 +67,22 @@
     <!-- TẢI VIDEO -->
     <section id="tab-download" class="tab">
       <div class="panel">
-        <h2>Tải video từ kênh YouTube</h2>
+        <h2>Tải video từ YouTube, TikTok hoặc Rednote</h2>
         <p class="hint" id="dl-page"></p>
-        <p class="hint">Chỉ tải nội dung của kênh đã đồng ý cho bạn tải và đăng lại. Mỗi kênh lưu vào một thư mục riêng, kèm ghi chú sự đồng ý.</p>
+        <p class="hint">Chỉ tải nội dung của kênh đã đồng ý cho bạn tải và đăng lại. Mỗi kênh lưu vào một thư mục riêng, kèm ghi chú sự đồng ý. Video TikTok được tải bản gốc không logo; nếu TikTok chỉ cho bản có logo thì app bỏ qua video đó và báo trong nhật ký. Rednote (xiaohongshu.com, rednote.com, xhslink.com) chỉ tải được theo link từng bài (dán cả đoạn chia sẻ từ app cũng được; bài chỉ có ảnh thì lưu ảnh vào thư mục images) và nên đặt cookie đăng nhập ở Cài đặt chung.</p>
         <form id="dl-form" class="form">
-          <label>Đường dẫn kênh hoặc video
-            <input id="dl-url" required placeholder="https://www.youtube.com/@tenkenh">
+          <label>Đường dẫn kênh hoặc video (nhiều link: mỗi dòng một link)
+            <textarea id="dl-url" required rows="2" placeholder="https://www.youtube.com/@tenkenh hoặc https://www.tiktok.com/@tenkenh&#10;Rednote: dán link từng bài. Nhiều link thì mỗi dòng một link."></textarea>
           </label>
+          <details class="rn-tool">
+            <summary>Rednote: lấy link cả trang cá nhân</summary>
+            <ol class="hint">
+              <li>Bấm nút bên dưới để chép script vào clipboard.</li>
+              <li>Mở trang cá nhân Rednote trong Chrome (đã đăng nhập, trang của bạn hoặc người cho phép), bấm F12, chọn tab <b>Console</b>. Nếu Chrome chặn dán thì gõ <code>allow pasting</code> rồi Enter.</li>
+              <li>Dán (Cmd+V), Enter. Script tự cuộn chậm đến cuối trang rồi hiện nút <b>Chép</b>; dán link vào ô trên (tối đa 200 link mỗi lần).</li>
+            </ol>
+            <button class="ghost" id="rn-script-copy" type="button">Chép script lấy link Rednote</button>
+          </details>
           <label>Tên thư mục lưu
             <input id="dl-folder" list="dl-folders" autocomplete="off" placeholder="Để trống = lấy theo tên kênh; bấm vào đây để chọn thư mục có sẵn">
             <datalist id="dl-folders"></datalist>
@@ -82,6 +92,13 @@
               <select id="dl-format">
                 <option value="video">Video (mp4)</option>
                 <option value="audio">Chỉ âm thanh (MP3 320 kbps)</option>
+              </select>
+            </label>
+            <label title="Chỉ áp dụng cho link Rednote: bài Rednote có thể là video hoặc ảnh">Nội dung (Rednote)
+              <select id="dl-content">
+                <option value="all">Toàn bộ (video và ảnh)</option>
+                <option value="video">Chỉ video</option>
+                <option value="images">Chỉ ảnh</option>
               </select>
             </label>
             <label>Loại nội dung (với link kênh)
@@ -122,6 +139,7 @@
           <button type="button" data-st="problem" title="Facebook báo lỗi, hoặc đã quá giờ hẹn mà chưa đăng">Lỗi / quá giờ <b></b></button>
         </div>
         <select id="lib-channel" aria-label="Lọc theo thư mục"></select>
+        <label class="check lib-group" title="Gom các tập của cùng một phim lại (nhận từ tiêu đề: Tập 5, Ep 5, (5/30)...), xếp theo thứ tự tập"><input id="lib-group" type="checkbox"> <span>Nhóm theo phim</span></label>
       </div>
       <div class="lib-actions">
         <button class="ghost" id="lib-selall" type="button" title="Chọn mọi video chưa lên lịch đang hiển thị">Chọn tất cả</button>
@@ -389,6 +407,7 @@
             <option value="newest">Video mới trước</option>
             <option value="random">Ngẫu nhiên</option>
             <option value="selected">Theo thứ tự tôi tích chọn</option>
+            <option value="episode">Theo thứ tự tập (phim nhiều tập)</option>
           </select>
         </label>
         <label title="Múi giờ của Page, đổi ở Cài đặt Page">Múi giờ của Page

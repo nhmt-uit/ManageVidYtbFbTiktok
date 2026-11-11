@@ -121,7 +121,7 @@ function follow(jobId, pre, bar, onDone) {
 // app.page = Fanpage đang làm việc ("" = các màn hình chung: Tổng quan, Kết nối Fanpage, Cài đặt chung, Nhật ký)
 const app = { page: "", tab: "", last: "" };   // last = Page làm việc gần nhất (giữ lựa chọn khi qua Tổng quan rồi quay lại)
 const PAGE_TABS = ["download", "library", "calendar", "stats", "pagesettings", "jobs"];
-const GLOBAL_VIEWS = ["overview", "fanpages", "settings", "jobs"];
+const GLOBAL_VIEWS = ["overview", "download", "fanpages", "settings", "jobs"];
 const DEFAULT_TZ = "Asia/Ho_Chi_Minh";
 
 function curPage() { return pg.list.find((p) => p.id === app.page); }
@@ -162,6 +162,7 @@ async function showView(name, sub) {
   $$("#gtabs button").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
   setHash(name);
   if (name === "overview") loadOverview();
+  if (name === "download") renderDlHeader();   // tải video không gắn Fanpage
   if (name === "fanpages") loadPages().then(renderFanpage);
   if (name === "settings") { loadSettings(); showSub(sub || ($("#subtabs .active") || {}).dataset?.sub); }
   if (name === "jobs") loadJobs();
@@ -240,7 +241,8 @@ function renderCtx() {
 /* ---------- Tải video (cho Fanpage đang làm việc) ---------- */
 function dlHeaderText() {
   const p = curPage();
-  return p ? `Video tải về được lưu vào thư mục thuộc Fanpage "${p.name}". Mỗi thư mục chỉ thuộc một Page.` : "";
+  return p ? `Video tải về được lưu vào thư mục thuộc Fanpage "${p.name}". Mỗi thư mục chỉ thuộc một Page.`
+    : "Tải video không gắn Fanpage: video được lưu vào thư mục bạn đặt tên (chưa thuộc Page nào). Muốn đăng thì về Tổng quan, bấm Gán Page cho thư mục đó.";
 }
 function renderDlHeader() {
   $("#dl-page").textContent = dlHeaderText();
@@ -249,21 +251,23 @@ function renderDlHeader() {
 // Gợi ý các thư mục đang thuộc Page này để tải thêm video vào đúng thư mục đó
 async function loadDlFolders() {
   const pageId = app.page;
-  if (!pageId) return;
   try {
-    const d = await api("/api/library?page_id=" + encodeURIComponent(pageId));
+    const d = await api("/api/library" + (pageId ? "?page_id=" + encodeURIComponent(pageId) : ""));
     if (pageId !== app.page) return;
-    $("#dl-folders").innerHTML = d.channels.map((c) => `<option value="${esc(c)}"></option>`).join("");
-    $("#dl-page").textContent = dlHeaderText() + (d.channels.length
-      ? ` Thư mục hiện có của Page: ${d.channels.join(", ")}. Gõ hoặc chọn tên đó để tải thêm vào thư mục có sẵn, bỏ trống để tạo thư mục mới theo tên kênh.`
+    // không gắn Page: chỉ gợi ý các thư mục cũng chưa thuộc Page nào
+    const names = pageId ? d.channels : (d.channel_info || []).filter((i) => !i.owner).map((i) => i.name);
+    $("#dl-folders").innerHTML = names.map((c) => `<option value="${esc(c)}"></option>`).join("");
+    $("#dl-page").textContent = dlHeaderText() + (names.length
+      ? ` Thư mục hiện có${pageId ? " của Page" : " chưa thuộc Page nào"}: ${names.join(", ")}. Gõ hoặc chọn tên đó để tải thêm vào thư mục có sẵn, bỏ trống để tạo thư mục mới theo tên kênh.`
       : "");
   } catch (e) { /* bỏ qua, chỉ là gợi ý */ }
 }
 let dlJob = null;
 let dlRunning = false;
+let dlFor = "";   // Page đang được tải video ("" = tải không gắn Fanpage, không cản việc chuyển Page)
 function busyMsg() {
   if (schedRunning) return "Đang hẹn lịch cho Page hiện tại, đợi xong rồi hãy chuyển Page.";
-  if (dlRunning) return "Đang tải video cho Page hiện tại, đợi xong (hoặc bấm Dừng) rồi hãy chuyển Page.";
+  if (dlRunning && dlFor) return "Đang tải video cho Page hiện tại, đợi xong (hoặc bấm Dừng) rồi hãy chuyển Page.";
   return "";
 }
 $("#dl-form").addEventListener("submit", async (e) => {
@@ -271,12 +275,14 @@ $("#dl-form").addEventListener("submit", async (e) => {
   const btn = $("#dl-btn");
   btn.disabled = true;
   dlRunning = true;
+  dlFor = app.page;
   try {
     const r = await api("/api/download", "POST", {
       url: $("#dl-url").value,
       folder: $("#dl-folder").value,
       kind: $("#dl-kind").value,
       format: $("#dl-format").value,
+      content: $("#dl-content").value,
       limit: $("#dl-limit").value,
       note: $("#dl-note").value,
       confirm: $("#dl-confirm").checked,
@@ -288,11 +294,31 @@ $("#dl-form").addEventListener("submit", async (e) => {
       dlRunning = false;
       btn.disabled = false;
       $("#dl-cancel").hidden = true;
-      if (j.status === "done") toast($("#dl-format").value === "audio" ? "Tải xong MP3. File audio.mp3 nằm trong thư mục từng video." : "Tải xong. Xem trong tab Thư viện.");
+      if (j.status === "done") toast($("#dl-format").value === "audio" ? "Tải xong MP3. File audio.mp3 nằm trong thư mục từng video." : (dlFor ? "Tải xong. Xem trong tab Thư viện." : "Tải xong. Thư mục chưa thuộc Page nào: về Tổng quan để gán Page khi muốn đăng."));
     });
   } catch (err) {
     dlRunning = false;
     btn.disabled = false;
+    toast(err.message);
+  }
+});
+$("#rn-script-copy").addEventListener("click", async () => {
+  try {
+    const r = await fetch("/api/tools/rednote-script", { cache: "no-store" });
+    if (!r.ok) throw new Error("Không đọc được script");
+    const text = await r.text();
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (e) {   // trình duyệt không cho ghi clipboard: chép thủ công qua ô tạm
+      const ta = document.createElement("textarea");
+      ta.value = text; ta.style.cssText = "position:fixed;left:-9999px";
+      document.body.appendChild(ta); ta.select();
+      const ok = document.execCommand("copy");
+      ta.remove();
+      if (!ok) throw new Error("Không chép được. Mở file tools/rednote_collect_links.js rồi chép thủ công.");
+    }
+    toast("Đã chép script. Mở trang cá nhân Rednote, bấm F12 > Console rồi dán.", 6000);
+  } catch (err) {
     toast(err.message);
   }
 });
@@ -318,7 +344,7 @@ function rememberPage(key, id) { try { localStorage.setItem(key, id); } catch (e
 function recalledPage(key) { try { return localStorage.getItem(key) || ""; } catch (e) { return ""; } }
 
 /* ---------- Thư viện ---------- */
-const lib = { videos: [], channels: [], selected: new Set(), root: "", status: "all", reelcheck: { available: true, enabled: true } };
+const lib = { videos: [], channels: [], selected: new Set(), root: "", status: "all", group: recalledPage("lib-group") === "1", reelcheck: { available: true, enabled: true } };
 // Video đã kiểm tra mà không đạt yêu cầu Reels: không chọn được, app cũng bỏ qua khi hẹn giờ
 function isBadReel(v) { return !v.scheduled && !!v.reel_check && v.reel_check.state === "error"; }
 // Loại thao tác hàng loạt áp dụng được cho video: new = lên lịch, cancel = huỷ lịch (đã hẹn, chưa đăng), rebook = hẹn lại (lỗi / không thấy), "" = không chọn được
@@ -495,6 +521,107 @@ async function commentNow(rel) {
   }
 }
 
+/* ---------- Nhóm theo phim (các tập của cùng một phim) ---------- */
+function epLabel(v) {
+  if (v.episode == null) return "";
+  return (v.season ? `Mùa ${v.season} · ` : "") + `Tập ${v.episode}`;
+}
+function seriesCmp(a, b) {
+  const sa = a.season || 0, sb = b.season || 0;
+  if (sa !== sb) return sa - sb;
+  const ea = a.episode == null ? Infinity : a.episode, eb = b.episode == null ? Infinity : b.episode;
+  if (ea !== eb) return ea < eb ? -1 : 1;
+  return a.folder < b.folder ? -1 : a.folder > b.folder ? 1 : 0;
+}
+const gkey = (v) => v.series_key ? `${v.channel}\u241F${v.series_key}` : "";
+// Tóm tắt các tập của một phim: khoảng tập, tập còn thiếu, tập bị trùng (tính trên mọi video của phim trong thư mục, không chỉ video đang lọc)
+function seriesSummary(vs) {
+  const bySeason = new Map();
+  let total = 0;
+  vs.forEach((v) => {
+    if (v.episode_total) total = Math.max(total, v.episode_total);
+    if (v.episode == null) return;
+    const k = v.season || 0;
+    if (!bySeason.has(k)) bySeason.set(k, new Map());
+    const m = bySeason.get(k);
+    m.set(v.episode, (m.get(v.episode) || 0) + 1);
+  });
+  const missing = [], dup = [];
+  let lo = Infinity, hi = -Infinity;
+  [...bySeason.keys()].sort((a, b) => a - b).forEach((sn) => {
+    const m = bySeason.get(sn), eps = [...m.keys()];
+    const a = Math.min(...eps), b = Math.max(...eps);
+    lo = Math.min(lo, a); hi = Math.max(hi, b);
+    for (let e = Math.max(a, 1); e <= b; e++) if (!m.has(e)) missing.push((sn ? `M${sn} ` : "") + "T" + e);
+    m.forEach((c, e) => { if (c > 1) dup.push((sn ? `M${sn} ` : "") + "T" + e); });
+  });
+  return { lo, hi, total, seasons: bySeason.size, missing, dup, noEp: vs.filter((v) => v.episode == null).length };
+}
+const cut = (a, n) => (a.length > n ? a.slice(0, n).join(", ") + ` … (+${a.length - n})` : a.join(", "));
+function groupedHtml(list, cardHtml) {
+  const all = channelVideos();
+  const groups = new Map();
+  list.forEach((v) => {
+    const k = gkey(v);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(v);
+  });
+  const keys = [...groups.keys()].sort((a, b) => (a === "") - (b === "") || (groups.get(a)[0].series_name || "").localeCompare(groups.get(b)[0].series_name || "", "vi"));
+  return keys.map((k) => {
+    const vs = groups.get(k).slice().sort(seriesCmp);
+    if (!k) return `<div class="grp" data-gk=""><div class="grp-main"><strong>Chưa nhận ra phim / tập</strong> <span class="grp-n">${vs.length} video</span><span class="grp-r">Tiêu đề không ghi số tập. Bấm "Sửa phim / tập" ở từng video nếu cần.</span></div></div>${vs.map(cardHtml).join("")}`;
+    const sm = seriesSummary(all.filter((v) => gkey(v) === k));
+    const range = sm.lo === Infinity ? "" : `Tập ${sm.lo}–${sm.hi}${sm.total ? "/" + sm.total : ""}${sm.seasons > 1 ? " (nhiều mùa)" : ""}`;
+    return `<div class="grp" data-gk="${esc(k)}">
+      <div class="grp-main"><strong>${esc(vs[0].series_name)}</strong> <span class="grp-n">${vs.length} video</span>${range ? `<span class="grp-r">${esc(range)}</span>` : ""}
+        ${sm.missing.length ? `<span class="badge warn" title="Các tập chưa có trong thư mục, nằm giữa tập nhỏ nhất và lớn nhất">Thiếu: ${esc(cut(sm.missing, 8))}</span>` : ""}
+        ${sm.dup.length ? `<span class="badge warn" title="Có từ hai video trở lên cùng số tập">Trùng: ${esc(cut(sm.dup, 6))}</span>` : ""}
+        ${sm.noEp ? `<span class="badge" title="Video của phim này chưa có số tập">${sm.noEp} chưa có số tập</span>` : ""}</div>
+      <div class="grp-act"><button class="link gsel" type="button" title="Chọn (hoặc bỏ chọn) các tập đang hiển thị của phim này theo thứ tự tập">Chọn cả phim</button> <button class="link gren" type="button" title="Đổi tên phim cho tất cả tập">Đổi tên phim</button></div>
+    </div>${vs.map(cardHtml).join("")}`;
+  }).join("");
+}
+function groupVideos(gk, visibleOnly) {
+  const src = visibleOnly ? filteredVideos() : channelVideos();
+  return src.filter((v) => gkey(v) === gk).sort(seriesCmp);
+}
+function selectGroup(gk) {
+  const kinds = SELALL_KINDS[lib.status] || [];
+  const vs = groupVideos(gk, true).filter((v) => kinds.includes(selKind(v)));
+  if (!vs.length) { toast("Phim này không có video nào chọn được ở tab hiện tại."); return; }
+  const allOn = vs.every((v) => lib.selected.has(v.rel));
+  vs.forEach((v) => { if (allOn) lib.selected.delete(v.rel); else if (!lib.selected.has(v.rel)) lib.selected.add(v.rel); });   // thêm theo thứ tự tập
+  renderLibrary();
+}
+async function renameSeries(gk) {
+  const vs = groupVideos(gk, false);
+  if (!vs.length) return;
+  const name = prompt(`Tên phim cho ${vs.length} video (để trống = tự nhận từ tiêu đề):`, vs[0].series_name || "");
+  if (name === null) return;
+  try {
+    await api("/api/series/set", "POST", { rels: vs.map((v) => v.rel), name: name.trim() });
+    toast("Đã đổi tên phim.");
+    loadLibrary();
+  } catch (e) { toast(e.message); }
+}
+async function editSeries(rel) {
+  const v = lib.videos.find((x) => x.rel === rel);
+  if (!v) return;
+  const name = prompt("Tên phim (để trống = tự nhận từ tiêu đề):", v.series_name || "");
+  if (name === null) return;
+  const ep = prompt("Số tập (để trống = tự nhận từ tiêu đề):", v.episode == null ? "" : String(v.episode));
+  if (ep === null) return;
+  const payload = { rels: [rel] };
+  if (name.trim() !== (v.series_name || "")) payload.name = name.trim();
+  if (ep.trim() !== (v.episode == null ? "" : String(v.episode))) payload.episode = ep.trim() === "" ? null : ep.trim();
+  if (!("name" in payload) && !("episode" in payload)) return;
+  try {
+    await api("/api/series/set", "POST", payload);
+    toast("Đã lưu phim / tập.");
+    loadLibrary();
+  } catch (e) { toast(e.message); }
+}
+
 function renderLibrary() {
   const list = filteredVideos();
   // Chỉ giữ lại những video đang thấy trên màn hình, để thao tác hàng loạt (nhất là Huỷ lịch) đúng với những gì bạn nhìn thấy
@@ -502,7 +629,7 @@ function renderLibrary() {
   lib.selected = new Set([...lib.selected].filter((r) => visible.has(r)));
   const grid = $("#lib-grid");
   $("#lib-empty").hidden = lib.videos.length > 0;
-  grid.innerHTML = list.map((v) => `
+  const cardHtml = (v) => `
     <article class="card${lib.selected.has(v.rel) ? " sel" : ""}" data-rel="${esc(v.rel)}">
       ${v.scheduled && !selKind(v) ? "" : `<label class="pick"><input type="checkbox" ${lib.selected.has(v.rel) ? "checked" : ""} ${selKind(v) ? "" : "disabled"}></label>`}
       <video data-src="${esc(mediaUrl(v.rel) + ("?e=" + v.size_mb))}" controls playsinline muted preload="none"></video>
@@ -513,6 +640,7 @@ function renderLibrary() {
           ${publishBadge(v)}
           ${reelBadge(v)}
           ${v.scheduled && v.page_name ? `<span class="badge">${esc(v.page_name)}</span>` : ""}
+          ${epLabel(v) ? `<span class="badge ep" title="${esc(v.series_name || "")}${v.series_manual ? " (đã sửa tay)" : ""}">${esc(epLabel(v))}</span>` : ""}
           ${v.affiliate ? '<span class="badge">Có link affiliate</span>' : ""}
           ${v.has_audio ? '<span class="badge" title="Đã tải kèm file audio.mp3 trong thư mục video này">Có MP3</span>' : ""}
           ${v.custom_caption ? '<span class="badge">Đã sửa nội dung</span>' : ""}
@@ -523,12 +651,15 @@ function renderLibrary() {
         </div>
         <button class="link edit" type="button">Sửa nội dung</button>
         ${v.scheduled ? "" : '<button class="link vedit" type="button">Chỉnh sửa video</button>'}
+        <button class="link sedit" type="button" title="Sửa tên phim và số tập khi app nhận sai từ tiêu đề">Sửa phim / tập</button>
         ${safeLink(v.permalink) ? `<a class="link" href="${esc(safeLink(v.permalink))}" target="_blank" rel="noopener">Xem bài trên Facebook</a>` : ""}
         ${["error", "missing"].includes(v.publish_status) ? '<button class="link resched" type="button">Hẹn lại</button>' : ""}
         ${canManage(v) ? '<button class="link retime" type="button">Đổi giờ</button> <button class="link cancelsch" type="button">Huỷ lịch</button>' : ""}
         ${["pending", "retry", "error", "expired"].includes(v.comment_status) ? '<button class="link cnow" type="button">Comment ngay</button>' : ""}
       </div>
-    </article>`).join("");
+    </article>`;
+  grid.innerHTML = lib.group ? groupedHtml(list, cardHtml) : list.map(cardHtml).join("");
+  $("#lib-group").checked = lib.group;
   renderStatusBar();
   $("#lib-count").textContent = `Hiển thị ${list.length} video`;
   const kinds = SELALL_KINDS[lib.status] || [];
@@ -627,6 +758,10 @@ $("#lib-grid").addEventListener("change", (e) => {
 $("#lib-grid").addEventListener("click", (e) => {
   if (e.target.classList.contains("edit")) openEdit(e.target.closest(".card").dataset.rel);
   if (e.target.classList.contains("vedit")) openVideoEdit(e.target.closest(".card").dataset.rel);
+  if (e.target.classList.contains("sedit")) editSeries(e.target.closest(".card").dataset.rel);
+  const grp = e.target.closest(".grp");
+  if (grp && e.target.classList.contains("gsel")) selectGroup(grp.dataset.gk);
+  if (grp && e.target.classList.contains("gren")) renameSeries(grp.dataset.gk);
   if (e.target.classList.contains("cnow")) commentNow(e.target.closest(".card").dataset.rel);
   if (e.target.classList.contains("resched")) reschedule(e.target.closest(".card").dataset.rel);
   const card = e.target.closest(".card");
@@ -637,6 +772,7 @@ $("#lib-grid").addEventListener("click", (e) => {
   }
 });
 $("#lib-channel").addEventListener("change", renderLibrary);
+$("#lib-group").addEventListener("change", () => { lib.group = $("#lib-group").checked; rememberPage("lib-group", lib.group ? "1" : "0"); renderLibrary(); });
 $("#lib-status").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-st]");
   if (!b) return;
@@ -661,7 +797,11 @@ function orderedCandidates() {
   const order = $("#sc-order").value;
   if (order === "newest") list.sort((a, b) => (a.folder < b.folder ? 1 : a.folder > b.folder ? -1 : 0));
   else if (order === "oldest") list.sort((a, b) => (a.folder < b.folder ? -1 : a.folder > b.folder ? 1 : 0));
-  else if (order === "random") {
+  else if (order === "episode") {
+    const firstAt = new Map();
+    list.forEach((v, i) => { const k = gkey(v) || "~" + v.rel; if (!firstAt.has(k)) firstAt.set(k, i); });
+    list.sort((a, b) => (firstAt.get(gkey(a) || "~" + a.rel) - firstAt.get(gkey(b) || "~" + b.rel)) || seriesCmp(a, b));
+  } else if (order === "random") {
     for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
   }
   return list;
@@ -1412,7 +1552,7 @@ $("#sc-order").addEventListener("change", () => rememberPage("sc-order", $("#sc-
 {
   const m = recalledPage("sc-mode"), o = recalledPage("sc-order");
   if (["interval", "auto"].includes(m)) $("#sc-mode").value = m;
-  if (["oldest", "newest", "random", "selected"].includes(o)) $("#sc-order").value = o;
+  if (["oldest", "newest", "random", "selected", "episode"].includes(o)) $("#sc-order").value = o;
 }
 
 let scJob = null;
@@ -1481,6 +1621,7 @@ const FIELDS = [
   ["OUTPUT_DIR", "Thư mục lưu video", "text", "set"],
   ["DOWNLOAD_MAX_HEIGHT", "Chất lượng tối đa (px)", "number", "set"],
   ["YTDLP_COOKIES_BROWSER", "Trình duyệt lấy cookie nếu YouTube đòi xác minh (chrome, safari, firefox)", "text", "set"],
+  ["REDNOTE_COOKIES_BROWSER", "Rednote: trình duyệt đã đăng nhập Rednote để lấy cookie (chrome, safari, firefox), hoặc đường dẫn file cookies.txt", "text", "set"],
   ["SCHEDULE_INTERVAL_HOURS", "Khoảng cách mặc định giữa các bài (giờ)", "number", "set"],
   ["FB_API_VERSION", "Phiên bản Facebook Graph API (v21.0 hết hạn 21/01/2027; v25.0 dùng được đến 07/2028)", "text", "set"],
   ["YTDLP_AUTO_UPDATE", "Tự kiểm tra và cập nhật yt-dlp mỗi ngày (YouTube hay đổi, bản cũ dễ gây lỗi tải)", "onoff", "set"],

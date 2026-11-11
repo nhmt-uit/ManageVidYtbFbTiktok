@@ -4,7 +4,7 @@
 
 **Mở app là vào trang Tổng quan**: mỗi Fanpage là một thẻ cho biết hôm nay đã hẹn mấy bài (so với số bài mỗi ngày của Page), bao nhiêu video chờ đăng, chưa lên lịch, đã đăng, lỗi, đã hẹn bao nhiêu trong 24 giờ qua, bài kế tiếp, **kho video còn đủ đăng mấy ngày** (chuyển đỏ khi sắp hết) và trạng thái bị Facebook giới hạn. Bấm **Mở Page** để vào làm việc với Page đó. Trong Page, thanh phía trên có **← Tổng quan** để quay về và ô **Đang làm việc với Fanpage** để chuyển sang Page khác. Mọi thứ bên dưới chỉ thuộc về Page đang chọn:
 
-1. **Tải video** từ kênh YouTube đã đồng ý cho bạn dùng, lưu vào thư mục đặt tên (thư mục đó thuộc Page đang chọn), kèm tiêu đề, mô tả, hashtag.
+1. **Tải video** từ kênh YouTube, TikTok hoặc Rednote đã đồng ý cho bạn dùng, lưu vào thư mục đặt tên (thư mục đó thuộc Page đang chọn), kèm tiêu đề, mô tả, hashtag.
 2. **Thư viện & Lên lịch**: xem, sửa nội dung, chọn video rồi hẹn giờ đăng Reels lên Fanpage Facebook. Chỉ thấy video của các thư mục thuộc Page này. Có theo dõi video đã đăng thật chưa, hẹn lại video lỗi và nhập link affiliate riêng cho từng video bằng CSV.
 3. **Lịch**: xem theo tuần các video đã hẹn giờ của Page, ngày nghỉ được tô xám, giờ theo múi giờ của Page. Bài chưa đăng có thể huỷ hoặc đổi giờ (xem mục bên dưới).
 4. **Thống kê**: đã đăng bao nhiêu bài, tỷ lệ đăng thành công, lịch sắp tới, kho video và số bài hẹn thêm được ngay (xem mục "Thống kê bài đăng").
@@ -161,6 +161,38 @@ Xuất xong chỉ ra **bản nháp** `video.draft.mp4`; chưa duyệt thì video
 
 Cài công cụ một lần: `bash tools/install_editor_tools.sh` (FFmpeg, whisper.cpp + model, Node 22, HyperFrames). Bản `ffmpeg` thường của Homebrew thiếu bộ lọc phụ đề (libass): cần `brew uninstall ffmpeg && brew install ffmpeg-full`. App tự tìm công cụ; nếu để chỗ khác, đặt trong `.env`: `FFMPEG_PATH`, `WHISPER_CLI`, `WHISPER_MODEL` (đường dẫn, hoặc tên như `large-v3-turbo`), `WHISPER_DIR`, `EDIT_FONT` (mặc định Arial). Phiên âm tiếng Việt cần model đa ngôn ngữ (không phải `.en`); `large-v3-turbo` cho kết quả tốt nhất, `small` hay `medium` nhanh hơn. Whisper nhận lời nói chưa hoàn hảo nên luôn xem lại phụ đề trước khi xuất.
 
+## Tải video TikTok (không logo), Rednote và nhóm theo phim
+
+**Tải TikTok:** ở tab Tải video dán link kênh (`https://www.tiktok.com/@tenkenh`), link một video, hoặc link rút gọn `vm.tiktok.com/...`. Cách chạy giống YouTube (cùng ô thư mục, số video mới, ghi chú đồng ý, chống trùng theo ID).
+
+- **Không logo:** app chỉ nhận bản gốc không logo mà TikTok trả về (`play_addr`) và loại hẳn bản có logo. Video nào TikTok chỉ cho bản có logo thì app bỏ qua và ghi rõ trong nhật ký, không bao giờ lưu bản dính logo.
+- **Cần `curl-cffi`** để TikTok tải ổn định (đã nằm trong `requirements.txt`). Nếu nhật ký báo thiếu: `.venv/bin/pip install "yt-dlp[default,curl-cffi]"` rồi `./service.sh restart`. Kiểm tra trước một video: `.venv/bin/yt-dlp -F "<link tiktok>"` (có dòng không ghi "watermarked" là tải được không logo).
+- TikTok không dùng cookie trình duyệt (cookie hay làm TikTok lỗi). TikTok đổi cách trả dữ liệu thường xuyên hơn YouTube, nếu lỗi hàng loạt hãy cập nhật yt-dlp.
+- Mục "Loại nội dung" (Shorts / Video thường) chỉ áp dụng cho YouTube.
+- Chất lượng tối đa theo "DOWNLOAD_MAX_HEIGHT" (mặc định 1080, tính theo cạnh ngắn nên video dọc 1080x1920 vẫn lấy bản 1080p). Trước đây bộ lọc đếm theo chiều cao nên video dọc YouTube Shorts bị tải bản 480p; bản này đã sửa.
+- Chỉ tải nội dung của bạn hoặc kênh đã cho phép. Cắt từ phim, nhạc có bản quyền dễ bị Facebook gỡ hoặc hạn chế Page (nội dung không gốc).
+
+**Tải không cần vào Fanpage:** ở màn hình chung (Tổng quan, Kết nối Fanpage, Cài đặt chung...) có tab **Tải video**. Video lưu vào thư mục bạn đặt tên và chưa thuộc Page nào (vẫn có `permission.json` và ô xác nhận quyền). Thư mục đó hiện ở Tổng quan, mục "Thư mục chưa thuộc Fanpage nào": khi muốn đăng thì chọn Page rồi bấm **Gán**, video sẽ vào Thư viện của Page. Tải không gắn Page chỉ chống trùng với các thư mục cũng chưa gán Page, và không tải thêm vào thư mục đã thuộc một Page (hãy vào Page đó để tải). Đang tải kiểu này vẫn vào được Fanpage khác.
+
+**Dán nhiều link:** ô đường dẫn nhận nhiều link, mỗi dòng một link (trộn YouTube, TikTok, Rednote cũng được). Link trùng chỉ tải một lần; link nào lỗi thì bỏ qua, ghi vào nhật ký và các link còn lại vẫn chạy. Tối đa 200 link mỗi lần.
+
+**Rednote (Xiaohongshu):** chỉ tải theo link từng bài, không tải theo trang cá nhân (yt-dlp không đọc được danh sách bài của một người). Dạng nhận được: `xiaohongshu.com/explore/<id>`, `/discovery/item/<id>` (cả tên miền `rednote.com`, link chia sẻ từ web hay dùng; app tự đổi sang xiaohongshu.com để yt-dlp đọc được), bài mở từ trang cá nhân, và link rút gọn `xhslink.com` (kể cả khi bạn dán nguyên đoạn "chia sẻ" từ app, app tự lấy link trong đó).
+
+- **Cookie đăng nhập:** Rednote hay đòi đăng nhập hoặc xác minh. Đăng nhập Rednote trên Chrome (hoặc Safari, Firefox) ở máy này, rồi ở Cài đặt chung > Chung điền ô **Rednote: trình duyệt đã đăng nhập** (ví dụ `chrome`). Có thể điền đường dẫn file `cookies.txt` thay cho tên trình duyệt (yt-dlp có thể ghi cập nhật lại file này). Cookie chỉ được đọc trên máy bạn để mở bài, không gửi đi đâu và không bao giờ ghi vào nhật ký. Cài đặt này tách riêng với cookie YouTube.
+- Link nên giữ nguyên phần `?xsec_token=...` nếu có. Rednote không trả ngày đăng nên tên thư mục video dùng ngày tải. Thư mục mặc định là `Rednote` nếu bạn không đặt tên.
+- **Lấy link cả trang cá nhân (script tự chạy):** app không đọc được danh sách bài của một người, nên dùng script `tools/rednote_collect_links.js` (ở tab Tải video, mục "Rednote: lấy link cả trang cá nhân" có nút **Chép script** để khỏi mở file). Đăng nhập Rednote trên Chrome, mở trang cá nhân (của bạn hoặc người cho phép), mở Console (F12; nếu Chrome chặn dán thì gõ `allow pasting`), dán nguyên nội dung file rồi Enter. Script cuộn chậm đến cuối trang, gom link và hiện nút **Chép** (mỗi nút 100 link) để dán vào tab Tải video; cũng có nút tải file `.txt`. Script chỉ đọc link trên trang, không gửi dữ liệu đi, không đọc cookie. Trang có hàng trăm bài thì chia làm nhiều lần tải, đừng tải dồn dập.
+- **Chọn Ảnh / Video / Toàn bộ:** ô **Nội dung (Rednote)** ở tab Tải video: *Toàn bộ* (mặc định) tải video và lưu ảnh của bài ảnh; *Chỉ video* bỏ qua bài ảnh; *Chỉ ảnh* chỉ lưu ảnh và bỏ qua bài video (không cần yt-dlp, chỉ mở trang bài một lần). Bài bị bỏ qua vì khác loại không tính là lỗi và được đếm riêng ở dòng kết quả. YouTube và TikTok bỏ qua ô này.
+- **Bài chỉ có ảnh:** nếu bài Rednote không có video, app lưu toàn bộ ảnh vào `<thư mục>/<ngày - tiêu đề [id]>/images/` (01, 02, 03... đúng thứ tự, giữ định dạng gốc webp/jpg/png) kèm `title.txt`, `description.txt`, `hashtags.txt`, `meta.json` (`"type": "images"`). Ảnh lấy từ CDN của Rednote bằng phiên đăng nhập của bạn, là bản trang web hiển thị (không logo app). Bài ảnh **không hiện trong Thư viện** (Thư viện chỉ có video) và không hẹn giờ đăng được; thư mục dùng làm tư liệu. Tính vào "Số video mới cần tải", chống trùng theo ID, và chế độ MP3 bỏ qua bài ảnh.
+- Video thường lấy từ luồng của trang web (không logo) và thử lấy cả file gốc. Nếu Rednote đòi xác minh (captcha) thì app báo lỗi rõ: mở thử bài đó trong trình duyệt để xác minh rồi tải lại. Đừng tải dồn dập, Rednote có thể khóa tạm tài khoản.
+- Video tiếng Trung: dùng Chỉnh sửa video để tạo phụ đề (chọn ngôn ngữ Trung) rồi dịch sang tiếng Việt. Tiêu đề dạng `第12集` cũng được nhận là tập 12 khi nhóm theo phim.
+
+**Nhóm theo phim:** app đọc tiêu đề để biết phim và số tập: `Tên phim | Tập 12`, `Tập 5: Tên phim`, `Tên phim (7/30)`, `Ep 3`, `E07`, `Phần 2 Tập 4` (Phần/Mùa = mùa 2), `Tập cuối`. Bỏ dấu, hoa thường, chữ "Phim" đứng đầu không làm tách nhóm.
+
+- Ở Thư viện tick **Nhóm theo phim**: mỗi phim một khung có số video, khoảng tập, **tập còn thiếu** và **tập bị trùng** (tính trên mọi video của phim, kể cả khi bạn đang lọc tab khác). Trong khung xếp đúng thứ tự tập. **Chọn cả phim** chọn các tập theo thứ tự tập (bấm lần nữa để bỏ chọn); **Đổi tên phim** gộp hoặc sửa tên cho cả phim.
+- Mỗi video có nhãn **Tập N** và nút **Sửa phim / tập** khi app nhận sai (lưu vào `series.json` trong thư mục video, thắng cả tiêu đề; để trống = quay về tự nhận). Video không có số tập thì nằm ở nhóm "Chưa nhận ra phim / tập".
+- Hẹn giờ có thêm thứ tự đăng **Theo thứ tự tập (phim nhiều tập)**: tập nhỏ đăng trước, phim nào bạn chọn trước thì đứng trước.
+- Gợi ý khi hẹn nhiều phim cùng lúc: hẹn xen kẽ các phim thì tập 2 có thể đăng sau tập 1 nhiều giờ; nếu muốn tập liên tiếp, đặt khoảng cách giờ nhỏ và hẹn từng phim một.
+
 ## Kho video còn đủ mấy ngày
 
 Mỗi thẻ Page ở Tổng quan có dòng **Kho** cho biết số video chưa lên lịch (không tính video không đạt yêu cầu Reels), mỗi ngày Page đăng bao nhiêu bài theo quy tắc của Page (khung giờ, ngày nghỉ), và tổng cộng Page còn bài để đăng trong bao nhiêu ngày. Con số này gồm lịch đã hẹn (tính đến bài hẹn xa nhất) cộng số ngày kho chưa hẹn đủ dùng.
@@ -293,14 +325,15 @@ Lưu ý: comment giống hệt, dày đặc dễ bị Facebook coi là spam. Nê
 ```
 OfflineYtb/
 └── TenKenh/
-    ├── permission.json                 # ghi chú sự đồng ý của chủ kênh
+    ├── permission.json                 # ghi chú sự đồng ý của chủ kênh (kênh YouTube hoặc TikTok)
     ├── channel.json                    # Fanpage sở hữu thư mục này
     └── 20261020 - Tiêu đề [videoId]/
         ├── video.mp4
         ├── title.txt
         ├── description.txt
         ├── hashtags.txt
-        ├── meta.json
+        ├── meta.json                   # gồm cả nguồn (platform: youtube/tiktok)
+        ├── series.json                 # (tùy chọn) phim/tập bạn sửa tay: {"name": "...", "episode": 5}
         ├── caption.txt                 # (tùy chọn) nội dung bài đăng bạn đã sửa tay
         ├── comment.txt                 # (tùy chọn) comment riêng của video, thay cho kho ngẫu nhiên
         ├── affiliate.txt               # (tùy chọn) link affiliate của video, thay vào {link}
@@ -347,6 +380,8 @@ YouTube hay đổi nên yt-dlp bản cũ là nguyên nhân thường gặp khi t
 - Video bị báo "Không đạt yêu cầu Reels": rê chuột vào nhãn xem lý do (thường là quá ngắn/dài hoặc độ phân giải thấp). Sửa hoặc thay video rồi bấm **Kiểm tra Reels** (giữ Shift để kiểm tra lại).
 - Không thấy nút Kiểm tra Reels làm việc, nhật ký báo chưa cài ffprobe: `brew install ffmpeg`.
 - Telegram "Gửi thử" báo lỗi 401 hoặc Unauthorized: token bot sai. Báo "Chưa thấy tin nhắn nào gửi cho bot": mở bot, bấm Start rồi bấm lại **Tự lấy chat ID**.
+- Rednote báo "đòi đăng nhập hoặc xác minh": kiểm tra ô cookie Rednote ở Cài đặt chung, đã đăng nhập Rednote trên đúng trình duyệt đó chưa, mở thử bài trong trình duyệt rồi tải lại. Mở Chrome/Safari lần đầu có thể hiện hộp thoại cho phép đọc cookie.
+- TikTok báo "chỉ trả bản có logo" hoặc lỗi impersonation: cài `curl-cffi` (xem mục Tải video TikTok), cập nhật yt-dlp, thử lại sau; TikTok hay chặn tạm thời.
 - Tải video lỗi hàng loạt dù link đúng: vào Cài đặt chung > Chung bấm **Kiểm tra và cập nhật** yt-dlp, rồi khởi động lại app.
 - App báo "đã dùng X/150 lượt gọi Facebook nên tự dừng" hoặc chip Facebook đỏ: đó là cổng giới hạn lượt gọi đang bảo vệ app khỏi lỗi "Application request limit reached". Đợi đúng số phút app báo rồi làm tiếp (không cần bỏ trạng thái dừng). Nếu bạn thường xuyên chạm mức này mà Facebook chưa từng báo lỗi, tăng "Số lượt gọi Facebook tối đa mỗi giờ" ở Cài đặt chung > Chung từng chút một (tối đa khoảng 200 nếu app chỉ có một người dùng).
 - Đổi cổng: `PORT=8080 ./run.sh`.

@@ -12,7 +12,7 @@ from datetime import datetime
 
 from flask import Flask, abort, jsonify, request, send_from_directory
 
-from core import affiliate, commenter, editor, translate, config, downloader, fbgate, library, manage, notify, pages, planner, publish, reelcheck, scheduler, stats, stock, tokens, ytdlp_update
+from core import affiliate, commenter, editor, series, translate, config, downloader, fbgate, library, manage, notify, pages, planner, publish, reelcheck, scheduler, stats, stock, tokens, ytdlp_update
 from core import videofile
 from core.jobs import manager
 
@@ -213,6 +213,35 @@ def api_stats():
     if page is None:
         return err("Chưa chọn Fanpage.")
     return jsonify(stats.page_stats(page))
+
+
+@app.get("/api/tools/rednote-script")
+def api_rednote_script():
+    """Script gom link cả trang cá nhân Rednote (người dùng dán vào Console của Chrome). Chỉ trả file cố định trong thư mục tools."""
+    resp = send_from_directory(os.path.join(app.root_path, "tools"), "rednote_collect_links.js", mimetype="text/plain", max_age=0)
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
+@app.post("/api/series/set")
+def api_series_set():
+    """Sửa tay phim/tập của video (khi tự nhận từ tiêu đề bị sai). name "" hoặc episode null = quay về tự nhận."""
+    d = body()
+    rels = d.get("rels")
+    if not isinstance(rels, list) or not rels or len(rels) > 1000 or not all(isinstance(r, str) for r in rels):
+        return err("Chưa chọn video.")
+    set_name, set_episode = "name" in d, "episode" in d
+    if not (set_name or set_episode):
+        return err("Không có gì để sửa.")
+    if set_episode and len(rels) != 1:
+        return err("Số tập chỉ sửa cho từng video một.")
+    try:
+        folders = [library.resolve(r) for r in rels]
+        for f in folders:
+            series.write_override(f, d.get("name"), d.get("episode"), set_name, set_episode)
+    except ValueError as e:
+        return err(str(e), 400)
+    return jsonify({"ok": True, "count": len(folders)})
 
 
 @app.get("/media/<path:rel>")
@@ -756,7 +785,7 @@ def api_download():
     if not d.get("confirm"):
         return err("Cần xác nhận đã được chủ kênh đồng ý trước khi tải.")
     try:
-        url = downloader.validate_url(d.get("url", ""))
+        url = "\n".join(downloader.parse_urls(d.get("url", "")))   # nhiều link: mỗi dòng một link
     except ValueError as e:
         return err(str(e))
     kind = d.get("kind") if d.get("kind") in ("shorts", "videos") else "shorts"
@@ -767,13 +796,14 @@ def api_download():
     folder = (d.get("folder") or "").strip()
     note = (d.get("note") or "").strip()[:500]
     fmt = "audio" if d.get("format") == "audio" else "video"
-    page_id = str(d.get("page_id") or "")
-    page = pages.get(page_id)
-    if page is None:
-        return err("Chưa chọn Fanpage. Vào một Page rồi tải video.")
+    content = d.get("content") if d.get("content") in downloader.CONTENT_CHOICES else "all"   # Rednote: all | video | images
+    page_id = str(d.get("page_id") or "")   # trống = tải không gắn Fanpage, lưu vào thư mục chưa thuộc Page nào
+    page = pages.get(page_id) if page_id else None
+    if page_id and page is None:
+        return err("Không tìm thấy Fanpage này. Chọn lại Fanpage rồi tải video.")
     if manager.has_running("download"):
         return err("Đang có một tác vụ tải chạy. Đợi nó xong hoặc dừng lại.")
-    job = manager.start("download", f"Tải {'MP3' if fmt == 'audio' else 'video'} cho {pages.label(page)}: {url}", downloader.run, url, folder, kind, limit, note, page_id, fmt, page_id=page_id)
+    job = manager.start("download", f"Tải {'MP3' if fmt == 'audio' else 'video'} {('cho ' + pages.label(page)) if page else '(không gắn Fanpage)'}: {url.splitlines()[0]}" + (f" (+{len(url.splitlines()) - 1} link)" if "\n" in url else ""), downloader.run, url, folder, kind, limit, note, page_id, fmt, content, page_id=page_id)
     return jsonify({"job": job.id})
 
 
@@ -816,7 +846,7 @@ def api_schedule():
             return err(str(e), 404)
     if foreign:
         return err(f"{len(foreign)} video không thuộc Fanpage này (mỗi thư mục chỉ thuộc một Page). Tải lại trang Thư viện rồi chọn lại.")
-    order = d.get("order") if d.get("order") in ("oldest", "newest", "random", "selected") else "oldest"
+    order = d.get("order") if d.get("order") in ("oldest", "newest", "random", "selected", "episode") else "oldest"
     if mode == "auto" and not planner.rules_of(page)["slots"]:
         return err("Page này chưa có khung giờ đăng. Vào tab Cài đặt Page > Quy tắc đăng để thêm, hoặc chọn kiểu hẹn cách nhau cố định.")
     blocked = pages.blocked_until(page)
