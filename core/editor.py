@@ -23,7 +23,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import audioscan, config, library, origsubs, reelcheck, translate
+from . import audioscan, bars, config, hooks, library, origsubs, reelcheck, translate
 from .videofile import APPROVED, DRAFT, ORIGINAL
 
 SUBS_FILE = "subs.json"
@@ -48,6 +48,8 @@ DEFAULT_SETTINGS = {
     "loudnorm": True,        # chuẩn hóa âm lượng về mức Reels hay dùng
     "hide_orig": False,      # làm mờ sub in cứng có sẵn trong video (cần dò trước, xem origsubs.py)
     "audio_clean": "off",    # off | light | voice: làm sạch âm thanh của video gốc (không áp cho giọng đọc thêm vào)
+    "trim_bars": True,       # tự cắt viền đen có sẵn quanh hình trong video gốc trước khi phóng lên 1080x1920 (xem bars.py)
+    "hook": False,           # in chữ hook đã duyệt ở 3 giây đầu (xem hooks.py)
     "quality": "standard",   # fast | standard | high: chất lượng hình và âm thanh khi xuất
 }
 CHOICES = {"framing": ("auto", "scale", "fit", "crop"), "position": ("bottom", "middle", "top", "orig"),   # orig = đúng chỗ sub gốc
@@ -209,7 +211,7 @@ def clean_settings(raw: dict | None) -> dict:
     for k, allowed in CHOICES.items():
         if raw.get(k) in allowed:
             s[k] = raw[k]
-    for k in ("subs", "box", "loudnorm", "hide_orig"):
+    for k in ("subs", "box", "loudnorm", "hide_orig", "hook", "trim_bars"):
         if isinstance(raw.get(k), bool):
             s[k] = raw[k]
     for k, lo, hi in (("orig_volume", 0, 200), ("voice_volume", 0, 300)):
@@ -360,7 +362,8 @@ def status(rel: str) -> dict:
             "translator": subs.get("translator", ""),
             "approved": _read_json(folder / APPROVED).get("approved_at", ""), "settings": settings,
             "scheduled": is_scheduled(folder), "langs": LANGS, "busy": _busy.locked(), "origsubs": origsubs_info(folder),
-            "audioscan": _read_json(folder / audioscan.FILE)}
+            "audioscan": _read_json(folder / audioscan.FILE),
+            "hooks": hook_info(folder), "claude": bool(hooks.find_claude())}
 
 
 def discard(rel: str) -> None:
@@ -390,7 +393,7 @@ def approve(rel: str) -> str:
             raise EditError("Bản nháp không đọc được (file hỏng?). Hãy xuất lại.")
         settings = _read_json(folder / SETTINGS_FILE).get("settings", {})
         os.replace(draft, folder / ORIGINAL)   # nguyên tử: video.mp4 luôn là một file đầy đủ
-        for name in (SUBS_FILE, SETTINGS_FILE, origsubs.FILE, audioscan.FILE):
+        for name in (SUBS_FILE, SETTINGS_FILE, origsubs.FILE, audioscan.FILE, hooks.FILE):
             (folder / name).unlink(missing_ok=True)
         _remove_voice_files(folder)
         _write_json(folder / APPROVED, {"approved_at": datetime.now(timezone.utc).isoformat(), "settings": settings})
@@ -455,6 +458,45 @@ def detect_origsubs_job(job, rel: str) -> str:
         _busy.release()
 
 
+def hook_info(folder: Path) -> dict:
+    return hooks.clean(_read_json(folder / hooks.FILE))
+
+
+def save_hook(rel: str, text) -> dict:
+    """Lưu (hoặc bỏ, nếu text rỗng) chữ hook người dùng đã duyệt. Người dùng được sửa tự do trước khi duyệt."""
+    folder = library.resolve(rel)
+    cur = hook_info(folder)
+    t = hooks.clean_text(text)
+    cur["approved"] = {"text": t, "seconds": hooks.HOOK_SECONDS} if t else None
+    _write_json(folder / hooks.FILE, cur)
+    return cur
+
+
+def hook_generate_job(job, rel: str, notes: str = "") -> str:
+    """Nhờ Claude Code (claude -p) đề xuất hook và câu trend từ tên video + phụ đề. Không đụng video, chỉ ghi hooks.json."""
+    if not _busy.acquire(blocking=False):
+        raise EditError("Đang có một tác vụ chỉnh sửa khác chạy. Đợi nó xong rồi thử lại.")
+    try:
+        folder = library.resolve(rel)
+        src = probe_media(folder / ORIGINAL)
+        subs = load_subs(folder)
+        title = folder.name
+        if not subs["cues"]:
+            job.log("Chưa có phụ đề nên Claude chỉ dựa vào tên video; nên phiên âm trước để hook sát nội dung.")
+        job.log("Đang nhờ Claude đề xuất hook (khoảng 20 đến 60 giây)...")
+        try:
+            props = hooks.generate(hooks.build_prompt(title, subs["cues"], src["duration"], subs.get("language", ""), notes),
+                                   cancelled=lambda: job.cancelled, model=config.get("HOOK_MODEL", "") or "")
+        except hooks.HookError as exc:
+            raise EditError(str(exc)) from exc
+        cur = hook_info(folder)
+        cur.update(proposals=props, generated_at=hooks.now())
+        _write_json(folder / hooks.FILE, cur)
+        return f"Claude đã đề xuất {len(props['hooks'])} hook. Chọn một câu, sửa nếu muốn rồi bấm Duyệt hook."
+    finally:
+        _busy.release()
+
+
 def scan_audio_job(job, rel: str) -> str:
     """Đo âm thanh video gốc và lưu gợi ý chế độ làm sạch vào audioscan.json."""
     if not _busy.acquire(blocking=False):
@@ -481,7 +523,7 @@ def _framing_transform(src: dict, framing: str) -> tuple[float, float, float]:
     """(hệ số phóng, lệch x, lệch y) khi đưa video gốc vào khung 1080x1920 theo kiểu khung hình `framing` (đã giải quyết 'auto')."""
     w, h = src["width"], src["height"]
     if framing == "auto":
-        framing = "scale" if abs(w / h - 9 / 16) < 0.03 else "fit"
+        framing = "crop" if abs(w / h - 9 / 16) < 0.03 else "fit"
     f = max(OUT_W / w, OUT_H / h) if framing == "crop" else min(OUT_W / w, OUT_H / h)
     return f, (OUT_W - w * f) / 2, (OUT_H - h * f) / 2
 
@@ -643,7 +685,7 @@ def _ass_text(text: str) -> str:
     return "\\N".join(line for line in text.split("\n"))
 
 
-def build_ass(cues: list[dict], s: dict, center_y: float | None = None) -> str:
+def build_ass(cues: list[dict], s: dict, center_y: float | None = None, hook: str = "", hook_end: float = 3.0) -> str:
     align, margin_v = ALIGN[s["position"]]
     font = config.get("EDIT_FONT", "Arial") or "Arial"
     col = COLORS[s["color"]]
@@ -656,21 +698,31 @@ def build_ass(cues: list[dict], s: dict, center_y: float | None = None) -> str:
         f"PlayResX: {OUT_W}\nPlayResY: {OUT_H}\n\n[V4+ Styles]\n"
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, "
         "ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
-        f"Style: Default,{font},{FONT_SIZES[s['size']]},{col},&H000000FF,{outline_col},{back},-1,0,0,0,100,100,0,0,{border},{outline},{shadow},{align},80,80,{margin_v},1\n\n"
+        f"Style: Default,{font},{FONT_SIZES[s['size']]},{col},&H000000FF,{outline_col},{back},-1,0,0,0,100,100,0,0,{border},{outline},{shadow},{align},80,80,{margin_v},1\n"
+        f"Style: Hook,{font},96,&H0000E6FF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,8,3,8,70,70,300,1\n\n"
         "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
     tag = f"{{\\an5\\pos({OUT_W // 2},{int(center_y)})}}" if center_y is not None else ""   # đặt giữa vùng sub gốc
     lines = [f"Dialogue: 0,{_ass_time(c['start'])},{_ass_time(c['end'])},Default,,0,0,0,,{tag}{_ass_text(c['text'])}" for c in cues]
+    if hook:   # chữ hook ở 3 giây đầu: hiện nhanh (phóng nhẹ), mờ dần khi hết; tránh đè phụ đề nếu phụ đề đặt ở trên
+        y = 520 if s["position"] == "top" else 330
+        lines.insert(0, f"Dialogue: 1,{_ass_time(0)},{_ass_time(hook_end)},Hook,,0,0,0,,"
+                        f"{{\\an8\\pos({OUT_W // 2},{y})\\fscx70\\fscy70\\fad(100,250)\\t(0,200,\\fscx100\\fscy100)}}{_ass_text(hook)}")
     return head + "\n".join(lines) + "\n"
 
 
-def build_filter(src: dict, s: dict, voice: bool, ass: bool, cover: str = "") -> tuple[str, list[str]]:
+def build_filter(src: dict, s: dict, voice: bool, ass: bool, cover: str = "", crop: dict | None = None) -> tuple[str, list[str]]:
     """Trả về (filter_complex, các tham số -map). src là kết quả probe_media của video gốc.
-    cover: đoạn filter che sub gốc (origsubs.cover_chain, đầu ra là [src]); rỗng = không che."""
+    cover: đoạn filter che sub gốc (origsubs.cover_chain, đầu ra là [src]); rỗng = không che.
+    crop: vùng hình cần giữ (bars.detect) để cắt viền đen có sẵn; src phải là kích thước SAU khi cắt."""
     vin = "src" if cover else "0:v"
+    pre = [cover] if cover else []
+    if crop:
+        pre.append(f"[{vin}]crop={crop['w']}:{crop['h']}:{crop['x']}:{crop['y']}[cb]")
+        vin = "cb"
     framing = s["framing"]
     if framing == "auto":
         ratio = src["width"] / src["height"] if src["width"] and src["height"] else 0
-        framing = "scale" if ratio and abs(ratio - 9 / 16) < 0.03 else "fit"
+        framing = "crop" if ratio and abs(ratio - 9 / 16) < 0.03 else "fit"
     if framing == "crop":
         vf = f"[{vin}]scale={OUT_W}:{OUT_H}:force_original_aspect_ratio=increase,crop={OUT_W}:{OUT_H},setsar=1[vf]"
     elif framing == "scale":
@@ -679,8 +731,8 @@ def build_filter(src: dict, s: dict, voice: bool, ass: bool, cover: str = "") ->
         vf = (f"[{vin}]split=2[bg0][fg0];[bg0]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,gblur=sigma=8,"
               f"scale={OUT_W}:{OUT_H},eq=brightness=-0.08[bg];[fg0]scale={OUT_W}:{OUT_H}:force_original_aspect_ratio=decrease[fg];"
               "[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[vf]")
-    if cover:
-        vf = cover + ";" + vf
+    if pre:
+        vf = ";".join(pre) + ";" + vf
     vf += ";[vf]subtitles=subs.ass[v]" if ass else ";[vf]null[v]"
     norm = ",loudnorm=I=-16:TP=-1.5:LRA=11" if s["loudnorm"] else ""
     clean = AUDIO_CLEAN[s["audio_clean"]]
@@ -721,11 +773,40 @@ def render_job(job, rel: str, settings: dict | None = None) -> str:
         if s["audio_clean"] != "off" and not _has_filter(t["ffmpeg"]["path"], "afftdn"):
             s["audio_clean"] = "off"
             job.log("FFmpeg này không có bộ lọc giảm ồn (afftdn) nên bỏ qua bước làm sạch âm thanh.")
+        bar = None
+        if s["trim_bars"]:
+            job.log("Dò viền đen có sẵn trong video gốc...")
+            bar = bars.detect(t["ffmpeg"]["path"], src_path, src["duration"], src["width"], src["height"], cancelled=lambda: job.cancelled)
+            if bar:
+                oi0 = origsubs_info(folder)
+                if oi0["found"] and (s["hide_orig"] or s["position"] == "orig"):
+                    # sub gốc có thể nằm trong chính vùng viền đen (ví dụ chữ in ở dải đen phía dưới): giữ lại phần đó, nếu không sub mới sẽ lệch khỏi chỗ sub cũ
+                    bx, by, bw, bh = origsubs.pixel_rect(oi0, src["width"], src["height"])
+                    pad = max(4, int(bh * 0.3))
+                    x0, y0 = max(0, min(bar["x"], bx - pad)), max(0, min(bar["y"], by - pad))
+                    x1, y1 = min(src["width"], max(bar["x"] + bar["w"], bx + bw + pad)), min(src["height"], max(bar["y"] + bar["h"], by + bh + pad))
+                    x0, y0, x1, y1 = x0 - x0 % 2, y0 - y0 % 2, x1 + x1 % 2, y1 + y1 % 2
+                    x1, y1 = min(src["width"], x1), min(src["height"], y1)
+                    if (x0, y0, x1, y1) != (bar["x"], bar["y"], bar["x"] + bar["w"], bar["y"] + bar["h"]):
+                        bar = {"x": x0, "y": y0, "w": x1 - x0, "h": y1 - y0, "left": x0, "top": y0, "right": src["width"] - x1, "bottom": src["height"] - y1}
+                        job.log("Sub gốc nằm ngoài vùng hình đã dò nên giữ thêm phần chứa sub gốc để phụ đề mới khớp đúng chỗ.")
+                if bar["left"] or bar["right"] or bar["top"] or bar["bottom"]:
+                    job.log(f"Cắt viền đen có sẵn: trái {bar['left']}, phải {bar['right']}, trên {bar['top']}, dưới {bar['bottom']} (điểm ảnh) rồi phóng to cho đầy khung.")
+                else:
+                    bar = None
+        eff = dict(src, width=bar["w"], height=bar["h"]) if bar else src   # kích thước hình thật sau khi cắt viền đen
         cues = clean_cues(load_subs(folder)["cues"], src["duration"]) if s["subs"] else []
         if s["subs"] and not cues:
             s["subs"] = False
             job.log("Chưa có phụ đề nên xuất không kèm phụ đề.")
-        if s["subs"] and not t["ffmpeg"]["libass"]:
+        hook_text = ""
+        if s["hook"]:
+            ap = hook_info(folder)["approved"]
+            hook_text = ap["text"] if ap else ""
+            if not hook_text:
+                s["hook"] = False
+                job.log("Chưa duyệt hook nào nên xuất không kèm hook.")
+        if (cues or hook_text) and not t["ffmpeg"]["libass"]:
             raise EditError(t["ffmpeg"]["problem"])
         oi = origsubs_info(folder)
         cover, center_y = "", None
@@ -737,8 +818,8 @@ def render_job(job, rel: str, settings: dict | None = None) -> str:
         if s["position"] == "orig":
             if oi["found"]:
                 x, y, w, h = origsubs.pixel_rect(oi, src["width"], src["height"])
-                f, _ox, oy = _framing_transform(src, s["framing"])
-                center_y = oy + (y + h / 2) * f
+                f, _ox, oy = _framing_transform(eff, s["framing"])
+                center_y = oy + (y + h / 2 - (bar["y"] if bar else 0)) * f
             else:
                 job.log("Chưa dò sub gốc nên phụ đề mới đặt ở vị trí mặc định (dưới).")
                 s["position"] = "bottom"
@@ -748,12 +829,13 @@ def render_job(job, rel: str, settings: dict | None = None) -> str:
         if src["duration"] and src["duration"] > MAX_SECONDS + 0.5:
             long_note = f" Lưu ý: video dài {src['duration']:.0f} giây, vượt mức {MAX_SECONDS} giây nên dễ bị giảm phân phối; cân nhắc cắt bớt hoặc tách thành 2 phần."
             job.log(long_note.strip())
-        fc, maps = build_filter(src, s, voice is not None, bool(cues), cover)
-        job.log(f"Xuất video {OUT_W}x{OUT_H}" + (f", {len(cues)} dòng phụ đề" if cues else "") + (f", kèm giọng đọc {voice.name}" if voice else "") + "...")
+        fc, maps = build_filter(eff, s, voice is not None, bool(cues) or bool(hook_text), cover, bar)
+        job.log(f"Xuất video {OUT_W}x{OUT_H}" + (f", {len(cues)} dòng phụ đề" if cues else "") + (", kèm hook 3 giây đầu" if hook_text else "") + (f", kèm giọng đọc {voice.name}" if voice else "") + "...")
         with tempfile.TemporaryDirectory(prefix="mvt-render-") as tmp:
             tmpd = Path(tmp)
-            if cues:
-                (tmpd / "subs.ass").write_text(build_ass(cues, s, center_y), encoding="utf-8")
+            if cues or hook_text:
+                hook_end = min(hooks.HOOK_SECONDS, src["duration"]) if src["duration"] else hooks.HOOK_SECONDS
+                (tmpd / "subs.ass").write_text(build_ass(cues, s, center_y, hook_text, hook_end), encoding="utf-8")
             out_tmp = folder / "video.draft.render.tmp.mp4"
             cmd = [t["ffmpeg"]["path"], "-nostdin", "-v", "error", "-nostats", "-y", "-i", str(src_path)]
             if voice:

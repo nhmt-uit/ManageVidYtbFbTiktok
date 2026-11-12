@@ -59,7 +59,7 @@ DEFAULTS = {
     "YTDLP_AUTO_UPDATE": "1",
     "LOW_STOCK_DAYS": "3",
     "NOTIFY_MAC": "1",
-    "TRANSLATE_PROVIDER": "anthropic",
+    "TRANSLATE_PROVIDER": "claude-code",
 }
 
 

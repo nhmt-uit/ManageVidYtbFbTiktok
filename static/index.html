@@ -12,6 +12,7 @@
     <nav class="tabs" id="gtabs" aria-label="Chung">
       <button data-view="overview" class="active">Tổng quan</button>
       <button data-view="download">Tải video</button>
+      <button data-view="editor">Chỉnh sửa video</button>
       <button data-view="fanpages">Kết nối Fanpage</button>
       <button data-view="settings">Cài đặt chung</button>
       <button data-view="jobs">Nhật ký</button>
@@ -134,6 +135,26 @@
     </section>
 
     <!-- THƯ VIỆN & LÊN LỊCH -->
+    <!-- CHỈNH SỬA VIDEO (không thuộc Fanpage nào) -->
+    <section id="tab-editor" class="tab">
+      <h2 class="ov-title">Chỉnh sửa video</h2>
+      <p class="hint">Chỉnh sửa mọi video trong thư mục video mà không cần chọn Fanpage: phiên âm, phụ đề, che sub gốc, làm sạch âm thanh, hook 3 giây đầu, khung 9:16. Video đã hẹn lên lịch thì phải huỷ lịch (trong Fanpage) trước khi chỉnh.</p>
+      <div class="lib-bar">
+        <div class="seg" id="ed-status" role="group" aria-label="Lọc theo tình trạng chỉnh sửa">
+          <button type="button" data-st="all" class="active">Tất cả <b></b></button>
+          <button type="button" data-st="todo" title="Chưa chỉnh sửa lần nào">Chưa chỉnh sửa <b></b></button>
+          <button type="button" data-st="draft" title="Có bản nháp chưa duyệt">Chờ duyệt <b></b></button>
+          <button type="button" data-st="done" title="Đã chỉnh sửa và duyệt">Đã chỉnh sửa <b></b></button>
+        </div>
+        <select id="ed-channel" aria-label="Lọc theo thư mục"></select>
+        <input type="search" id="ed-q" placeholder="Tìm theo tên video..." style="width:auto;min-width:180px">
+        <button class="ghost" id="ed-refresh" type="button">Làm mới</button>
+      </div>
+      <p class="hint" id="ed-root"></p>
+      <div class="grid" id="ed-grid"></div>
+      <div class="empty" id="ed-empty" hidden>Chưa có video nào trong thư mục video. Tải video ở mục "Tải video" trước.</div>
+    </section>
+
     <section id="tab-library" class="tab">
       <div class="lib-bar">
         <div class="seg" id="lib-status" role="group" aria-label="Lọc theo trạng thái">
@@ -473,7 +494,7 @@
       <p class="hint bad" id="ve-locked" hidden>Video này đã lên lịch nên không chỉnh sửa được (Facebook đã nhận bản cũ). Huỷ lịch trước, chỉnh sửa xong rồi hẹn lại.</p>
       <div class="ve-grid">
         <div class="ve-side">
-          <div class="ve-vwrap"><video id="ve-video" controls playsinline preload="metadata"></video><div id="ve-cap" hidden></div><div id="ve-os-box" hidden title="Vùng che sub gốc"></div></div>
+          <div class="ve-vwrap"><video id="ve-video" controls playsinline preload="metadata"></video><div id="ve-os-cover" hidden></div><div id="ve-cap" hidden></div><div id="ve-os-box" hidden title="Vùng che sub gốc"></div><div id="ve-hook-pv" hidden></div></div>
           <div class="ve-switch" role="radiogroup" aria-label="Bản xem trước">
             <label><input type="radio" name="ve-view" value="orig" checked> Video gốc</label>
             <label><input type="radio" name="ve-view" value="draft" id="ve-view-ed" disabled> Bản nháp (chưa duyệt)</label>
@@ -492,10 +513,12 @@
           </section>
           <section class="ve-sec">
             <h3>2. Phụ đề <span class="count" id="ve-cuecount"></span></h3>
-            <p class="hint">Sửa lỗi chính tả, chỉnh thời gian (giây). Bấm ▶ để nghe lại đoạn đó.</p>
+            <p class="hint">Mỗi dòng có số thứ tự. Sửa lỗi chính tả, chỉnh thời gian (giây). Bấm ▶ để nghe lại đoạn đó.</p>
             <div class="actions ve-tr">
-              <button class="ghost" id="ve-tr-auto" type="button">Dịch tự động sang tiếng Việt</button>
-              <button class="ghost" id="ve-tr-copy" type="button" title="Sao chép toàn bộ câu gốc (đánh số) để dịch ở nơi khác">Sao chép bản gốc</button>
+              <label class="ve-trto">Dịch sang <select id="ve-tr-to"><option value="vi">Tiếng Việt</option><option value="en">Tiếng Anh</option><option value="ja">Tiếng Nhật</option><option value="zh">Tiếng Trung</option></select></label>
+              <button class="ghost" id="ve-tr-auto" type="button">Dịch tự động</button>
+              <button class="ghost" id="ve-tr-copyall" type="button" title="Sao chép toàn bộ phụ đề hiện tại, mỗi câu một dòng có đánh số (1. ... 2. ...) để đem đi dịch">Sao chép tất cả</button>
+              <button class="ghost" id="ve-tr-copy" type="button" title="Sao chép toàn bộ câu gốc (đánh số) trước khi dịch" hidden>Sao chép bản gốc</button>
               <button class="ghost" id="ve-tr-paste" type="button" title="Dán bản dịch, mỗi câu một dòng theo đúng thứ tự">Dán bản dịch…</button>
               <button class="ghost" id="ve-tr-undo" type="button" hidden>Trả về bản gốc</button>
             </div>
@@ -522,7 +545,7 @@
           </section>
           <section class="ve-sec" id="ve-os-sec">
             <h3>4. Che sub gốc (nếu video đã có sub in cứng)</h3>
-            <p class="hint">Dò chữ phụ đề in sẵn trong hình (chữ trắng viền đen), rồi làm mờ chỗ đó khi xuất để phụ đề mới không chồng lên chữ cũ. Nên chọn vị trí phụ đề "Đúng chỗ sub gốc" ở bước 5.</p>
+            <p class="hint">Dò chữ phụ đề in sẵn trong hình (chữ trắng viền đen), rồi làm mờ chỗ đó khi xuất để phụ đề mới không chồng lên chữ cũ. Nên chọn vị trí phụ đề "Đúng chỗ sub gốc" ở bước 6.</p>
             <div class="row">
               <button class="ghost" id="ve-os-detect" type="button">Dò sub gốc</button>
               <label class="ve-chk"><input type="checkbox" id="ve-hide" disabled> Che sub gốc khi xuất</label>
@@ -538,12 +561,30 @@
             </div>
           </section>
           <section class="ve-sec">
-            <h3>5. Kiểu hiển thị và xuất video</h3>
+            <h3>5. Hook 3 giây đầu (tuỳ chọn)</h3>
+            <p class="hint">Nhờ Claude (qua Claude Code trên máy bạn) đề xuất chữ hook in lên màn hình 3 giây đầu và vài câu trend, dựa trên tên video và phụ đề. Claude không xem được hình hay nghe được tiếng, nên hãy phiên âm trước để hook sát nội dung. Không có dữ liệu trend hiện tại: tự kiểm tra các câu trend trước khi dùng. Chọn, sửa rồi bấm Duyệt hook mới được in vào video.</p>
+            <div class="row">
+              <input type="text" id="ve-hook-notes" maxlength="400" placeholder="Ghi chú cho Claude (tuỳ chọn): sản phẩm, đối tượng, giọng điệu..." style="flex:1 1 260px">
+              <button class="ghost" id="ve-hook-gen" type="button">Nhờ Claude đề xuất hook</button>
+            </div>
+            <p class="hint" id="ve-hook-info"></p>
+            <div id="ve-hook-list"></div>
+            <div id="ve-hook-extra"></div>
+            <label>Chữ hook (sửa tự do, tối đa 80 ký tự, 3 dòng) <textarea id="ve-hook-text" rows="2" maxlength="80"></textarea></label>
+            <div class="row">
+              <button class="ghost" id="ve-hook-ok" type="button">Duyệt hook</button>
+              <button class="link" id="ve-hook-clear" type="button">Bỏ hook</button>
+              <label class="ve-chk"><input type="checkbox" id="ve-hook-use" disabled> In hook ở 3 giây đầu khi xuất</label>
+            </div>
+          </section>
+          <section class="ve-sec">
+            <h3>6. Kiểu hiển thị và xuất video</h3>
             <div class="ve-opts">
               <label>Khung hình <select id="ve-framing"><option value="auto">Tự chọn (khuyên dùng)</option><option value="fit">Nền mờ, video ở giữa</option><option value="crop">Cắt giữa cho đầy khung</option><option value="scale">Giữ nguyên, viền đen</option></select></label>
               <label>Vị trí phụ đề <select id="ve-position"><option value="bottom">Dưới</option><option value="middle">Giữa</option><option value="top">Trên</option><option value="orig">Đúng chỗ sub gốc (cần dò sub gốc)</option></select></label>
               <label>Cỡ chữ <select id="ve-size"><option value="small">Nhỏ</option><option value="medium">Vừa</option><option value="large">Lớn</option></select></label>
               <label>Màu chữ <select id="ve-color"><option value="white">Trắng</option><option value="yellow">Vàng</option><option value="cyan">Xanh lơ</option></select></label>
+              <label class="ve-chk"><input type="checkbox" id="ve-trim" checked title="Video bị đóng khung đen quanh hình: tự dò và cắt bỏ rồi phóng to cho đầy khung 9:16"> Cắt viền đen có sẵn trong video</label>
               <label class="ve-chk"><input type="checkbox" id="ve-subs" checked> In phụ đề vào video</label>
               <label class="ve-chk"><input type="checkbox" id="ve-box"> Nền mờ sau chữ</label>
               <label class="ve-chk"><input type="checkbox" id="ve-loud" checked> Chuẩn hóa âm lượng</label>

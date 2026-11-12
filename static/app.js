@@ -119,9 +119,9 @@ function follow(jobId, pre, bar, onDone) {
 
 /* ---------- Điều hướng: Tổng quan -> chọn Fanpage -> làm việc trong Fanpage đó ---------- */
 // app.page = Fanpage đang làm việc ("" = các màn hình chung: Tổng quan, Kết nối Fanpage, Cài đặt chung, Nhật ký)
-const app = { page: "", tab: "", last: "" };   // last = Page làm việc gần nhất (giữ lựa chọn khi qua Tổng quan rồi quay lại)
+const app = { page: "", tab: "", last: "", view: "" };   // last = Page làm việc gần nhất (giữ lựa chọn khi qua Tổng quan rồi quay lại)
 const PAGE_TABS = ["download", "library", "calendar", "stats", "pagesettings", "jobs"];
-const GLOBAL_VIEWS = ["overview", "download", "fanpages", "settings", "jobs"];
+const GLOBAL_VIEWS = ["overview", "download", "editor", "fanpages", "settings", "jobs"];
 const DEFAULT_TZ = "Asia/Ho_Chi_Minh";
 
 function curPage() { return pg.list.find((p) => p.id === app.page); }
@@ -157,12 +157,14 @@ async function showView(name, sub) {
   if (!GLOBAL_VIEWS.includes(name)) name = "overview";
   app.page = "";
   app.tab = "";
+  app.view = name;
   applyMode();
   activateSection(name);
   $$("#gtabs button").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
   setHash(name);
   if (name === "overview") loadOverview();
   if (name === "download") renderDlHeader();   // tải video không gắn Fanpage
+  if (name === "editor") loadEditorList();     // chỉnh sửa video không gắn Fanpage
   if (name === "fanpages") loadPages().then(renderFanpage);
   if (name === "settings") { loadSettings(); showSub(sub || ($("#subtabs .active") || {}).dataset?.sub); }
   if (name === "jobs") loadJobs();
@@ -184,6 +186,7 @@ async function showPageTab(id, tab) {
   }
   app.page = id;
   app.tab = tab;
+  app.view = "";
   if (app.last !== id) resetForPage();
   app.last = id;
   applyMode();
@@ -718,6 +721,77 @@ function renderLibrary() {
   $$("video", grid).forEach((v) => observer.observe(v));
 }
 
+/* ---------- Chỉnh sửa video ngoài Fanpage: mọi video trong thư mục video ---------- */
+const edl = { videos: [], status: "all", channel: "__all", q: "", root: "", observer: null };
+function edGroup(v) { return v.has_draft ? "draft" : v.edited ? "done" : "todo"; }
+async function loadEditorList() {
+  try {
+    const d = await api("/api/library");
+    if (app.view !== "editor") return;
+    edl.videos = d.videos;
+    edl.root = d.root;
+    const sel = $("#ed-channel");
+    const cur = sel.value || edl.channel;
+    const hasRoot = d.videos.some((v) => !v.channel);
+    sel.innerHTML = '<option value="__all">Tất cả thư mục</option>' + (hasRoot ? '<option value="__root">(thư mục gốc)</option>' : "")
+      + d.channels.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+    sel.value = [...sel.options].some((o) => o.value === cur) ? cur : "__all";
+    edl.channel = sel.value;
+    sel.hidden = d.channels.length + (hasRoot ? 1 : 0) < 2;
+    await loadPages();
+    renderEditorList();
+  } catch (e) { toast(e.message); }
+}
+function edFiltered() {
+  const q = edl.q.trim().toLowerCase();
+  return edl.videos.filter((v) => (edl.status === "all" || edGroup(v) === edl.status)
+    && (edl.channel === "__all" || (edl.channel === "__root" ? !v.channel : v.channel === edl.channel))
+    && (!q || (v.title + " " + v.folder).toLowerCase().includes(q)));
+}
+function renderEditorList() {
+  const list = edFiltered();
+  const count = (st) => edl.videos.filter((v) => st === "all" || edGroup(v) === st).length;
+  $$("#ed-status button").forEach((b) => { b.classList.toggle("active", b.dataset.st === edl.status); $("b", b).textContent = count(b.dataset.st); });
+  $("#ed-root").textContent = (edl.root ? "Thư mục video: " + edl.root + ". " : "") + `Hiển thị ${list.length} video.`;
+  $("#ed-empty").hidden = edl.videos.length > 0;
+  const pageName = (v) => { const p = pg.list.find((x) => x.id === v.owner); return p ? p.name || p.label || p.id : ""; };
+  $("#ed-grid").innerHTML = list.map((v) => `
+    <article class="card" data-rel="${esc(v.rel)}">
+      <video data-src="${esc(mediaUrl(v.rel) + ("?e=" + v.size_mb))}" controls playsinline muted preload="none"></video>
+      <div class="meta">
+        <h4 title="${esc(v.title)}">${esc(v.title)}</h4>
+        <p class="sub">${esc(v.date)} · ${v.size_mb} MB${v.channel ? " · " + esc(v.channel) : ""}</p>
+        <div class="badges">
+          ${v.has_draft ? '<span class="badge warn" title="Có bản chỉnh sửa nháp chưa duyệt">Chờ duyệt bản chỉnh</span>' : ""}
+          ${v.edited ? '<span class="badge ok" title="Đã chỉnh sửa và duyệt (đã thay video gốc)">Đã chỉnh sửa video</span>' : ""}
+          ${v.has_subs ? '<span class="badge">Có phụ đề</span>' : ""}
+          ${v.scheduled ? '<span class="badge warn" title="Đã hẹn lên lịch: huỷ lịch trong Fanpage trước khi chỉnh sửa">Đã lên lịch</span>' : ""}
+          ${pageName(v) ? `<span class="badge">${esc(pageName(v))}</span>` : ""}
+        </div>
+        ${v.scheduled ? "" : '<button class="primary vedit" type="button">Chỉnh sửa video</button>'}
+      </div>
+    </article>`).join("");
+  if (edl.observer) edl.observer.disconnect();
+  edl.observer = new IntersectionObserver((entries) => {
+    entries.forEach((en) => {
+      if (en.isIntersecting) {
+        const vid = en.target;
+        vid.preload = "metadata";
+        vid.src = vid.dataset.src + "#t=0.5";
+        edl.observer.unobserve(vid);
+      }
+    });
+  }, { rootMargin: "200px" });
+  $$("video", $("#ed-grid")).forEach((v) => edl.observer.observe(v));
+}
+$("#ed-status").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { edl.status = b.dataset.st; renderEditorList(); } });
+$("#ed-channel").addEventListener("change", (e) => { edl.channel = e.target.value; renderEditorList(); });
+$("#ed-q").addEventListener("input", (e) => { edl.q = e.target.value; renderEditorList(); });
+$("#ed-refresh").addEventListener("click", loadEditorList);
+$("#ed-grid").addEventListener("click", (e) => {
+  if (e.target.classList.contains("vedit")) openVideoEdit(e.target.closest(".card").dataset.rel);
+});
+
 // Fanpage đang làm việc (chọn ở thanh trên cùng, trước khi vào Thư viện)
 function libPageId() {
   return app.page;
@@ -1216,14 +1290,14 @@ const fmtSec = (n) => (Math.round(n * 10) / 10).toString();
 function veSettings() {
   return {
     framing: $("#ve-framing").value, subs: $("#ve-subs").checked, position: $("#ve-position").value, size: $("#ve-size").value,
-    color: $("#ve-color").value, box: $("#ve-box").checked, loudnorm: $("#ve-loud").checked, hide_orig: $("#ve-hide").checked,
-    audio_clean: $("#ve-aclean").value, quality: $("#ve-quality").value,
+    color: $("#ve-color").value, box: $("#ve-box").checked, loudnorm: $("#ve-loud").checked, hide_orig: $("#ve-hide").checked, trim_bars: $("#ve-trim").checked,
+    audio_clean: $("#ve-aclean").value, quality: $("#ve-quality").value, hook: $("#ve-hook-use").checked,
     orig_volume: Number($("#ve-ov").value), voice_volume: 100,
   };
 }
 function veBusy(on, msg) {
   ve.busy = on;
-  ["#ve-trans", "#ve-render", "#ve-discard", "#ve-approve", "#ve-tr-auto", "#ve-tr-paste", "#ve-tr-undo", "#ve-tr-apply", "#ve-savecues", "#ve-addcue", "#ve-voicefile", "#ve-voicedel", "#ve-os-detect", "#ve-os-save"].forEach((s) => { $(s).disabled = on || (ve.st && ve.st.scheduled); });
+  ["#ve-trans", "#ve-render", "#ve-discard", "#ve-approve", "#ve-tr-auto", "#ve-tr-to", "#ve-tr-paste", "#ve-tr-undo", "#ve-tr-apply", "#ve-savecues", "#ve-addcue", "#ve-voicefile", "#ve-voicedel", "#ve-os-detect", "#ve-os-save"].forEach((s) => { $(s).disabled = on || (ve.st && ve.st.scheduled); });
   if (!on) $("#ve-bar").hidden = true;
   if (msg !== undefined) $("#ve-msg").textContent = msg;
   if (ve.st && ve.st.translate) veTrUi();
@@ -1238,16 +1312,79 @@ function veSetView(v) {
   veCap();
   veOsBox();
 }
+const HK_TYPES = { curiosity: "Gây tò mò", question: "Câu hỏi", number: "Con số", shock: "Gây sốc", benefit: "Lợi ích", story: "Kể chuyện", other: "Khác" };
+function veHookRender() {
+  const h = ve.st.hooks || { proposals: { hooks: [], trend_phrases: [], cta: [], notes: [] }, approved: null, generated_at: "" };
+  const pr = h.proposals;
+  $("#ve-hook-gen").disabled = !ve.st.claude;
+  $("#ve-hook-info").textContent = !ve.st.claude ? "Chưa tìm thấy Claude Code (lệnh `claude`) trên máy. Cài Claude Code, đăng nhập rồi khởi động lại app, hoặc đặt CLAUDE_BIN trong .env."
+    : h.approved ? `Hook đã duyệt: "${h.approved.text.replace(/\n/g, " / ")}"` : (pr.hooks.length ? "Chọn một hook bên dưới (hoặc tự viết), sửa nếu muốn rồi bấm Duyệt hook." : "Chưa có đề xuất. Bấm \"Nhờ Claude đề xuất hook\" (mất khoảng 20 đến 60 giây).");
+  $("#ve-hook-list").innerHTML = pr.hooks.map((x, i) => `
+    <div class="ve-hk"><div class="ve-hk-body"><div class="ve-hk-t">${esc(x.text)}</div>
+      <div class="ve-hk-m"><span class="ve-hk-tag">${esc(HK_TYPES[x.type] || "Khác")}</span>${esc(x.why)}${x.voice ? ` Câu nói mở đầu gợi ý: "${esc(x.voice)}"` : ""}</div></div>
+      <button class="ghost ve-hk-use" type="button" data-i="${i}">Dùng</button></div>`).join("");
+  const extra = [];
+  if (pr.trend_phrases.length) extra.push("<p class=\"hint\"><b>Câu trend gợi ý</b> (chưa kiểm chứng đang hot, tự kiểm tra trước khi dùng):<br>" + pr.trend_phrases.map((x) => `• ${esc(x.text)}${x.use ? ` <i>(${esc(x.use)})</i>` : ""}`).join("<br>") + "</p>");
+  if (pr.cta.length) extra.push("<p class=\"hint\"><b>Câu kêu gọi cuối video</b>:<br>" + pr.cta.map((x) => `• ${esc(x)}`).join("<br>") + "</p>");
+  if (pr.notes.length) extra.push("<p class=\"hint\"><b>Lưu ý từ Claude</b>:<br>" + pr.notes.map((x) => `• ${esc(x)}`).join("<br>") + "</p>");
+  $("#ve-hook-extra").innerHTML = extra.join("");
+  $("#ve-hook-text").value = h.approved ? h.approved.text : $("#ve-hook-text").value;
+  $("#ve-hook-use").disabled = !h.approved;
+  $("#ve-hook-use").checked = !!(h.approved && ve.st.settings.hook);
+  veHookPv();
+}
+function veHookPv() {
+  const vid = $("#ve-video"), pv = $("#ve-hook-pv");
+  const ap = ve.st && ve.st.hooks && ve.st.hooks.approved;
+  const show = ap && $("#ve-hook-use").checked && ve.view === "orig" && vid.currentTime < 3;
+  pv.hidden = !show;
+  if (show) pv.textContent = ap.text;
+}
+$("#ve-video").addEventListener("timeupdate", veHookPv);
+$("#ve-hook-use").addEventListener("change", veHookPv);
+$("#ve-hook-list").addEventListener("click", (e) => {
+  const b = e.target.closest(".ve-hk-use");
+  if (b) $("#ve-hook-text").value = ve.st.hooks.proposals.hooks[Number(b.dataset.i)].text;
+});
+$("#ve-hook-gen").addEventListener("click", async () => {
+  try {
+    await veRunJob("/api/edit/hook/generate", { rel: ve.rel, notes: $("#ve-hook-notes").value }, "Claude đang nghĩ hook...");
+    await veLoad(ve.view);
+  } catch (e) { $("#ve-msg").textContent = e.message; toast(e.message, 8000); }
+});
+$("#ve-hook-ok").addEventListener("click", async () => {
+  try {
+    const text = $("#ve-hook-text").value;
+    if (!text.trim()) { toast("Hãy chọn hoặc viết chữ hook trước.", 5000); return; }
+    await api("/api/edit/hook", "POST", { rel: ve.rel, text });
+    await veLoad(ve.view);
+    $("#ve-hook-use").checked = true;
+    veHookPv();
+    toast("Đã duyệt hook. Tick \"In hook ở 3 giây đầu khi xuất\" rồi Xuất video.");
+  } catch (e) { toast(e.message, 8000); }
+});
+$("#ve-hook-clear").addEventListener("click", async () => {
+  try {
+    await api("/api/edit/hook", "POST", { rel: ve.rel, text: "" });
+    $("#ve-hook-text").value = "";
+    await veLoad(ve.view);
+  } catch (e) { toast(e.message, 8000); }
+});
 function veCap() {
   const vid = $("#ve-video"), cap = $("#ve-cap");
   const c = ve.view === "orig" && $("#ve-subs").checked ? ve.cues.find((x) => vid.currentTime >= x.start && vid.currentTime < x.end) : null;
   cap.hidden = !c;
   if (c) cap.textContent = c.text;
+  const r = $("#ve-position").value === "orig" ? veBandRect() : null;   // "Đúng chỗ sub gốc": phụ đề mới nằm chính giữa vùng sub cũ
+  cap.style.top = r ? r.top + r.height / 2 + "px" : "";
+  cap.style.bottom = r ? "auto" : "";
+  cap.style.transform = r ? "translateY(-50%)" : "";
 }
 function veRenderCues() {
   $("#ve-cuecount").textContent = ve.cues.length ? `(${ve.cues.length} dòng)` : "(chưa có)";
   $("#ve-cues").innerHTML = ve.cues.length ? ve.cues.map((c, i) => `
     <div class="ve-cue" data-i="${i}">
+      <span class="ve-n" aria-label="Câu số ${i + 1}">${i + 1}</span>
       <button class="link ve-play" type="button" title="Nghe lại đoạn này">▶</button>
       <input class="ve-s" type="number" min="0" step="0.1" value="${fmtSec(c.start)}" aria-label="Bắt đầu (giây)">
       <input class="ve-e" type="number" min="0" step="0.1" value="${fmtSec(c.end)}" aria-label="Kết thúc (giây)">
@@ -1259,13 +1396,13 @@ function veRenderCues() {
 }
 function veTrUi() {
   const st = ve.st, any = ve.cues.length > 0, hasSrc = ve.cues.some((c) => c.src);
-  $("#ve-tr-auto").disabled = !any || ve.busy || !!st.scheduled; $("#ve-tr-copy").disabled = !any; $("#ve-tr-paste").disabled = !any || !!st.scheduled;
+  $("#ve-tr-auto").disabled = !any || ve.busy || !!st.scheduled; $("#ve-tr-copyall").disabled = !any; $("#ve-tr-copy").hidden = !hasSrc; $("#ve-tr-paste").disabled = !any || !!st.scheduled;
   $("#ve-tr-undo").hidden = !hasSrc;
   const tr = st.translate;
   $("#ve-tr-hint").textContent = !any ? "" : hasSrc
     ? `Đã dịch${st.translator ? " bằng " + st.translator : " (tay hoặc AI)"}. Dưới mỗi câu có câu gốc để đối chiếu. Hãy đọc lại: AI có thể dịch sai tên riêng hay thuật ngữ.`
-    : tr.ok ? `Dịch tự động bằng ${tr.label} (${tr.model}), hoặc dịch tay: sao chép bản gốc đi dịch rồi dán lại.`
-    : `Dịch tự động chưa dùng được: ${tr.problem} Vẫn dịch tay được: sao chép bản gốc, dịch ở nơi khác rồi bấm "Dán bản dịch…".`;
+    : tr.ok ? `Chọn ngôn ngữ rồi bấm Dịch tự động (${tr.label}, ${tr.model}), hoặc dịch tay: bấm Sao chép tất cả, dịch ở nơi khác rồi bấm "Dán bản dịch…".`
+    : `Dịch tự động chưa dùng được: ${tr.problem} Vẫn dịch tay được: bấm Sao chép tất cả, dịch ở nơi khác rồi bấm "Dán bản dịch…".`;
 }
 // "1. câu" / "1) câu" / "[1] câu" / "1: câu" / "1 - câu"
 const VE_NUM = /^\s*[\[(]?(\d{1,4})(?:[\]).:\-]\s+|\]\s*)(.*)$/;   // cần khoảng trắng sau dấu, để "2.5 triệu" không bị coi là câu số 2
@@ -1328,8 +1465,9 @@ function veRender() {
   const set = st.settings;
   $("#ve-framing").value = set.framing; $("#ve-position").value = set.position; $("#ve-size").value = set.size; $("#ve-color").value = set.color;
   $("#ve-subs").checked = set.subs; $("#ve-box").checked = set.box; $("#ve-loud").checked = set.loudnorm;
-  $("#ve-aclean").value = set.audio_clean; $("#ve-quality").value = set.quality;
+  $("#ve-trim").checked = set.trim_bars; $("#ve-aclean").value = set.audio_clean; $("#ve-quality").value = set.quality;
   veAcRender();
+  veHookRender();
   $("#ve-ov").value = set.orig_volume; $("#ve-ov-n").textContent = set.orig_volume + "%";
   veOsRender();
   $("#ve-view-ed").disabled = !st.draft.exists;
@@ -1376,17 +1514,31 @@ function veOsRender() {
     : 'Chưa dò. Bấm "Dò sub gốc" (khoảng vài giây, chạy trên máy bạn).';
   veOsBox();
 }
-function veOsBox() {
-  const box = $("#ve-os-box"), vid = $("#ve-video");
-  const show = ve.st && !$("#ve-os-opts").hidden && ve.view === "orig" && vid.videoWidth > 0;
-  box.hidden = !show;
-  if (!show) return;
+function veBandRect() {   // vùng sub gốc tính bằng pixel trên khung xem trước (null nếu chưa có vùng hoặc không ở chế độ Bản gốc)
+  const vid = $("#ve-video");
+  if (!ve.st || $("#ve-os-opts").hidden || ve.view !== "orig" || !(vid.videoWidth > 0)) return null;
   const cw = vid.clientWidth, ch = vid.clientHeight, ar = vid.videoWidth / vid.videoHeight;
   let w = cw, h = cw / ar;
   if (h > ch) { h = ch; w = ch * ar; }
   const ox = (cw - w) / 2, oy = (ch - h) / 2, n = (id) => (Number($(id).value) || 0) / 100;
-  box.style.left = ox + n("#ve-os-x") * w + "px"; box.style.top = oy + n("#ve-os-y") * h + "px";
-  box.style.width = n("#ve-os-w") * w + "px"; box.style.height = n("#ve-os-h") * h + "px";
+  return { left: ox + n("#ve-os-x") * w, top: oy + n("#ve-os-y") * h, width: n("#ve-os-w") * w, height: n("#ve-os-h") * h };
+}
+function veOsBox() {
+  const box = $("#ve-os-box"), r = veBandRect();
+  box.hidden = !r;
+  if (r) { box.style.left = r.left + "px"; box.style.top = r.top + "px"; box.style.width = r.width + "px"; box.style.height = r.height + "px"; }
+  veCover();
+  veCap();
+}
+function veCover() {   // xem trước việc che sub gốc: làm mờ vùng đó trong các khoảng có sub (đúng như khi xuất)
+  const el = $("#ve-os-cover"), r = veBandRect(), os = ve.st && ve.st.origsubs;
+  let show = !!r && $("#ve-hide").checked;
+  if (show && $("#ve-os-mode").value === "ranges" && os && os.ranges && os.ranges.length) {
+    const t = $("#ve-video").currentTime;
+    show = os.ranges.some(([a, b]) => t >= a && t <= b);
+  }
+  el.hidden = !show;
+  if (show) { el.style.left = r.left + "px"; el.style.top = r.top + "px"; el.style.width = r.width + "px"; el.style.height = r.height + "px"; }
 }
 function veOsBand() {
   const n = (id) => Math.max(0, Math.min(100, Number($(id).value) || 0)) / 100;
@@ -1399,6 +1551,12 @@ $("#ve-os-detect").addEventListener("click", async () => {
   try {
     await veRunJob("/api/edit/origsubs/detect", { rel: ve.rel }, "Đang dò sub gốc...");
     await veLoad(ve.view);
+    if (ve.st.origsubs && ve.st.origsubs.found) {   // tìm thấy sub cũ: tự bật che và đặt phụ đề mới đè đúng lên chỗ đó (vẫn đổi lại được ở bước 6)
+      $("#ve-hide").checked = true;
+      $("#ve-position").value = "orig";
+      veOsBox();
+      toast("Đã bật che sub gốc và đặt phụ đề mới đúng chỗ sub cũ. Đổi lại ở bước 6 nếu muốn.", 7000);
+    }
   } catch (e) { $("#ve-msg").textContent = e.message; toast(e.message, 8000); }
 });
 $("#ve-os-save").addEventListener("click", async () => {
@@ -1408,6 +1566,9 @@ $("#ve-os-save").addEventListener("click", async () => {
     toast("Đã lưu vùng che sub gốc.");
   } catch (e) { toast(e.message, 8000); }
 });
+$("#ve-hide").addEventListener("change", veCover);
+$("#ve-position").addEventListener("change", veCap);
+$("#ve-os-mode").addEventListener("change", veCover);
 $("#ve-hide").addEventListener("change", () => { if ($("#ve-hide").checked && $("#ve-position").value === "bottom") toast('Gợi ý: chọn vị trí phụ đề "Đúng chỗ sub gốc" để sub mới nằm trên vùng đã che.', 7000); });
 
 async function veLoad(keepView) {
@@ -1418,7 +1579,7 @@ async function veLoad(keepView) {
 }
 async function openVideoEdit(rel) {
   ve.rel = rel;
-  const v = lib.videos.find((x) => x.rel === rel);
+  const v = lib.videos.find((x) => x.rel === rel) || edl.videos.find((x) => x.rel === rel);
   $("#ve-name").textContent = v ? v.title : rel;
   try {
     await veLoad();
@@ -1447,10 +1608,10 @@ async function veSaveCues() {
   return r.cues;
 }
 $("#ve-close").addEventListener("click", () => $("#ve-dlg").close());
-$("#ve-dlg").addEventListener("close", () => { $("#ve-video").pause(); loadLibrary(); });
+$("#ve-dlg").addEventListener("close", () => { $("#ve-video").pause(); loadLibrary(); if (!app.page && app.view === "editor") loadEditorList(); });
 $("#ve-dlg").addEventListener("click", (e) => { if (e.target === $("#ve-dlg") && !ve.busy) $("#ve-dlg").close(); });
 document.querySelectorAll("input[name=ve-view]").forEach((r) => r.addEventListener("change", (e) => veSetView(e.target.value)));
-$("#ve-video").addEventListener("timeupdate", veCap);
+$("#ve-video").addEventListener("timeupdate", () => { veCap(); veCover(); });
 $("#ve-subs").addEventListener("change", veCap);
 $("#ve-ov").addEventListener("input", () => { $("#ve-ov-n").textContent = $("#ve-ov").value + "%"; });
 $("#ve-cues").addEventListener("click", (e) => {
@@ -1464,6 +1625,10 @@ $("#ve-cues").addEventListener("click", (e) => {
     vid.addEventListener("loadedmetadata", () => { vid.currentTime = start; vid.play(); }, { once: true });
     if (vid.readyState >= 1) { vid.currentTime = start; vid.play(); }
   }
+});
+$("#ve-tr-copyall").addEventListener("click", () => {
+  const cues = veReadCues();
+  veCopy(cues.map((c, i) => `${i + 1}. ${c.text.replace(/\n/g, " ")}`).join("\n"), `Đã sao chép ${cues.length} câu (đánh số). Dịch xong, bấm "Dán bản dịch…".`);
 });
 $("#ve-tr-copy").addEventListener("click", () => {
   const cues = veReadCues();
@@ -1495,7 +1660,7 @@ $("#ve-tr-auto").addEventListener("click", async () => {
   if (ve.cues.some((c) => c.src) && !confirm("Dịch lại sẽ thay các câu đã dịch (kể cả phần bạn đã sửa). Tiếp tục?")) return;
   try {
     await veSaveCues();
-    await veRunJob("/api/edit/translate", { rel: ve.rel, to: "vi" }, "Đang dịch phụ đề...");
+    await veRunJob("/api/edit/translate", { rel: ve.rel, to: $("#ve-tr-to").value }, "Đang dịch phụ đề...");
     await veLoad(ve.view);
   } catch (e) { $("#ve-msg").textContent = e.message; toast(e.message, 8000); }
 });
@@ -1723,8 +1888,8 @@ const FIELDS = [
   ["TELEGRAM_BOT_TOKEN", "Token bot Telegram (tạo bằng @BotFather)", "secret", "nt"],
   ["TELEGRAM_CHAT_ID", "Chat ID Telegram nhận tin", "text", "nt"],
   ["LOW_STOCK_DAYS", "Báo \"sắp hết video\" khi Page chỉ còn đủ bài cho dưới bao nhiêu ngày", "number", "nt"],
-  ["TRANSLATE_PROVIDER", "Nhà cung cấp", "select", "tr", [["anthropic", "Anthropic (Claude)"], ["openai", "Tương thích OpenAI (OpenAI, Gemini, OpenRouter, Groq, Ollama...)"]]],
-  ["TRANSLATE_API_KEY", "Khóa API (để trống nếu chạy model trên máy)", "secret", "tr"],
+  ["TRANSLATE_PROVIDER", "Nhà cung cấp", "select", "tr", [["claude-code", "Claude Code (dùng đăng nhập Claude trên máy, không cần khóa API)"], ["anthropic", "Anthropic (Claude)"], ["openai", "Tương thích OpenAI (OpenAI, Gemini, OpenRouter, Groq, Ollama...)"]]],
+  ["TRANSLATE_API_KEY", "Khóa API (không cần khi dùng Claude Code; để trống nếu chạy model trên máy)", "secret", "tr"],
   ["TRANSLATE_MODEL", "Model", "text", "tr", null, "Để trống = mặc định của hãng (claude-haiku-5-5 / gpt-4o-mini)"],
   ["TRANSLATE_BASE_URL", "Địa chỉ API (tuỳ chọn)", "text", "tr", null, "Để trống = địa chỉ chính thức của hãng"],
   ["FB_APP_ID", "Facebook App ID", "text", "tok"],

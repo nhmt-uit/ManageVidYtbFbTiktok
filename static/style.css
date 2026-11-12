@@ -387,7 +387,8 @@ small.bad { color: var(--bad); }
 .st-recent .muted, .st-table .muted { color: var(--muted); }
 
 /* Chỉnh sửa video */
-.ve-grid { display: grid; grid-template-columns: minmax(220px, 300px) 1fr; gap: 16px; align-items: start; }
+.ve-grid { display: grid; grid-template-columns: minmax(260px, 380px) 1fr; gap: 20px; align-items: start; }
+dialog#ve-dlg.modal { width: min(1320px, 97vw); }
 .ve-side { position: sticky; top: 0; display: grid; gap: 8px; }
 .ve-vwrap { position: relative; background: #000; border-radius: 10px; overflow: hidden; }
 .ve-vwrap video { width: 100%; max-height: 60vh; display: block; background: #000; }
@@ -398,9 +399,10 @@ small.bad { color: var(--bad); }
 .ve-sec h3 { margin: 0 0 6px; font-size: 15px; }
 .ve-sec .hint { margin: 2px 0 10px; }
 .ve-sec .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
-.ve-cues { display: grid; gap: 6px; max-height: 300px; overflow: auto; margin-bottom: 8px; }
-.ve-cue { display: grid; grid-template-columns: 24px 64px 64px 1fr auto; gap: 6px; align-items: start; }
-.ve-cue .ve-src { grid-column: 4 / 5; font-size: 12px; color: var(--muted, #6b7280); display: flex; gap: 6px; align-items: baseline; }
+.ve-cues { display: grid; gap: 6px; max-height: 55vh; overflow: auto; margin-bottom: 8px; }
+.ve-cue { display: grid; grid-template-columns: 30px 24px 64px 64px 1fr auto; gap: 6px; align-items: start; }
+.ve-cue .ve-n { text-align: right; font-size: 13px; font-weight: 600; color: var(--muted, #6b7280); padding-top: 6px; }
+.ve-cue .ve-src { grid-column: 5 / 6; font-size: 12px; color: var(--muted, #6b7280); display: flex; gap: 6px; align-items: baseline; }
 .ve-cue .ve-src span { flex: 1; overflow-wrap: anywhere; }
 .ve-acts { display: flex; flex-direction: column; gap: 2px; align-items: flex-end; }
 .ve-trbox textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 14px; }
@@ -415,7 +417,7 @@ small.bad { color: var(--bad); }
   .ve-grid { grid-template-columns: 1fr; }
   .ve-side { position: static; }
   .ve-vwrap video { max-height: 45vh; }
-  .ve-cue { grid-template-columns: 24px 1fr 1fr; }
+  .ve-cue { grid-template-columns: 30px 24px 1fr 1fr; }
   .ve-cue .ve-t { grid-column: 1 / -1; }
   .ve-cue .ve-acts { grid-column: 2 / -1; flex-direction: row; justify-self: end; }
   .ve-cue .ve-src { grid-column: 1 / -1; }
@@ -442,3 +444,13 @@ details.rn-tool ol { margin: 6px 0 8px 18px; padding: 0; }
 .file-row .hint { margin: 0; }
 #ve-os-box { position: absolute; border: 2px dashed #ff9800; background: rgba(255, 152, 0, .18); box-sizing: border-box; pointer-events: none; }
 .ve-sec .row .ve-chk { display: flex; gap: 8px; align-items: center; }
+#ve-hook-pv { position: absolute; left: 6%; right: 6%; top: 14%; text-align: center; color: #ffe600; font-weight: 800; font-size: 20px; line-height: 1.2; text-shadow: 0 0 5px #000, 0 0 5px #000, 2px 2px 3px #000; pointer-events: none; white-space: pre-line; }
+.ve-hk { display: flex; gap: 8px; align-items: flex-start; padding: 6px 0; border-bottom: 1px solid var(--line, #ddd); }
+.ve-hk .ve-hk-body { flex: 1 1 auto; }
+.ve-hk .ve-hk-t { font-weight: 600; white-space: pre-line; }
+.ve-hk .ve-hk-m { font-size: 12px; opacity: .75; }
+.ve-hk-tag { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 8px; background: rgba(127,127,127,.2); margin-right: 6px; }
+#ve-os-cover { position: absolute; backdrop-filter: blur(7px) brightness(.6); -webkit-backdrop-filter: blur(7px) brightness(.6); pointer-events: none; }
+.ve-trto { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; }
+.ve-trto select { width: auto; }
+

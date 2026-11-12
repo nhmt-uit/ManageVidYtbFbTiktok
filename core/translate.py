@@ -16,9 +16,10 @@ from urllib.parse import urlparse
 
 import requests
 
-from . import config
+from . import config, hooks
 
 PROVIDERS = {
+    "claude-code": {"label": "Claude Code (dùng đăng nhập Claude trên máy, không cần khóa API)", "base": "", "model": ""},
     "anthropic": {"label": "Anthropic (Claude)", "base": "https://api.anthropic.com", "model": "claude-haiku-5-5"},
     "openai": {"label": "Tương thích OpenAI", "base": "https://api.openai.com/v1", "model": "gpt-4o-mini"},
 }
@@ -40,10 +41,16 @@ class FormatError(TranslateError):
 
 def settings() -> dict:
     """Cấu hình hiện tại và có dùng được không. Không bao giờ chứa khóa API."""
-    provider = (config.get("TRANSLATE_PROVIDER") or "anthropic").strip().lower()
+    provider = (config.get("TRANSLATE_PROVIDER") or "").strip().lower()
     if provider not in PROVIDERS:
-        provider = "anthropic"
+        provider = "claude-code"
+    if provider == "claude-code" and not hooks.find_claude() and config.get("TRANSLATE_API_KEY"):
+        provider = "anthropic"   # máy chưa cài Claude Code nhưng đã nhập khóa API: giữ cách dịch bằng API như trước
     spec = PROVIDERS[provider]
+    if provider == "claude-code":
+        model = (config.get("HOOK_MODEL") or "").strip() or "mặc định của Claude Code"
+        problem = "" if hooks.find_claude() else "Chưa tìm thấy lệnh `claude` (Claude Code) trên máy. Cài Claude Code và đăng nhập, hoặc chọn nhà cung cấp khác ở Cài đặt chung > Dịch phụ đề."
+        return {"provider": provider, "label": spec["label"], "base": "", "model": model, "ok": not problem, "problem": problem}
     base = (config.get("TRANSLATE_BASE_URL") or spec["base"]).strip().rstrip("/")
     model = (config.get("TRANSLATE_MODEL") or spec["model"]).strip()
     problem = ""
@@ -106,7 +113,13 @@ def _post(url: str, headers: dict, payload: dict) -> dict:
 
 def _complete(cfg: dict, system: str, user: str) -> str:
     """Gửi một yêu cầu và trả về chữ trả lời."""
-    if cfg["provider"] == "anthropic":
+    if cfg["provider"] == "claude-code":
+        try:
+            text = hooks.run_claude(system + "\n\n" + user, cancelled=cfg.get("cancelled") or (lambda: False),
+                                    model=(config.get("HOOK_MODEL") or "").strip())
+        except hooks.HookError as exc:
+            raise TranslateError(str(exc)) from exc
+    elif cfg["provider"] == "anthropic":
         j = _post(cfg["base"] + "/v1/messages",
                   {"x-api-key": _key(), "anthropic-version": "2023-06-01", "content-type": "application/json"},
                   {"model": cfg["model"], "max_tokens": 8192, "system": system,
@@ -182,6 +195,7 @@ def translate_lines(lines: list[str], source: str = "en", target: str = "vi", pr
     cfg = settings()
     if not cfg["ok"]:
         raise TranslateError(cfg["problem"])
+    cfg["cancelled"] = cancelled
     if target not in TARGETS:
         raise TranslateError("Ngôn ngữ đích không hỗ trợ.")
     system = _system_prompt(SOURCES.get(source, "the source language (detect it)"), TARGETS[target])
