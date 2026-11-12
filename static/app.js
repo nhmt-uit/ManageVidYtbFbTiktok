@@ -1569,7 +1569,14 @@ $("#ve-os-save").addEventListener("click", async () => {
 $("#ve-hide").addEventListener("change", veCover);
 $("#ve-position").addEventListener("change", veCap);
 $("#ve-os-mode").addEventListener("change", veCover);
-$("#ve-hide").addEventListener("change", () => { if ($("#ve-hide").checked && $("#ve-position").value === "bottom") toast('Gợi ý: chọn vị trí phụ đề "Đúng chỗ sub gốc" để sub mới nằm trên vùng đã che.', 7000); });
+// Che sub gốc mà phụ đề mới vẫn ở "Dưới/Giữa/Trên" thì sub mới nằm lệch khỏi vùng đã che: tự chuyển sang "Đúng chỗ sub gốc"
+function veAlignToOrig() {
+  if (!$("#ve-hide").checked || $("#ve-hide").disabled || $("#ve-position").value === "orig") return false;
+  $("#ve-position").value = "orig"; veCap();
+  toast('Đã đặt vị trí phụ đề là "Đúng chỗ sub gốc" để sub mới nằm đè lên vùng sub cũ đã che. Muốn đặt chỗ khác thì chọn lại ở mục Vị trí phụ đề.', 7000);
+  return true;
+}
+$("#ve-hide").addEventListener("change", veAlignToOrig);
 
 async function veLoad(keepView) {
   ve.st = await api("/api/edit/status?rel=" + encodeURIComponent(ve.rel));
@@ -1707,6 +1714,7 @@ $("#ve-voicedel").addEventListener("click", async () => {
 $("#ve-render").addEventListener("click", async () => {
   try {
     if ($("#ve-subs").checked && document.querySelector("#ve-cues .ve-cue")) await veSaveCues();
+    if ($("#ve-subs").checked) veAlignToOrig();   // đừng xuất ra bản sub mới lệch khỏi chỗ đã che mà người dùng không biết
     await veRunJob("/api/edit/render", { rel: ve.rel, settings: veSettings() }, "Đang xuất video...");
     await veLoad("draft");
   } catch (e) { $("#ve-msg").textContent = e.message; toast(e.message, 8000); }

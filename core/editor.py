@@ -815,6 +815,8 @@ def render_job(job, rel: str, settings: dict | None = None) -> str:
                 raise EditError("Chưa dò sub gốc cho video này. Bấm \"Dò sub gốc\" ở bước Che sub gốc, hoặc bỏ tick \"Che sub gốc khi xuất\".")
             cover = origsubs.cover_chain(oi, src["width"], src["height"])
             job.log("Che sub gốc: " + ("chỉ trong các khoảng có sub." if oi["mode"] == "ranges" else "suốt video."))
+        if s["hide_orig"] and s["subs"] and s["position"] != "orig":
+            job.log(f"Lưu ý: vùng sub gốc được che nhưng phụ đề mới đặt ở vị trí \"{s['position']}\" nên sẽ không nằm đúng chỗ sub cũ. Muốn đè lên sub cũ, chọn vị trí \"Đúng chỗ sub gốc\".")
         if s["position"] == "orig":
             if oi["found"]:
                 x, y, w, h = origsubs.pixel_rect(oi, src["width"], src["height"])
