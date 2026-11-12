@@ -167,6 +167,13 @@ Xuất xong chỉ ra **bản nháp** `video.draft.mp4`; chưa duyệt thì video
 - Cần thư viện `numpy` (đã thêm vào `requirements.txt`). Máy đã cài trước đó: `.venv/bin/pip install numpy` rồi `./service.sh restart`.
 - Sub nằm sát mép khung hoặc quá mờ/nhỏ có thể không dò ra: dùng nhập tay như bước 2. `origsubs.json` bị xoá khi bạn Duyệt (video mới đã che xong, dữ liệu cũ không còn đúng).
 
+**Làm sạch âm thanh và chất lượng xuất (bước 5):**
+- **Làm sạch âm thanh** chỉ áp cho tiếng của video gốc, không đụng giọng đọc bạn thêm vào. *Nhẹ*: cắt tiếng ù thấp và giảm ồn nền. *Rõ giọng nói*: thêm tăng dải giọng (3 kHz) và nén nhẹ cho tiếng đều hơn. Mặc định *Tắt*. Video có nhạc nền thì nên dùng *Nhẹ*, vì giảm ồn mạnh có thể làm nhạc nghe méo.
+- **Phân tích âm thanh** (nút ngay dưới ô chọn): ffmpeg và numpy đo mức ồn nền, độ chênh giữa tiếng nói và nền, tiếng ù trầm, tiếng xì dải cao, độ lớn (LUFS) và âm thanh bị vỡ, rồi gợi ý chế độ làm sạch kèm lý do. Bấm **Dùng gợi ý** để điền vào ô chọn. Đây chỉ là số đo và ngưỡng kinh nghiệm (chưa hiệu chỉnh trên nhiều video thật), không phải tai nghe: luôn nghe lại bản nháp trước khi Duyệt. Kết quả lưu ở `audioscan.json` của video và bị xoá khi Duyệt.
+- Sau khi xuất có làm sạch (và không trộn giọng đọc), app đo lại 60 giây đầu và ghi độ chênh tiếng nói so với nền trước/sau vào nhật ký tác vụ và `edit.json` (`audio_report`). Video có nhạc nền liên tục thường chỉ cải thiện rất ít.
+- **Chất lượng xuất**: *Nhẹ* (CRF 23, âm thanh 128k), *Chuẩn* (CRF 20, 160k, mặc định), *Cao* (CRF 17, 192k, file lớn hơn).
+- Video dài hơn 90 giây vẫn xuất được nhưng app ghi cảnh báo trong nhật ký và trong thông báo kết quả.
+
 Cài công cụ một lần: `bash tools/install_editor_tools.sh` (FFmpeg, whisper.cpp + model, Node 22, HyperFrames). Bản `ffmpeg` thường của Homebrew thiếu bộ lọc phụ đề (libass): cần `brew uninstall ffmpeg && brew install ffmpeg-full`. App tự tìm công cụ; nếu để chỗ khác, đặt trong `.env`: `FFMPEG_PATH`, `WHISPER_CLI`, `WHISPER_MODEL` (đường dẫn, hoặc tên như `large-v3-turbo`), `WHISPER_DIR`, `EDIT_FONT` (mặc định Arial). Phiên âm tiếng Việt cần model đa ngôn ngữ (không phải `.en`); `large-v3-turbo` cho kết quả tốt nhất, `small` hay `medium` nhanh hơn. Whisper nhận lời nói chưa hoàn hảo nên luôn xem lại phụ đề trước khi xuất.
 
 ## Tải video TikTok (không logo), Rednote và nhóm theo phim

@@ -547,6 +547,10 @@
               <label class="ve-chk"><input type="checkbox" id="ve-subs" checked> In phụ đề vào video</label>
               <label class="ve-chk"><input type="checkbox" id="ve-box"> Nền mờ sau chữ</label>
               <label class="ve-chk"><input type="checkbox" id="ve-loud" checked> Chuẩn hóa âm lượng</label>
+              <label>Làm sạch âm thanh <select id="ve-aclean"><option value="off">Tắt</option><option value="light">Nhẹ (giảm ồn nền)</option><option value="voice">Rõ giọng nói (giảm ồn + làm rõ giọng)</option></select></label>
+              <label>Chất lượng xuất <select id="ve-quality"><option value="fast">Nhẹ (file nhỏ)</option><option value="standard">Chuẩn</option><option value="high">Cao (file lớn)</option></select></label>
+              <div class="row"><button class="ghost" id="ve-ac-scan" type="button">Phân tích âm thanh</button> <button class="ghost" id="ve-ac-apply" type="button" hidden>Dùng gợi ý</button></div>
+              <p class="hint" id="ve-ac-info">Đo độ ồn nền, tiếng ù, tiếng xì rồi gợi ý chế độ làm sạch phù hợp (chạy trên máy bạn, vài giây).</p>
               <label id="ve-ov-wrap">Âm gốc khi có giọng đọc <input type="range" id="ve-ov" min="0" max="100" step="5" value="25"> <span id="ve-ov-n">25%</span></label>
             </div>
             <div class="actions">

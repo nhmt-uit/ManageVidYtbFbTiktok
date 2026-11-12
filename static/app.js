@@ -1217,6 +1217,7 @@ function veSettings() {
   return {
     framing: $("#ve-framing").value, subs: $("#ve-subs").checked, position: $("#ve-position").value, size: $("#ve-size").value,
     color: $("#ve-color").value, box: $("#ve-box").checked, loudnorm: $("#ve-loud").checked, hide_orig: $("#ve-hide").checked,
+    audio_clean: $("#ve-aclean").value, quality: $("#ve-quality").value,
     orig_volume: Number($("#ve-ov").value), voice_volume: 100,
   };
 }
@@ -1327,6 +1328,8 @@ function veRender() {
   const set = st.settings;
   $("#ve-framing").value = set.framing; $("#ve-position").value = set.position; $("#ve-size").value = set.size; $("#ve-color").value = set.color;
   $("#ve-subs").checked = set.subs; $("#ve-box").checked = set.box; $("#ve-loud").checked = set.loudnorm;
+  $("#ve-aclean").value = set.audio_clean; $("#ve-quality").value = set.quality;
+  veAcRender();
   $("#ve-ov").value = set.orig_volume; $("#ve-ov-n").textContent = set.orig_volume + "%";
   veOsRender();
   $("#ve-view-ed").disabled = !st.draft.exists;
@@ -1339,6 +1342,23 @@ function veRender() {
     : st.approved ? "Video này đã được chỉnh sửa và duyệt. Xuất lần nữa sẽ chồng thêm lên bản hiện tại (phụ đề cũ đã in cố định)." : "Chưa có bản nháp: hẹn giờ đăng đang dùng video gốc.";
 }
 // ---- Che sub gốc (chữ in cứng trong video) ----
+const AC_NAMES = { off: "Tắt", light: "Nhẹ", voice: "Rõ giọng nói" };
+function veAcRender() {
+  const a = ve.st.audioscan || {};
+  const has = !!a.scanned_at;
+  $("#ve-ac-apply").hidden = !(has && a.has_audio);
+  if (!has) return;
+  const m = a.metrics || {};
+  const nums = m.noise_floor_db !== undefined ? ` (nền ${m.noise_floor_db} dB, chênh ${m.snr_db} dB${m.lufs !== undefined ? `, ${m.lufs} LUFS` : ""})` : "";
+  $("#ve-ac-info").textContent = `Gợi ý: ${AC_NAMES[a.recommend]}.${nums} ` + (a.reasons || []).join(" ") + " Đây chỉ là số đo, hãy nghe lại bản nháp trước khi duyệt.";
+}
+$("#ve-ac-scan").addEventListener("click", async () => {
+  try {
+    await veRunJob("/api/edit/audio/scan", { rel: ve.rel }, "Đang phân tích âm thanh...");
+    await veLoad(ve.view);
+  } catch (e) { $("#ve-msg").textContent = e.message; toast(e.message, 8000); }
+});
+$("#ve-ac-apply").addEventListener("click", () => { const a = ve.st.audioscan || {}; if (a.recommend) $("#ve-aclean").value = a.recommend; });
 function veOsRender() {
   const os = ve.st.origsubs || { found: false, detected_at: "", band: { x: 0.1, y: 0.74, w: 0.8, h: 0.05 }, ranges: [], mode: "ranges" };
   const ran = !!os.detected_at;

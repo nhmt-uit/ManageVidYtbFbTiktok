@@ -330,6 +330,22 @@ def api_edit_origsubs_save():
         return err(str(e))
 
 
+@app.post("/api/edit/audio/scan")
+def api_edit_audio_scan():
+    d = body()
+    try:
+        folder = library.resolve(_edit_rel(d))
+    except ValueError as e:
+        return err(str(e), 404)
+    if manager.has_running("edit"):
+        return err("Đang có một tác vụ chỉnh sửa khác chạy. Đợi nó xong rồi thử lại.", 409)
+    t = editor.tools(refresh=True)
+    if not t["ffmpeg"]["ok"]:
+        return err(t["ffmpeg"]["problem"], 409)
+    job = manager.start("edit", f"Phân tích âm thanh: {folder.name}", editor.scan_audio_job, _edit_rel(d))
+    return jsonify({"job": job.id})
+
+
 @app.post("/api/translate/test")
 def api_translate_test():
     """Dịch thử một câu bằng cấu hình đang lưu để kiểm tra khóa, địa chỉ và model."""

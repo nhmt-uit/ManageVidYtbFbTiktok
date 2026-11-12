@@ -23,7 +23,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import config, library, origsubs, reelcheck, translate
+from . import audioscan, config, library, origsubs, reelcheck, translate
 from .videofile import APPROVED, DRAFT, ORIGINAL
 
 SUBS_FILE = "subs.json"
@@ -47,9 +47,18 @@ DEFAULT_SETTINGS = {
     "voice_volume": 100,     # % âm lượng giọng đọc
     "loudnorm": True,        # chuẩn hóa âm lượng về mức Reels hay dùng
     "hide_orig": False,      # làm mờ sub in cứng có sẵn trong video (cần dò trước, xem origsubs.py)
+    "audio_clean": "off",    # off | light | voice: làm sạch âm thanh của video gốc (không áp cho giọng đọc thêm vào)
+    "quality": "standard",   # fast | standard | high: chất lượng hình và âm thanh khi xuất
 }
 CHOICES = {"framing": ("auto", "scale", "fit", "crop"), "position": ("bottom", "middle", "top", "orig"),   # orig = đúng chỗ sub gốc
-           "size": ("small", "medium", "large"), "color": ("white", "yellow", "cyan")}
+           "size": ("small", "medium", "large"), "color": ("white", "yellow", "cyan"),
+           "audio_clean": ("off", "light", "voice"), "quality": ("fast", "standard", "high")}
+# audio_clean: light = cắt tiếng ù thấp + giảm ồn nền; voice = thêm làm rõ giọng nói (tăng dải 3 kHz, nén nhẹ cho đều tiếng)
+AUDIO_CLEAN = {"off": "",
+               "light": "highpass=f=80,afftdn=nf=-28",
+               "voice": "highpass=f=90,lowpass=f=13000,afftdn=nf=-25,equalizer=f=3000:t=q:w=1:g=3,acompressor=threshold=0.1:ratio=3:attack=10:release=250"}
+QUALITY = {"fast": (23, "128k"), "standard": (20, "160k"), "high": (17, "192k")}   # (crf x264, bitrate âm thanh)
+MAX_SECONDS = 90   # nên đăng Reels/Shorts/TikTok dưới mức này
 FONT_SIZES = {"small": 54, "medium": 66, "large": 80}
 COLORS = {"white": "&H00FFFFFF", "yellow": "&H0000E6FF", "cyan": "&H00FFE600"}   # ASS dùng thứ tự BGR
 ALIGN = {"bottom": (2, 330), "middle": (5, 0), "top": (8, 260), "orig": (5, 0)}                    # (Alignment, MarginV)
@@ -350,7 +359,8 @@ def status(rel: str) -> dict:
             "transcribed": bool(subs.get("created_at")), "voice": voice_info(folder), "draft": dr, "translate": {k: v for k, v in translate.settings().items() if k != "base"}, "translated_to": subs.get("translated_to", ""),
             "translator": subs.get("translator", ""),
             "approved": _read_json(folder / APPROVED).get("approved_at", ""), "settings": settings,
-            "scheduled": is_scheduled(folder), "langs": LANGS, "busy": _busy.locked(), "origsubs": origsubs_info(folder)}
+            "scheduled": is_scheduled(folder), "langs": LANGS, "busy": _busy.locked(), "origsubs": origsubs_info(folder),
+            "audioscan": _read_json(folder / audioscan.FILE)}
 
 
 def discard(rel: str) -> None:
@@ -380,7 +390,7 @@ def approve(rel: str) -> str:
             raise EditError("Bản nháp không đọc được (file hỏng?). Hãy xuất lại.")
         settings = _read_json(folder / SETTINGS_FILE).get("settings", {})
         os.replace(draft, folder / ORIGINAL)   # nguyên tử: video.mp4 luôn là một file đầy đủ
-        for name in (SUBS_FILE, SETTINGS_FILE, origsubs.FILE):
+        for name in (SUBS_FILE, SETTINGS_FILE, origsubs.FILE, audioscan.FILE):
             (folder / name).unlink(missing_ok=True)
         _remove_voice_files(folder)
         _write_json(folder / APPROVED, {"approved_at": datetime.now(timezone.utc).isoformat(), "settings": settings})
@@ -441,6 +451,28 @@ def detect_origsubs_job(job, rel: str) -> str:
         total = sum(z - a for a, z in res["ranges"])
         return (f"Đã dò sub gốc: {len(res['ranges'])} khoảng có sub (tổng {total:.0f} giây), vùng che cách mép trên {b['y'] * 100:.0f}% và cao {b['h'] * 100:.0f}%. "
                 "Xem khung đứt nét trên video, chỉnh nếu cần rồi tick \"Che sub gốc khi xuất\".")
+    finally:
+        _busy.release()
+
+
+def scan_audio_job(job, rel: str) -> str:
+    """Đo âm thanh video gốc và lưu gợi ý chế độ làm sạch vào audioscan.json."""
+    if not _busy.acquire(blocking=False):
+        raise EditError("Đang có một tác vụ chỉnh sửa khác chạy. Đợi nó xong rồi thử lại.")
+    try:
+        t = tools(refresh=True)
+        if not t["ffmpeg"]["ok"]:
+            raise EditError(t["ffmpeg"]["problem"])
+        folder = library.resolve(rel)
+        src = probe_media(folder / ORIGINAL)
+        job.log("Đang đo âm thanh (độ ồn nền, tiếng ù, tiếng xì, độ lớn)...")
+        try:
+            res = audioscan.scan(t["ffmpeg"]["path"], folder / ORIGINAL, has_audio=src["has_audio"])
+        except audioscan.ScanError as exc:
+            raise EditError(str(exc)) from exc
+        _write_json(folder / audioscan.FILE, res)
+        names = {"off": "Tắt", "light": "Nhẹ", "voice": "Rõ giọng nói"}
+        return "Đã phân tích âm thanh. Gợi ý: " + names[res["recommend"]] + ". " + " ".join(res["reasons"][-1:])
     finally:
         _busy.release()
 
@@ -651,17 +683,19 @@ def build_filter(src: dict, s: dict, voice: bool, ass: bool, cover: str = "") ->
         vf = cover + ";" + vf
     vf += ";[vf]subtitles=subs.ass[v]" if ass else ";[vf]null[v]"
     norm = ",loudnorm=I=-16:TP=-1.5:LRA=11" if s["loudnorm"] else ""
+    clean = AUDIO_CLEAN[s["audio_clean"]]
+    clean = clean + "," if clean else ""   # nối trước volume/anull của âm thanh video gốc
     maps = ["-map", "[v]"]
     parts = [vf]
     if src["has_audio"] and voice:
-        parts.append(f"[0:a]volume={s['orig_volume'] / 100:.2f}[o];[1:a]volume={s['voice_volume'] / 100:.2f}[vo];"
+        parts.append(f"[0:a]{clean}volume={s['orig_volume'] / 100:.2f}[o];[1:a]volume={s['voice_volume'] / 100:.2f}[vo];"
                      f"[o][vo]amix=inputs=2:duration=first:dropout_transition=0:normalize=0{norm}[a]")
         maps += ["-map", "[a]"]
     elif voice:
         parts.append(f"[1:a]volume={s['voice_volume'] / 100:.2f}{norm}[a]")
         maps += ["-map", "[a]"]
     elif src["has_audio"]:
-        parts.append(f"[0:a]anull{norm}[a]")
+        parts.append(f"[0:a]{clean}anull{norm}[a]")
         maps += ["-map", "[a]"]
     return ";".join(parts), maps
 
@@ -684,6 +718,9 @@ def render_job(job, rel: str, settings: dict | None = None) -> str:
         src = probe_media(src_path)
         if not src["width"]:
             raise EditError("Không đọc được video gốc.")
+        if s["audio_clean"] != "off" and not _has_filter(t["ffmpeg"]["path"], "afftdn"):
+            s["audio_clean"] = "off"
+            job.log("FFmpeg này không có bộ lọc giảm ồn (afftdn) nên bỏ qua bước làm sạch âm thanh.")
         cues = clean_cues(load_subs(folder)["cues"], src["duration"]) if s["subs"] else []
         if s["subs"] and not cues:
             s["subs"] = False
@@ -706,6 +743,11 @@ def render_job(job, rel: str, settings: dict | None = None) -> str:
                 job.log("Chưa dò sub gốc nên phụ đề mới đặt ở vị trí mặc định (dưới).")
                 s["position"] = "bottom"
         voice = voice_file(folder)
+        crf, abr = QUALITY[s["quality"]]
+        long_note = ""
+        if src["duration"] and src["duration"] > MAX_SECONDS + 0.5:
+            long_note = f" Lưu ý: video dài {src['duration']:.0f} giây, vượt mức {MAX_SECONDS} giây nên dễ bị giảm phân phối; cân nhắc cắt bớt hoặc tách thành 2 phần."
+            job.log(long_note.strip())
         fc, maps = build_filter(src, s, voice is not None, bool(cues), cover)
         job.log(f"Xuất video {OUT_W}x{OUT_H}" + (f", {len(cues)} dòng phụ đề" if cues else "") + (f", kèm giọng đọc {voice.name}" if voice else "") + "...")
         with tempfile.TemporaryDirectory(prefix="mvt-render-") as tmp:
@@ -716,8 +758,8 @@ def render_job(job, rel: str, settings: dict | None = None) -> str:
             cmd = [t["ffmpeg"]["path"], "-nostdin", "-v", "error", "-nostats", "-y", "-i", str(src_path)]
             if voice:
                 cmd += ["-i", str(voice)]
-            cmd += ["-filter_complex", fc, *maps, "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
-                    "-c:a", "aac", "-b:a", "160k", "-ar", "44100", "-movflags", "+faststart", "-progress", "pipe:1"]
+            cmd += ["-filter_complex", fc, *maps, "-c:v", "libx264", "-preset", "veryfast", "-crf", str(crf), "-pix_fmt", "yuv420p",
+                    "-c:a", "aac", "-b:a", abr, "-ar", "44100", "-movflags", "+faststart", "-progress", "pipe:1"]
             if src["duration"]:
                 cmd += ["-t", f"{src['duration']:.3f}"]
             cmd.append(str(out_tmp))
@@ -740,10 +782,20 @@ def render_job(job, rel: str, settings: dict | None = None) -> str:
                 out_tmp.unlink(missing_ok=True)
                 raise EditError("FFmpeg báo lỗi: " + (_tail(errf) or f"mã {proc.returncode}"))
         out_tmp.replace(folder / DRAFT)
+        audio_report = ""
+        if s["audio_clean"] != "off" and src["has_audio"] and not voice:   # có giọng đọc trộn vào thì so sánh không còn công bằng
+            try:
+                before = audioscan.scan(t["ffmpeg"]["path"], src_path, seconds=60)
+                after = audioscan.scan(t["ffmpeg"]["path"], folder / DRAFT, seconds=60)
+                audio_report = audioscan.compare(before, after)
+                if audio_report:
+                    job.log("Làm sạch âm thanh: " + audio_report)
+            except (audioscan.ScanError, ValueError, OSError):
+                pass
         _write_json(folder / SETTINGS_FILE, {"settings": s, "edited_at": datetime.now(timezone.utc).isoformat(), "voice": voice.name if voice else "",
-                                              "cues": len(cues)})
+                                              "cues": len(cues), "audio_report": audio_report})
         job.set_progress(100, 100)
         mb = (folder / DRAFT).stat().st_size / 1048576
-        return f"Đã xuất bản nháp ({mb:.1f} MB). Xem thử rồi bấm Duyệt để thay video gốc; chưa duyệt thì hẹn giờ vẫn dùng video gốc."
+        return f"Đã xuất bản nháp ({mb:.1f} MB). Xem thử rồi bấm Duyệt để thay video gốc; chưa duyệt thì hẹn giờ vẫn dùng video gốc." + long_note
     finally:
         _busy.release()
