@@ -302,6 +302,24 @@ $("#dl-form").addEventListener("submit", async (e) => {
     toast(err.message);
   }
 });
+$("#dl-file-btn").addEventListener("click", () => $("#dl-file").click());
+$("#dl-file").addEventListener("change", async (e) => {
+  const f = e.target.files && e.target.files[0];
+  e.target.value = "";   // cho phép chọn lại cùng một file
+  if (!f) return;
+  if (f.size > 2 * 1024 * 1024) { toast("File quá lớn (tối đa 2 MB). Chỉ cần file .txt chứa link."); return; }
+  try {
+    const links = ((await f.text()).match(/https?:\/\/[^\s<>"']+/gi) || []).map((u) => u.replace(/[.,;:!?)\]}>]+$/, ""));
+    const uniq = [...new Set(links)];
+    if (!uniq.length) { toast("Không thấy link nào trong file này."); return; }
+    const box = $("#dl-url");
+    box.value = (box.value.trim() ? box.value.trim() + "\n" : "") + uniq.join("\n");
+    $("#dl-file-info").textContent = `Đã nạp ${uniq.length} link từ ${f.name}` + (uniq.length > 1000 ? ". Nhiều hơn 1000: hãy chia file ra tải từng đợt." : ". Link đã tải rồi sẽ được bỏ qua, và dừng khi đủ số video mới.");
+    toast(`Đã nạp ${uniq.length} link từ ${f.name}`);
+  } catch (err) {
+    toast("Không đọc được file: " + err.message);
+  }
+});
 $("#rn-script-copy").addEventListener("click", async () => {
   try {
     const r = await fetch("/api/tools/rednote-script", { cache: "no-store" });
@@ -1198,13 +1216,13 @@ const fmtSec = (n) => (Math.round(n * 10) / 10).toString();
 function veSettings() {
   return {
     framing: $("#ve-framing").value, subs: $("#ve-subs").checked, position: $("#ve-position").value, size: $("#ve-size").value,
-    color: $("#ve-color").value, box: $("#ve-box").checked, loudnorm: $("#ve-loud").checked,
+    color: $("#ve-color").value, box: $("#ve-box").checked, loudnorm: $("#ve-loud").checked, hide_orig: $("#ve-hide").checked,
     orig_volume: Number($("#ve-ov").value), voice_volume: 100,
   };
 }
 function veBusy(on, msg) {
   ve.busy = on;
-  ["#ve-trans", "#ve-render", "#ve-discard", "#ve-approve", "#ve-tr-auto", "#ve-tr-paste", "#ve-tr-undo", "#ve-tr-apply", "#ve-savecues", "#ve-addcue", "#ve-voicefile", "#ve-voicedel"].forEach((s) => { $(s).disabled = on || (ve.st && ve.st.scheduled); });
+  ["#ve-trans", "#ve-render", "#ve-discard", "#ve-approve", "#ve-tr-auto", "#ve-tr-paste", "#ve-tr-undo", "#ve-tr-apply", "#ve-savecues", "#ve-addcue", "#ve-voicefile", "#ve-voicedel", "#ve-os-detect", "#ve-os-save"].forEach((s) => { $(s).disabled = on || (ve.st && ve.st.scheduled); });
   if (!on) $("#ve-bar").hidden = true;
   if (msg !== undefined) $("#ve-msg").textContent = msg;
   if (ve.st && ve.st.translate) veTrUi();
@@ -1217,6 +1235,7 @@ function veSetView(v) {
   if (t > 0.2) vid.addEventListener("loadedmetadata", () => { try { vid.currentTime = t; } catch (e) { /* bỏ qua */ } }, { once: true });
   document.querySelector(`input[name=ve-view][value=${v}]`).checked = true;
   veCap();
+  veOsBox();
 }
 function veCap() {
   const vid = $("#ve-video"), cap = $("#ve-cap");
@@ -1309,6 +1328,7 @@ function veRender() {
   $("#ve-framing").value = set.framing; $("#ve-position").value = set.position; $("#ve-size").value = set.size; $("#ve-color").value = set.color;
   $("#ve-subs").checked = set.subs; $("#ve-box").checked = set.box; $("#ve-loud").checked = set.loudnorm;
   $("#ve-ov").value = set.orig_volume; $("#ve-ov-n").textContent = set.orig_volume + "%";
+  veOsRender();
   $("#ve-view-ed").disabled = !st.draft.exists;
   $("#ve-discard").hidden = !st.draft.exists;
   $("#ve-approve").hidden = !st.draft.exists;
@@ -1318,6 +1338,58 @@ function veRender() {
     ? `Có bản nháp (${ed.size_mb} MB), chưa duyệt: hẹn giờ vẫn dùng video hiện tại.` + (ed.stale ? " Phụ đề đã đổi sau lần xuất, nên xuất lại." : " Xem thử rồi bấm Duyệt để thay video gốc.")
     : st.approved ? "Video này đã được chỉnh sửa và duyệt. Xuất lần nữa sẽ chồng thêm lên bản hiện tại (phụ đề cũ đã in cố định)." : "Chưa có bản nháp: hẹn giờ đăng đang dùng video gốc.";
 }
+// ---- Che sub gốc (chữ in cứng trong video) ----
+function veOsRender() {
+  const os = ve.st.origsubs || { found: false, detected_at: "", band: { x: 0.1, y: 0.74, w: 0.8, h: 0.05 }, ranges: [], mode: "ranges" };
+  const ran = !!os.detected_at;
+  $("#ve-hide").disabled = !os.found;
+  $("#ve-hide").checked = !!(os.found && ve.st.settings.hide_orig);
+  $("#ve-os-opts").hidden = !(os.found || ran);
+  const b = os.found ? os.band : { x: 0.1, y: 0.74, w: 0.8, h: 0.05 };
+  const pc = (n) => Math.round(n * 1000) / 10;
+  $("#ve-os-x").value = pc(b.x); $("#ve-os-y").value = pc(b.y); $("#ve-os-w").value = pc(b.w); $("#ve-os-h").value = pc(b.h);
+  $("#ve-os-mode").value = os.mode;
+  const total = os.ranges.reduce((t, r) => t + (r[1] - r[0]), 0);
+  $("#ve-os-info").textContent = os.found
+    ? `Đã dò: ${os.ranges.length} khoảng có sub (tổng ${Math.round(total)} giây). Khung cam đứt nét trên video là vùng sẽ được làm mờ; chỉnh số bên dưới nếu lệch rồi bấm "Lưu vùng che".`
+    : ran ? 'Lần dò gần nhất không thấy sub in cứng. Nếu video vẫn có sub, tự khoanh vùng bên dưới (khung cam trên video) rồi bấm "Lưu vùng che".'
+    : 'Chưa dò. Bấm "Dò sub gốc" (khoảng vài giây, chạy trên máy bạn).';
+  veOsBox();
+}
+function veOsBox() {
+  const box = $("#ve-os-box"), vid = $("#ve-video");
+  const show = ve.st && !$("#ve-os-opts").hidden && ve.view === "orig" && vid.videoWidth > 0;
+  box.hidden = !show;
+  if (!show) return;
+  const cw = vid.clientWidth, ch = vid.clientHeight, ar = vid.videoWidth / vid.videoHeight;
+  let w = cw, h = cw / ar;
+  if (h > ch) { h = ch; w = ch * ar; }
+  const ox = (cw - w) / 2, oy = (ch - h) / 2, n = (id) => (Number($(id).value) || 0) / 100;
+  box.style.left = ox + n("#ve-os-x") * w + "px"; box.style.top = oy + n("#ve-os-y") * h + "px";
+  box.style.width = n("#ve-os-w") * w + "px"; box.style.height = n("#ve-os-h") * h + "px";
+}
+function veOsBand() {
+  const n = (id) => Math.max(0, Math.min(100, Number($(id).value) || 0)) / 100;
+  return { x: n("#ve-os-x"), y: n("#ve-os-y"), w: n("#ve-os-w"), h: n("#ve-os-h") };
+}
+['#ve-os-x', '#ve-os-y', '#ve-os-w', '#ve-os-h'].forEach((s) => $(s).addEventListener("input", veOsBox));
+$("#ve-video").addEventListener("loadedmetadata", veOsBox);
+window.addEventListener("resize", veOsBox);
+$("#ve-os-detect").addEventListener("click", async () => {
+  try {
+    await veRunJob("/api/edit/origsubs/detect", { rel: ve.rel }, "Đang dò sub gốc...");
+    await veLoad(ve.view);
+  } catch (e) { $("#ve-msg").textContent = e.message; toast(e.message, 8000); }
+});
+$("#ve-os-save").addEventListener("click", async () => {
+  try {
+    await api("/api/edit/origsubs", "POST", { rel: ve.rel, band: veOsBand(), mode: $("#ve-os-mode").value });
+    await veLoad(ve.view);
+    toast("Đã lưu vùng che sub gốc.");
+  } catch (e) { toast(e.message, 8000); }
+});
+$("#ve-hide").addEventListener("change", () => { if ($("#ve-hide").checked && $("#ve-position").value === "bottom") toast('Gợi ý: chọn vị trí phụ đề "Đúng chỗ sub gốc" để sub mới nằm trên vùng đã che.', 7000); });
+
 async function veLoad(keepView) {
   ve.st = await api("/api/edit/status?rel=" + encodeURIComponent(ve.rel));
   ve.cues = ve.st.cues;

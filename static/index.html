@@ -74,12 +74,17 @@
           <label>Đường dẫn kênh hoặc video (nhiều link: mỗi dòng một link)
             <textarea id="dl-url" required rows="2" placeholder="https://www.youtube.com/@tenkenh hoặc https://www.tiktok.com/@tenkenh&#10;Rednote: dán link từng bài. Nhiều link thì mỗi dòng một link."></textarea>
           </label>
+          <div class="file-row">
+            <button class="ghost" id="dl-file-btn" type="button">Mở file .txt chứa link</button>
+            <input id="dl-file" type="file" accept=".txt,text/plain" hidden>
+            <span class="hint" id="dl-file-info">Mỗi dòng một link (tối đa 1000). Link đã tải rồi sẽ được bỏ qua, và dừng khi đủ số video mới ở ô bên dưới.</span>
+          </div>
           <details class="rn-tool">
             <summary>Rednote: lấy link cả trang cá nhân</summary>
             <ol class="hint">
               <li>Bấm nút bên dưới để chép script vào clipboard.</li>
               <li>Mở trang cá nhân Rednote trong Chrome (đã đăng nhập, trang của bạn hoặc người cho phép), bấm F12, chọn tab <b>Console</b>. Nếu Chrome chặn dán thì gõ <code>allow pasting</code> rồi Enter.</li>
-              <li>Dán (Cmd+V), Enter. Script tự cuộn chậm đến cuối trang rồi hiện nút <b>Chép</b>; dán link vào ô trên (tối đa 200 link mỗi lần).</li>
+              <li>Dán (Cmd+V), Enter. Script tự cuộn chậm đến cuối trang rồi hiện nút <b>Chép</b>; dán link vào ô trên (tối đa 1000 link mỗi lần).</li>
             </ol>
             <button class="ghost" id="rn-script-copy" type="button">Chép script lấy link Rednote</button>
           </details>
@@ -107,7 +112,7 @@
                 <option value="videos">Video thường</option>
               </select>
             </label>
-            <label title="Số video MỚI cần tải. Video đã có trong thư mục của Page được bỏ qua và không tính vào số này.">Số video mới cần tải (0 = tất cả video mới)
+            <label title="Số video MỚI cần tải. Video/link đã tải rồi được bỏ qua (không tính vào số này, link một video không cần mở lại); tải đủ số này thì dừng, các link còn lại không được mở.">Số video mới cần tải (0 = tất cả video mới)
               <input id="dl-limit" type="number" min="0" value="5">
             </label>
           </div>
@@ -468,7 +473,7 @@
       <p class="hint bad" id="ve-locked" hidden>Video này đã lên lịch nên không chỉnh sửa được (Facebook đã nhận bản cũ). Huỷ lịch trước, chỉnh sửa xong rồi hẹn lại.</p>
       <div class="ve-grid">
         <div class="ve-side">
-          <div class="ve-vwrap"><video id="ve-video" controls playsinline preload="metadata"></video><div id="ve-cap" hidden></div></div>
+          <div class="ve-vwrap"><video id="ve-video" controls playsinline preload="metadata"></video><div id="ve-cap" hidden></div><div id="ve-os-box" hidden title="Vùng che sub gốc"></div></div>
           <div class="ve-switch" role="radiogroup" aria-label="Bản xem trước">
             <label><input type="radio" name="ve-view" value="orig" checked> Video gốc</label>
             <label><input type="radio" name="ve-view" value="draft" id="ve-view-ed" disabled> Bản nháp (chưa duyệt)</label>
@@ -515,11 +520,28 @@
             </div>
             <p class="hint" id="ve-voiceinfo"></p>
           </section>
+          <section class="ve-sec" id="ve-os-sec">
+            <h3>4. Che sub gốc (nếu video đã có sub in cứng)</h3>
+            <p class="hint">Dò chữ phụ đề in sẵn trong hình (chữ trắng viền đen), rồi làm mờ chỗ đó khi xuất để phụ đề mới không chồng lên chữ cũ. Nên chọn vị trí phụ đề "Đúng chỗ sub gốc" ở bước 5.</p>
+            <div class="row">
+              <button class="ghost" id="ve-os-detect" type="button">Dò sub gốc</button>
+              <label class="ve-chk"><input type="checkbox" id="ve-hide" disabled> Che sub gốc khi xuất</label>
+            </div>
+            <p class="hint" id="ve-os-info"></p>
+            <div class="ve-opts" id="ve-os-opts" hidden>
+              <label>Cách mép trên (%) <input type="number" id="ve-os-y" min="0" max="99" step="0.5"></label>
+              <label>Chiều cao vùng che (%) <input type="number" id="ve-os-h" min="1" max="60" step="0.5"></label>
+              <label>Cách mép trái (%) <input type="number" id="ve-os-x" min="0" max="99" step="0.5"></label>
+              <label>Chiều rộng (%) <input type="number" id="ve-os-w" min="5" max="100" step="0.5"></label>
+              <label>Che <select id="ve-os-mode"><option value="ranges">Chỉ lúc có sub</option><option value="always">Suốt video</option></select></label>
+              <button class="ghost" id="ve-os-save" type="button">Lưu vùng che</button>
+            </div>
+          </section>
           <section class="ve-sec">
-            <h3>4. Kiểu hiển thị và xuất video</h3>
+            <h3>5. Kiểu hiển thị và xuất video</h3>
             <div class="ve-opts">
               <label>Khung hình <select id="ve-framing"><option value="auto">Tự chọn (khuyên dùng)</option><option value="fit">Nền mờ, video ở giữa</option><option value="crop">Cắt giữa cho đầy khung</option><option value="scale">Giữ nguyên, viền đen</option></select></label>
-              <label>Vị trí phụ đề <select id="ve-position"><option value="bottom">Dưới</option><option value="middle">Giữa</option><option value="top">Trên</option></select></label>
+              <label>Vị trí phụ đề <select id="ve-position"><option value="bottom">Dưới</option><option value="middle">Giữa</option><option value="top">Trên</option><option value="orig">Đúng chỗ sub gốc (cần dò sub gốc)</option></select></label>
               <label>Cỡ chữ <select id="ve-size"><option value="small">Nhỏ</option><option value="medium">Vừa</option><option value="large">Lớn</option></select></label>
               <label>Màu chữ <select id="ve-color"><option value="white">Trắng</option><option value="yellow">Vàng</option><option value="cyan">Xanh lơ</option></select></label>
               <label class="ve-chk"><input type="checkbox" id="ve-subs" checked> In phụ đề vào video</label>

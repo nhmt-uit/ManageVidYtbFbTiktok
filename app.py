@@ -303,6 +303,33 @@ def api_edit_translate():
     return jsonify({"job": job.id})
 
 
+@app.post("/api/edit/origsubs/detect")
+def api_edit_origsubs_detect():
+    d = body()
+    try:
+        folder = library.resolve(_edit_rel(d))
+    except ValueError as e:
+        return err(str(e), 404)
+    if manager.has_running("edit"):
+        return err("Đang có một tác vụ chỉnh sửa khác chạy. Đợi nó xong rồi thử lại.", 409)
+    t = editor.tools(refresh=True)
+    if not t["ffmpeg"]["ok"]:
+        return err(t["ffmpeg"]["problem"], 409)
+    job = manager.start("edit", f"Dò sub gốc: {folder.name}", editor.detect_origsubs_job, _edit_rel(d))
+    return jsonify({"job": job.id})
+
+
+@app.post("/api/edit/origsubs")
+def api_edit_origsubs_save():
+    d = body()
+    try:
+        return jsonify(editor.save_origsubs(_edit_rel(d), d))
+    except ValueError as e:
+        return err(str(e), 404)
+    except editor.EditError as e:
+        return err(str(e))
+
+
 @app.post("/api/translate/test")
 def api_translate_test():
     """Dịch thử một câu bằng cấu hình đang lưu để kiểm tra khóa, địa chỉ và model."""

@@ -23,7 +23,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import config, library, reelcheck, translate
+from . import config, library, origsubs, reelcheck, translate
 from .videofile import APPROVED, DRAFT, ORIGINAL
 
 SUBS_FILE = "subs.json"
@@ -46,12 +46,13 @@ DEFAULT_SETTINGS = {
     "orig_volume": 25,       # % âm lượng video gốc khi có giọng đọc
     "voice_volume": 100,     # % âm lượng giọng đọc
     "loudnorm": True,        # chuẩn hóa âm lượng về mức Reels hay dùng
+    "hide_orig": False,      # làm mờ sub in cứng có sẵn trong video (cần dò trước, xem origsubs.py)
 }
-CHOICES = {"framing": ("auto", "scale", "fit", "crop"), "position": ("bottom", "middle", "top"),
+CHOICES = {"framing": ("auto", "scale", "fit", "crop"), "position": ("bottom", "middle", "top", "orig"),   # orig = đúng chỗ sub gốc
            "size": ("small", "medium", "large"), "color": ("white", "yellow", "cyan")}
 FONT_SIZES = {"small": 54, "medium": 66, "large": 80}
 COLORS = {"white": "&H00FFFFFF", "yellow": "&H0000E6FF", "cyan": "&H00FFE600"}   # ASS dùng thứ tự BGR
-ALIGN = {"bottom": (2, 330), "middle": (5, 0), "top": (8, 260)}                    # (Alignment, MarginV)
+ALIGN = {"bottom": (2, 330), "middle": (5, 0), "top": (8, 260), "orig": (5, 0)}                    # (Alignment, MarginV)
 
 _busy = threading.Lock()
 
@@ -199,7 +200,7 @@ def clean_settings(raw: dict | None) -> dict:
     for k, allowed in CHOICES.items():
         if raw.get(k) in allowed:
             s[k] = raw[k]
-    for k in ("subs", "box", "loudnorm"):
+    for k in ("subs", "box", "loudnorm", "hide_orig"):
         if isinstance(raw.get(k), bool):
             s[k] = raw[k]
     for k, lo, hi in (("orig_volume", 0, 200), ("voice_volume", 0, 300)):
@@ -349,7 +350,7 @@ def status(rel: str) -> dict:
             "transcribed": bool(subs.get("created_at")), "voice": voice_info(folder), "draft": dr, "translate": {k: v for k, v in translate.settings().items() if k != "base"}, "translated_to": subs.get("translated_to", ""),
             "translator": subs.get("translator", ""),
             "approved": _read_json(folder / APPROVED).get("approved_at", ""), "settings": settings,
-            "scheduled": is_scheduled(folder), "langs": LANGS, "busy": _busy.locked()}
+            "scheduled": is_scheduled(folder), "langs": LANGS, "busy": _busy.locked(), "origsubs": origsubs_info(folder)}
 
 
 def discard(rel: str) -> None:
@@ -379,7 +380,7 @@ def approve(rel: str) -> str:
             raise EditError("Bản nháp không đọc được (file hỏng?). Hãy xuất lại.")
         settings = _read_json(folder / SETTINGS_FILE).get("settings", {})
         os.replace(draft, folder / ORIGINAL)   # nguyên tử: video.mp4 luôn là một file đầy đủ
-        for name in (SUBS_FILE, SETTINGS_FILE):
+        for name in (SUBS_FILE, SETTINGS_FILE, origsubs.FILE):
             (folder / name).unlink(missing_ok=True)
         _remove_voice_files(folder)
         _write_json(folder / APPROVED, {"approved_at": datetime.now(timezone.utc).isoformat(), "settings": settings})
@@ -391,6 +392,66 @@ def approve(rel: str) -> str:
         return f"Đã duyệt: bản chỉnh sửa đã thay thế video gốc ({info['width']}x{info['height']}, {info['duration']:.0f} giây)."
     finally:
         _busy.release()
+
+
+# ---------- sub gốc (chữ in cứng trong video) ----------
+def origsubs_info(folder: Path) -> dict:
+    """Kết quả dò sub gốc đã lưu (đã làm sạch). found=False nếu chưa dò hoặc không có sub."""
+    return origsubs.clean(_read_json(folder / origsubs.FILE))
+
+
+def save_origsubs(rel: str, data: dict) -> dict:
+    """Lưu vùng che do người dùng chỉnh tay (band: x, y, w, h là tỉ lệ 0..1) và kiểu che (mode)."""
+    folder = library.resolve(rel)
+    cur = origsubs_info(folder)
+    if isinstance(data.get("band"), dict):
+        cur["band"] = data["band"]
+        cur["found"] = True
+    if data.get("mode") in origsubs.MODES:
+        cur["mode"] = data["mode"]
+    new = origsubs.clean(cur)
+    if not new["found"]:
+        raise EditError("Vùng che không hợp lệ (quá nhỏ hoặc nằm ngoài khung hình).")
+    _write_json(folder / origsubs.FILE, new)
+    return new
+
+
+def detect_origsubs_job(job, rel: str) -> str:
+    if not _busy.acquire(blocking=False):
+        raise EditError("Đang có một tác vụ chỉnh sửa khác chạy. Đợi nó xong rồi thử lại.")
+    try:
+        t = tools(refresh=True)
+        if not t["ffmpeg"]["ok"]:
+            raise EditError(t["ffmpeg"]["problem"])
+        folder = library.resolve(rel)
+        src = probe_media(folder / ORIGINAL)
+        if not src["width"]:
+            raise EditError("Không đọc được video.")
+        job.log("Đang dò chữ phụ đề in sẵn trong hình...")
+        try:
+            res = origsubs.detect(t["ffmpeg"]["path"], folder / ORIGINAL, src["duration"], src["width"], src["height"],
+                                  progress=job.set_progress, cancelled=lambda: job.cancelled)
+        except origsubs.DetectError as exc:
+            raise EditError(str(exc)) from exc
+        res = origsubs.clean(res)
+        _write_json(folder / origsubs.FILE, res)
+        if not res["found"]:
+            return "Không thấy sub in cứng trong video này (hoặc chữ quá mờ). Nếu video có sub, bạn vẫn tự khoanh vùng che được ở bước này."
+        b = res["band"]
+        total = sum(z - a for a, z in res["ranges"])
+        return (f"Đã dò sub gốc: {len(res['ranges'])} khoảng có sub (tổng {total:.0f} giây), vùng che cách mép trên {b['y'] * 100:.0f}% và cao {b['h'] * 100:.0f}%. "
+                "Xem khung đứt nét trên video, chỉnh nếu cần rồi tick \"Che sub gốc khi xuất\".")
+    finally:
+        _busy.release()
+
+
+def _framing_transform(src: dict, framing: str) -> tuple[float, float, float]:
+    """(hệ số phóng, lệch x, lệch y) khi đưa video gốc vào khung 1080x1920 theo kiểu khung hình `framing` (đã giải quyết 'auto')."""
+    w, h = src["width"], src["height"]
+    if framing == "auto":
+        framing = "scale" if abs(w / h - 9 / 16) < 0.03 else "fit"
+    f = max(OUT_W / w, OUT_H / h) if framing == "crop" else min(OUT_W / w, OUT_H / h)
+    return f, (OUT_W - w * f) / 2, (OUT_H - h * f) / 2
 
 
 # ---------- phiên âm ----------
@@ -550,7 +611,7 @@ def _ass_text(text: str) -> str:
     return "\\N".join(line for line in text.split("\n"))
 
 
-def build_ass(cues: list[dict], s: dict) -> str:
+def build_ass(cues: list[dict], s: dict, center_y: float | None = None) -> str:
     align, margin_v = ALIGN[s["position"]]
     font = config.get("EDIT_FONT", "Arial") or "Arial"
     col = COLORS[s["color"]]
@@ -565,24 +626,29 @@ def build_ass(cues: list[dict], s: dict) -> str:
         "ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
         f"Style: Default,{font},{FONT_SIZES[s['size']]},{col},&H000000FF,{outline_col},{back},-1,0,0,0,100,100,0,0,{border},{outline},{shadow},{align},80,80,{margin_v},1\n\n"
         "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
-    lines = [f"Dialogue: 0,{_ass_time(c['start'])},{_ass_time(c['end'])},Default,,0,0,0,,{_ass_text(c['text'])}" for c in cues]
+    tag = f"{{\\an5\\pos({OUT_W // 2},{int(center_y)})}}" if center_y is not None else ""   # đặt giữa vùng sub gốc
+    lines = [f"Dialogue: 0,{_ass_time(c['start'])},{_ass_time(c['end'])},Default,,0,0,0,,{tag}{_ass_text(c['text'])}" for c in cues]
     return head + "\n".join(lines) + "\n"
 
 
-def build_filter(src: dict, s: dict, voice: bool, ass: bool) -> tuple[str, list[str]]:
-    """Trả về (filter_complex, các tham số -map). src là kết quả probe_media của video gốc."""
+def build_filter(src: dict, s: dict, voice: bool, ass: bool, cover: str = "") -> tuple[str, list[str]]:
+    """Trả về (filter_complex, các tham số -map). src là kết quả probe_media của video gốc.
+    cover: đoạn filter che sub gốc (origsubs.cover_chain, đầu ra là [src]); rỗng = không che."""
+    vin = "src" if cover else "0:v"
     framing = s["framing"]
     if framing == "auto":
         ratio = src["width"] / src["height"] if src["width"] and src["height"] else 0
         framing = "scale" if ratio and abs(ratio - 9 / 16) < 0.03 else "fit"
     if framing == "crop":
-        vf = f"[0:v]scale={OUT_W}:{OUT_H}:force_original_aspect_ratio=increase,crop={OUT_W}:{OUT_H},setsar=1[vf]"
+        vf = f"[{vin}]scale={OUT_W}:{OUT_H}:force_original_aspect_ratio=increase,crop={OUT_W}:{OUT_H},setsar=1[vf]"
     elif framing == "scale":
-        vf = f"[0:v]scale={OUT_W}:{OUT_H}:force_original_aspect_ratio=decrease,pad={OUT_W}:{OUT_H}:(ow-iw)/2:(oh-ih)/2:black,setsar=1[vf]"
+        vf = f"[{vin}]scale={OUT_W}:{OUT_H}:force_original_aspect_ratio=decrease,pad={OUT_W}:{OUT_H}:(ow-iw)/2:(oh-ih)/2:black,setsar=1[vf]"
     else:   # fit: video nằm giữa, phía trên/dưới là chính nó phóng to và làm mờ
-        vf = (f"[0:v]split=2[bg0][fg0];[bg0]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,gblur=sigma=8,"
+        vf = (f"[{vin}]split=2[bg0][fg0];[bg0]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,gblur=sigma=8,"
               f"scale={OUT_W}:{OUT_H},eq=brightness=-0.08[bg];[fg0]scale={OUT_W}:{OUT_H}:force_original_aspect_ratio=decrease[fg];"
               "[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[vf]")
+    if cover:
+        vf = cover + ";" + vf
     vf += ";[vf]subtitles=subs.ass[v]" if ass else ";[vf]null[v]"
     norm = ",loudnorm=I=-16:TP=-1.5:LRA=11" if s["loudnorm"] else ""
     maps = ["-map", "[v]"]
@@ -624,13 +690,28 @@ def render_job(job, rel: str, settings: dict | None = None) -> str:
             job.log("Chưa có phụ đề nên xuất không kèm phụ đề.")
         if s["subs"] and not t["ffmpeg"]["libass"]:
             raise EditError(t["ffmpeg"]["problem"])
+        oi = origsubs_info(folder)
+        cover, center_y = "", None
+        if s["hide_orig"]:
+            if not oi["found"]:
+                raise EditError("Chưa dò sub gốc cho video này. Bấm \"Dò sub gốc\" ở bước Che sub gốc, hoặc bỏ tick \"Che sub gốc khi xuất\".")
+            cover = origsubs.cover_chain(oi, src["width"], src["height"])
+            job.log("Che sub gốc: " + ("chỉ trong các khoảng có sub." if oi["mode"] == "ranges" else "suốt video."))
+        if s["position"] == "orig":
+            if oi["found"]:
+                x, y, w, h = origsubs.pixel_rect(oi, src["width"], src["height"])
+                f, _ox, oy = _framing_transform(src, s["framing"])
+                center_y = oy + (y + h / 2) * f
+            else:
+                job.log("Chưa dò sub gốc nên phụ đề mới đặt ở vị trí mặc định (dưới).")
+                s["position"] = "bottom"
         voice = voice_file(folder)
-        fc, maps = build_filter(src, s, voice is not None, bool(cues))
+        fc, maps = build_filter(src, s, voice is not None, bool(cues), cover)
         job.log(f"Xuất video {OUT_W}x{OUT_H}" + (f", {len(cues)} dòng phụ đề" if cues else "") + (f", kèm giọng đọc {voice.name}" if voice else "") + "...")
         with tempfile.TemporaryDirectory(prefix="mvt-render-") as tmp:
             tmpd = Path(tmp)
             if cues:
-                (tmpd / "subs.ass").write_text(build_ass(cues, s), encoding="utf-8")
+                (tmpd / "subs.ass").write_text(build_ass(cues, s, center_y), encoding="utf-8")
             out_tmp = folder / "video.draft.render.tmp.mp4"
             cmd = [t["ffmpeg"]["path"], "-nostdin", "-v", "error", "-nostats", "-y", "-i", str(src_path)]
             if voice:

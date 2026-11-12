@@ -437,3 +437,8 @@ label.lib-group input { margin-top: 0; }
 details.rn-tool { margin: 6px 0 10px; }
 details.rn-tool summary { cursor: pointer; font-weight: 600; }
 details.rn-tool ol { margin: 6px 0 8px 18px; padding: 0; }
+
+.file-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 4px 0 8px; }
+.file-row .hint { margin: 0; }
+#ve-os-box { position: absolute; border: 2px dashed #ff9800; background: rgba(255, 152, 0, .18); box-sizing: border-box; pointer-events: none; }
+.ve-sec .row .ve-chk { display: flex; gap: 8px; align-items: center; }
