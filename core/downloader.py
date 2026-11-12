@@ -17,7 +17,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import urljoin, urlparse, urlunparse
+from urllib.parse import parse_qs, urljoin, urlparse, urlunparse
 
 from yt_dlp import YoutubeDL
 from yt_dlp.networking import Request
@@ -50,7 +50,7 @@ def extract_hashtags(info: dict) -> list[str]:
 
 REDNOTE_HOSTS = ("xiaohongshu.com", "xhslink.com", "rednote.com")   # rednote.com = tên miền quốc tế, link chia sẻ từ web hay dùng
 URL_RE = re.compile(r"https?://[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+", re.I)
-MAX_URLS = 200
+MAX_URLS = 1000
 REDNOTE_NOTE_RE = re.compile(r"^/(?:explore|discovery/item)/([0-9a-f]{16,32})/?$", re.I)
 REDNOTE_PROFILE_NOTE_RE = re.compile(r"^/user/profile/[0-9a-f]+/([0-9a-f]{16,32})/?$", re.I)
 
@@ -86,6 +86,31 @@ def parse_urls(text: str) -> list[str]:
     if len(urls) > MAX_URLS:
         raise ValueError(f"Nhiều quá: tối đa {MAX_URLS} đường dẫn mỗi lần.")
     return urls
+
+
+def known_id(platform: str, url: str) -> str:
+    """ID video đọc thẳng từ link MỘT video (không cần mạng) để bỏ qua link đã tải rồi mà không phải mở trang. Link kênh, danh sách, link rút gọn thì trả về chuỗi rỗng."""
+    u = urlparse((url or "").strip())
+    host = (u.hostname or "").lower()
+    path = u.path or ""
+    if platform == "youtube":
+        if "list" in parse_qs(u.query):
+            return ""   # link kèm danh sách phát: yt-dlp có thể tải cả danh sách
+        if host == "youtu.be":
+            m = re.match(r"^/([\w-]{11})/?$", path)
+        elif path == "/watch":
+            v = (parse_qs(u.query).get("v") or [""])[0]
+            m = re.match(r"^([\w-]{11})$", v)
+        else:
+            m = re.match(r"^/(?:shorts|live|embed)/([\w-]{11})/?$", path)
+        return m.group(1) if m else ""
+    if platform == "tiktok":
+        m = re.search(r"/video/(\d{15,20})", path)
+        return m.group(1) if m else ""
+    if platform == "rednote":
+        m = RN_ID_RE.search(path) or REDNOTE_PROFILE_NOTE_RE.match(path)
+        return m.group(1).lower() if m else ""
+    return ""
 
 
 CONTENT_CHOICES = ("all", "video", "images")   # Rednote: tải toàn bộ, chỉ video, hay chỉ ảnh
@@ -207,6 +232,12 @@ def _flatten(entries):
 SOURCE_NAMES = {"youtube": "YouTube", "tiktok": "TikTok", "rednote": "Rednote"}
 MP3_KBPS = "320"      # chất lượng MP3 khi chỉ tải âm thanh
 MAX_FAIL_STREAK = 10   # từng này video liên tiếp lỗi thì dừng, tránh chạy mãi khi YouTube đang chặn
+RN_FAIL_STREAK = 3     # Rednote đòi đăng nhập/xác minh thì dừng sớm: cứ mở tiếp là dễ bị khóa tài khoản
+RN_OPEN_GAP = (1.0, 2.5)   # nghỉ (giây) giữa hai lần mở trang bài Rednote khi gom danh sách
+
+
+def fail_limit(platform: str) -> int:
+    return RN_FAIL_STREAK if platform == "rednote" else MAX_FAIL_STREAK
 
 
 # ---------- Bài Rednote chỉ có ảnh (không có video): lưu ảnh vào thư mục ----------
@@ -362,19 +393,47 @@ def run(job, url: str, folder_name: str, kind: str, limit: int, note: str, page_
     if any(platform_of(u) == "rednote" for u in urls) and not (config.get("REDNOTE_COOKIES_BROWSER") or "").strip():
         job.log("Lưu ý: chưa đặt cookie đăng nhập cho Rednote (Cài đặt chung). Bài nào Rednote đòi đăng nhập sẽ bị lỗi.")
 
-    # gom danh sách video từ mọi đường dẫn: [(nền tảng, thông tin video)]
-    items: list[tuple[str, dict]] = []
+    # video đã có ở một thư mục của chính Page này (theo ID video) thì không tải lại.
+    # Tải không gắn Page (page_id trống): chỉ đối chiếu với các thư mục cũng chưa thuộc Page nào
+    have = {
+        vid: [d for d in dirs if library.owner_of(d.parent) == page_id]
+        for vid, dirs in library.id_index().items()
+    }
+    have = {vid: dirs for vid, dirs in have.items() if dirs}
+    video_dirs = have   # ID -> thư mục video.mp4 của Page (MP3 của video đã tải sẽ vào đúng thư mục này)
+    if audio:   # với MP3, "đã có" nghĩa là đã có file audio.mp3 (không phụ thuộc video.mp4)
+        have = {vid: [] for vid in _audio_ids(page_id)}
+    what = "MP3" if audio else "video"
+    img_have = set() if audio else _image_ids(page_id)   # bài ảnh Rednote đã lưu
+
+    ok = skipped = failed = n_images_notes = 0
+    fail_streak = 0
+    bad_links = filtered = 0
+    bad_streak = 0   # số link liên tiếp không mở được
+    halt = ""        # có lý do dừng (nhiều link liên tiếp lỗi) thì không mở thêm link nào nữa
+    opened_rn = False
     seen_ids: set = set()
     first_listing: dict | None = None
     first_platform = platform_of(urls[0])
-    bad_links = filtered = 0
-    for u0 in urls:
+
+    def take_url(u0: str) -> list:
+        """Mở một đường dẫn và trả về các video MỚI trong đó: [(nền tảng, thông tin video)]. Link một video đã tải rồi thì bỏ qua ngay, không mở trang."""
+        nonlocal first_listing, bad_links, filtered, skipped, bad_streak, halt, opened_rn
         pf = platform_of(u0)
+        kid = known_id(pf, u0)
+        if kid and (kid in have or kid in img_have):
+            skipped += 1
+            job.log(f"Bỏ qua (đã tải rồi): {u0}")
+            return []
         u1 = u0
         try:
             u1 = normalize_url(u0, kind)
             if pf == "rednote":
                 u1 = rednote_note_url(resolve_short(u1) if "xhslink.com" in (urlparse(u1).hostname or "") else u1)
+            if pf == "rednote":
+                if opened_rn:
+                    time.sleep(random.uniform(*RN_OPEN_GAP))   # đừng mở dồn dập
+                opened_rn = True
             job.log(f"Lấy danh sách video: {u1}")
             nid0 = RN_ID_RE.search(urlparse(u1).path or "") if pf == "rednote" else None
             if nid0 and content == "images":   # chỉ ảnh: không cần yt-dlp (bài video sẽ được nhận ra và bỏ qua khi mở trang bài)
@@ -388,23 +447,53 @@ def run(job, url: str, folder_name: str, kind: str, limit: int, note: str, page_
                 if content == "video":
                     filtered += 1
                     job.log(f"Bỏ qua (bài chỉ có ảnh, đang chọn chỉ video): {u1}")
-                    continue
+                    return []
                 job.log("Bài này không có video (chỉ có ảnh), app sẽ lưu ảnh.")
                 listing = {"id": nid.group(1), "webpage_url": u1, "_images": True}
             elif len(urls) == 1:
                 raise RuntimeError(_explain(pf, str(exc))) from exc
             else:
                 bad_links += 1
+                bad_streak += 1
                 job.log(f"Bỏ qua link lỗi {u0}: {_explain(pf, str(exc))}")
-                continue
+                if bad_streak >= fail_limit(pf):
+                    halt = f"Dừng vì {bad_streak} link liên tiếp không mở được ({SOURCE_NAMES[pf]} có thể đang đòi đăng nhập/xác minh hoặc chặn). Mở thử một bài trong trình duyệt, đợi một lúc rồi tải lại; các link chưa mở được giữ nguyên để thử lại."
+                    job.log(halt)
+                    try:
+                        from . import notify
+                        notify.send("Tải video bị dừng", f"{pages.label(pages.get(page_id)) if page_id else 'Tải không gắn Page'}: {halt}", key=f"dlfail:{page_id}", ttl_hours=6)
+                    except Exception:  # noqa: BLE001
+                        pass
+                return []
+        bad_streak = 0
         if first_listing is None:
             first_listing = listing
         es = list(_flatten(listing["entries"])) if listing.get("entries") is not None else [listing]
+        out = []
         for e in es:
             if e and e.get("id") and e["id"] not in seen_ids:
                 seen_ids.add(e["id"])
-                items.append((pf, e))
+                if e["id"] in have or e["id"] in img_have:
+                    skipped += 1
+                else:
+                    out.append((pf, e))
+        return out
+
+    # Có giới hạn số video: chỉ mở link cho đến khi đủ số video MỚI; link còn lại để dành, mở tiếp khi có video lỗi và còn thiếu
+    pending = list(urls)
+
+    def fill(want: int) -> list:
+        got: list = []
+        while pending and not halt and (want <= 0 or len(got) < want):
+            got += take_url(pending.pop(0))
+        return got
+
+    fresh = fill(limit if limit > 0 else 0)
     if first_listing is None:
+        if halt:
+            raise RuntimeError(halt)
+        if skipped:
+            return f"Không có video mới để tải: {skipped} link đã tải rồi" + (f", {bad_links} link không lấy được" if bad_links else "") + "."
         raise RuntimeError("Không lấy được video nào từ các đường dẫn đã dán.")
     listing = first_listing
     url = urls[0] if len(urls) == 1 else f"{urls[0]} (+{len(urls) - 1} link)"
@@ -443,48 +532,38 @@ def run(job, url: str, folder_name: str, kind: str, limit: int, note: str, page_
     sleep_min = int(config.get("DOWNLOAD_SLEEP_MIN"))
     sleep_max = int(config.get("DOWNLOAD_SLEEP_MAX"))
     max_height = int(config.get("DOWNLOAD_MAX_HEIGHT"))
-    ok = skipped = failed = n_images_notes = 0
-
-    # video đã có ở một thư mục của chính Page này (theo ID video) thì không tải lại.
-    # Tải không gắn Page (page_id trống): chỉ đối chiếu với các thư mục cũng chưa thuộc Page nào
-    have = {
-        vid: [d for d in dirs if library.owner_of(d.parent) == page_id]
-        for vid, dirs in library.id_index().items()
-    }
-    have = {vid: dirs for vid, dirs in have.items() if dirs}
-    video_dirs = have   # ID -> thư mục video.mp4 của Page (MP3 của video đã tải sẽ vào đúng thư mục này)
-    if audio:   # với MP3, "đã có" nghĩa là đã có file audio.mp3 (không phụ thuộc video.mp4)
-        have = {vid: [] for vid in _audio_ids(page_id)}
-    what = "MP3" if audio else "video"
 
     # "Số video" là số video MỚI cần tải: video đã có không được tính vào số này
-    entries = items
-    img_have = set() if audio else _image_ids(page_id)   # bài ảnh Rednote đã lưu
-    fresh = [(pf, e) for pf, e in entries if e["id"] not in have and e["id"] not in img_have]
-    skipped = len(entries) - len(fresh)
-    target = min(limit, len(fresh)) if limit > 0 else len(fresh)
+    target = (limit if pending else min(limit, len(fresh))) if limit > 0 else len(fresh)
     job.log(
-        f"Kênh có {len(entries)} video, trong đó {skipped} video đã có {what} (bỏ qua), còn {len(fresh)} video mới. "
+        f"Đã xem {len(fresh) + skipped} video, trong đó {skipped} video đã có {what} (bỏ qua), {len(fresh)} video mới"
+        + (f"; còn {len(pending)} link chưa mở (mở tiếp khi cần). " if pending else ". ")
         + (f"Sẽ tải {target} {what} mới." if target else f"Không có video mới để tải {what}.")
         + f" Lưu vào: {channel_dir}"
     )
     job.set_progress(0, target)
-    entries = fresh
-    fail_streak = 0
+
+    def feed():
+        """Các video mới theo thứ tự; link để dành chỉ được mở khi video trước đã xử lý xong mà vẫn chưa đủ số cần tải."""
+        yield from fresh
+        while pending and not halt:
+            if job.cancelled or (target and ok >= target) or fail_streak >= fail_limit(first_platform):
+                return
+            yield from fill(max(1, target - ok))
 
     source = SOURCE_NAMES[first_platform]
-    for i, (platform, entry) in enumerate(entries, 1):
+    for i, (platform, entry) in enumerate(feed(), 1):
         source = SOURCE_NAMES[platform]
         if job.cancelled:
             job.log("Đã dừng theo yêu cầu.")
             break
         if ok >= target:
             break
-        if fail_streak >= MAX_FAIL_STREAK:
-            job.log(f"Dừng vì {MAX_FAIL_STREAK} video liên tiếp bị lỗi ({source} có thể đang chặn). Thử lại sau.")
+        if fail_streak >= fail_limit(platform):
+            job.log(f"Dừng vì {fail_limit(platform)} video liên tiếp bị lỗi ({source} có thể đang chặn). Thử lại sau.")
             try:
                 from . import notify
-                notify.send("Tải video bị dừng", f"{pages.label(pages.get(page_id)) if page_id else 'Tải không gắn Page'}: {MAX_FAIL_STREAK} video liên tiếp bị lỗi, {source} có thể đang chặn. Thử lại sau. {hint}".strip(), key=f"dlfail:{page_id}", ttl_hours=6)
+                notify.send("Tải video bị dừng", f"{pages.label(pages.get(page_id)) if page_id else 'Tải không gắn Page'}: {fail_limit(platform)} video liên tiếp bị lỗi, {source} có thể đang chặn. Thử lại sau. {hint}".strip(), key=f"dlfail:{page_id}", ttl_hours=6)
             except Exception:  # noqa: BLE001
                 pass
             break
@@ -597,4 +676,4 @@ def run(job, url: str, folder_name: str, kind: str, limit: int, note: str, page_
                 shutil.rmtree(created_dir, ignore_errors=True)   # dọn thư mục vừa tạo mà tải không thành công
         job.set_progress(ok, target)
 
-    return f"Tải xong {ok}{' MP3' if audio else ''}, bỏ qua {skipped}, lỗi {failed}. Thư mục: {name}" + (f" Trong đó {n_images_notes} bài chỉ có ảnh (lưu ở thư mục images của từng bài)." if n_images_notes else "") + (f" Có {bad_links} link không lấy được (xem nhật ký)." if bad_links else "") + (f" Bỏ qua {filtered} bài không đúng loại đã chọn." if filtered else "")
+    return f"Tải xong {ok}{' MP3' if audio else ''}, bỏ qua {skipped}, lỗi {failed}. Thư mục: {name}" + (f" Trong đó {n_images_notes} bài chỉ có ảnh (lưu ở thư mục images của từng bài)." if n_images_notes else "") + (f" Có {bad_links} link không lấy được (xem nhật ký)." if bad_links else "") + (f" Bỏ qua {filtered} bài không đúng loại đã chọn." if filtered else "") + (" " + halt if halt else "")

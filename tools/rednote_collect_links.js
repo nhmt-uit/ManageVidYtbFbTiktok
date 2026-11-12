@@ -16,7 +16,7 @@
   const STEP = 0.7;           // mỗi lần cuộn bao nhiêu phần chiều cao màn hình
   const IDLE_LIMIT = 8;       // số lần cuộn liên tiếp không có bài mới thì coi như đã hết
   const MAX_STEPS = 800;      // chặn an toàn
-  const BATCH = 100;          // mỗi nút "Chép" lấy tối đa bấy nhiêu link (app nhận tối đa 200 link một lần)
+  const BATCH = 100;          // mỗi nút "Chép" lấy tối đa bấy nhiêu link (app nhận tối đa 1000 link một lần)
 
   if (window.__rnCollector) { window.__rnCollector.stop(); document.getElementById("rn-collector")?.remove(); }
 
