@@ -1434,13 +1434,16 @@ function veSettings() {
   return {
     framing: $("#ve-framing").value, subs: $("#ve-subs").checked, position: $("#ve-position").value, size: $("#ve-size").value,
     color: $("#ve-color").value, box: $("#ve-box").checked, loudnorm: $("#ve-loud").checked, hide_orig: $("#ve-hide").checked, trim_bars: $("#ve-trim").checked,
-    audio_clean: $("#ve-aclean").value, quality: $("#ve-quality").value, hook: $("#ve-hook-use").checked,
+    audio_clean: $("#ve-aclean").value, quality: $("#ve-quality").value, hook: $("#ve-hook-use").checked, cut: $("#ve-cut-use").checked,
     orig_volume: Number($("#ve-ov").value), voice_volume: 100,
   };
 }
 function veBusy(on, msg) {
   ve.busy = on;
-  ["#ve-trans", "#ve-render", "#ve-discard", "#ve-approve", "#ve-tr-auto", "#ve-tr-to", "#ve-tr-paste", "#ve-tr-undo", "#ve-tr-apply", "#ve-savecues", "#ve-addcue", "#ve-voicefile", "#ve-voicedel", "#ve-os-detect", "#ve-os-save"].forEach((s) => { $(s).disabled = on || (ve.st && ve.st.scheduled); });
+  ["#ve-trans", "#ve-render", "#ve-discard", "#ve-approve", "#ve-tr-auto", "#ve-tr-to", "#ve-tr-paste", "#ve-tr-undo", "#ve-tr-apply", "#ve-savecues", "#ve-addcue", "#ve-voicefile", "#ve-voicedel", "#ve-os-detect", "#ve-os-save",
+    "#ve-cut-add", "#ve-cut-save", "#ve-cut-clear"].forEach((s) => { $(s).disabled = on || (ve.st && ve.st.scheduled); });
+  $("#ve-cut-gen").disabled = on || !ve.st || ve.st.scheduled || !ve.st.claude;
+  if (ve.st && ve.st.draft && ve.st.draft.check && ve.st.draft.check.errors.length) $("#ve-approve").disabled = true;   // bản nháp chưa đạt chuẩn đăng
   if (!on) $("#ve-bar").hidden = true;
   if (msg !== undefined) $("#ve-msg").textContent = msg;
   if (ve.st && ve.st.translate) veTrUi();
@@ -1613,15 +1616,122 @@ function veRender() {
   veHookRender();
   $("#ve-ov").value = set.orig_volume; $("#ve-ov-n").textContent = set.orig_volume + "%";
   veOsRender();
+  veCutRender();
   $("#ve-view-ed").disabled = !st.draft.exists;
   $("#ve-discard").hidden = !st.draft.exists;
   $("#ve-approve").hidden = !st.draft.exists;
   veBusy(false);
   const ed = st.draft;
+  const ck = $("#ve-check"), c = ed.check;
+  ck.hidden = !(ed.exists && c);
+  if (!ck.hidden) {
+    ck.className = "msg " + (c.errors.length ? "bad" : "ok");
+    ck.textContent = c.errors.length
+      ? `Bản nháp CHƯA đạt chuẩn đăng ${st.standard} nên chưa duyệt được: ${c.errors.join(" ")}`
+      : `Bản nháp đạt chuẩn đăng ${st.standard} (${c.w}x${c.h}, ${fmtSec(c.duration)} giây).` + (c.warnings.length ? " Lưu ý: " + c.warnings.join(" ") : "");
+  }
   $("#ve-msg").textContent = ed.exists
     ? `Có bản nháp (${ed.size_mb} MB), chưa duyệt: hẹn giờ vẫn dùng video hiện tại.` + (ed.stale ? " Phụ đề đã đổi sau lần xuất, nên xuất lại." : " Xem thử rồi bấm Duyệt để thay video gốc.")
     : st.approved ? "Video này đã được chỉnh sửa và duyệt. Xuất lần nữa sẽ chồng thêm lên bản hiện tại (phụ đề cũ đã in cố định)." : "Chưa có bản nháp: hẹn giờ đăng đang dùng video gốc.";
 }
+// ---- Cắt ngắn: các đoạn giữ lại (giây, theo video gốc) ----
+const veCut = { stopAt: null };
+function veCutRows() {
+  return $$("#ve-cut-list .ve-cutrow").map((r) => ({ start: Number($(".c-a", r).value), end: Number($(".c-b", r).value), note: r.dataset.note || "" }));
+}
+function veCutRowHtml(sg, i) {
+  return `<div class="ve-cutrow" data-note="${esc(sg.note || "")}">
+    <span class="ve-cut-n">${i + 1}</span>
+    <label>Từ <input type="number" class="c-a" min="0" step="0.1" value="${fmtSec(sg.start)}"></label>
+    <label>đến <input type="number" class="c-b" min="0" step="0.1" value="${fmtSec(sg.end)}"></label>
+    <span class="hint c-len"></span>
+    <button class="ghost c-play" type="button" title="Phát đoạn này trên video gốc">▶</button>
+    <button class="link c-del" type="button" title="Bỏ đoạn này">✕</button>
+    ${sg.note ? `<span class="hint c-note">${esc(sg.note)}</span>` : ""}
+  </div>`;
+}
+function veCutTotal() {
+  const max = ve.st.max_seconds || 90;
+  let tot = 0;
+  $$("#ve-cut-list .ve-cutrow").forEach((r) => {
+    const a = Number($(".c-a", r).value), b = Number($(".c-b", r).value);
+    const d = b > a ? b - a : 0;
+    tot += d;
+    $(".c-len", r).textContent = d ? `${fmtSec(d)} giây` : "đoạn không hợp lệ";
+  });
+  const n = $$("#ve-cut-list .ve-cutrow").length;
+  const el = $("#ve-cut-total");
+  el.textContent = n ? `giữ ${n} đoạn · ${fmtSec(tot)} giây${tot > max ? ` (vượt ${max} giây)` : ""}` : "";
+  el.classList.toggle("bad", tot > max);
+}
+function veCutRender() {
+  const st = ve.st, cu = st.cuts || { segments: [] }, dur = st.source.duration || 0, max = st.max_seconds || 90;
+  $("#ve-cut-hint").textContent = (dur > max + 0.5
+    ? `Video dài ${Math.round(dur)} giây, vượt ${max} giây: bản xuất phải từ ${max} giây trở xuống mới duyệt được. `
+    : `Video dài ${Math.round(dur)} giây, không bắt buộc cắt; vẫn có thể bỏ đoạn thừa. `) +
+    (st.claude ? "Claude đọc phụ đề có mốc thời gian (phiên âm ở bước 1 trước) rồi chọn các đoạn giữ lại; bạn xem, sửa, rồi tick ô bên dưới và Xuất video."
+      : "Chưa tìm thấy Claude Code (lệnh `claude`) nên chỉ tự nhập được các đoạn giữ lại.");
+  $("#ve-cut-sum").textContent = cu.segments.length
+    ? (cu.source === "claude" ? "Đề xuất của Claude" : "Đoạn bạn đã lưu") + (cu.summary ? `: ${cu.summary}` : ".")
+    : "Chưa có đoạn cắt nào.";
+  $("#ve-cut-list").innerHTML = cu.segments.map(veCutRowHtml).join("");
+  $("#ve-cut-use").disabled = !cu.segments.length;
+  $("#ve-cut-use").checked = !!(cu.segments.length && st.settings.cut);
+  veCutTotal();
+}
+async function veSaveCuts() {
+  const r = await api("/api/edit/cuts", "POST", { rel: ve.rel, segments: veCutRows() });
+  ve.st.cuts = r;
+  const use = $("#ve-cut-use").checked;
+  veCutRender();
+  $("#ve-cut-use").checked = use && r.segments.length > 0;
+  return r;
+}
+$("#ve-cut-list").addEventListener("input", veCutTotal);
+$("#ve-cut-list").addEventListener("click", (e) => {
+  const row = e.target.closest(".ve-cutrow");
+  if (!row) return;
+  if (e.target.classList.contains("c-del")) { row.remove(); $$("#ve-cut-list .ve-cut-n").forEach((n, i) => { n.textContent = i + 1; }); veCutTotal(); return; }
+  if (e.target.classList.contains("c-play")) {
+    const a = Number($(".c-a", row).value), b = Number($(".c-b", row).value);
+    if (!(b > a)) return;
+    if (ve.view !== "orig") veSetView("orig");   // đoạn tính theo giờ của video gốc
+    const vid = $("#ve-video");
+    veCut.stopAt = b;
+    const go = () => { try { vid.currentTime = a; vid.play(); } catch (err) { /* bỏ qua */ } };
+    if (vid.readyState >= 1) go(); else vid.addEventListener("loadedmetadata", go, { once: true });
+  }
+});
+$("#ve-video").addEventListener("timeupdate", () => {
+  const vid = $("#ve-video");
+  if (veCut.stopAt != null && vid.currentTime >= veCut.stopAt) { vid.pause(); veCut.stopAt = null; }
+});
+$("#ve-video").addEventListener("seeking", () => { if (veCut.stopAt != null && $("#ve-video").paused) veCut.stopAt = null; });
+$("#ve-cut-add").addEventListener("click", () => {
+  const rows = veCutRows(), dur = ve.st.source.duration || 0;
+  const a = rows.length ? Math.min(rows[rows.length - 1].end, dur) : Math.min($("#ve-video").currentTime || 0, dur);
+  const b = Math.min(dur || a + 10, a + 10);
+  $("#ve-cut-list").insertAdjacentHTML("beforeend", veCutRowHtml({ start: a, end: b > a ? b : a }, rows.length));
+  veCutTotal();
+});
+$("#ve-cut-save").addEventListener("click", async () => {
+  try {
+    const r = await veSaveCuts();
+    toast(r.segments.length ? `Đã lưu ${r.segments.length} đoạn, tổng ${fmtSec(r.total)} giây. Tick "Cắt theo các đoạn này khi xuất" rồi Xuất video.` : "Đã bỏ cắt.", 6000);
+  } catch (e) { toast(e.message, 8000); }
+});
+$("#ve-cut-clear").addEventListener("click", async () => {
+  if (!confirm("Bỏ toàn bộ các đoạn cắt? Lần xuất sau sẽ giữ nguyên độ dài video.")) return;
+  try { $("#ve-cut-list").innerHTML = ""; await veSaveCuts(); } catch (e) { toast(e.message, 8000); }
+});
+$("#ve-cut-gen").addEventListener("click", async () => {
+  if ($$("#ve-cut-list .ve-cutrow").length && !confirm("Thay các đoạn đang có bằng đề xuất mới của Claude?")) return;
+  try {
+    await veRunJob("/api/edit/cuts/suggest", { rel: ve.rel, notes: $("#ve-cut-notes").value }, "Claude đang chọn các đoạn giữ lại...");
+    await veLoad(ve.view);
+  } catch (e) { $("#ve-msg").textContent = e.message; toast(e.message, 8000); }
+});
+
 // ---- Che sub gốc (chữ in cứng trong video) ----
 const AC_NAMES = { off: "Tắt", light: "Nhẹ", voice: "Rõ giọng nói" };
 function veAcRender() {
@@ -1858,6 +1968,7 @@ $("#ve-render").addEventListener("click", async () => {
   try {
     if ($("#ve-subs").checked && document.querySelector("#ve-cues .ve-cue")) await veSaveCues();
     if ($("#ve-subs").checked) veAlignToOrig();   // đừng xuất ra bản sub mới lệch khỏi chỗ đã che mà người dùng không biết
+    if ($("#ve-cut-use").checked) await veSaveCuts();   // xuất đúng các đoạn đang thấy trên màn hình
     await veRunJob("/api/edit/render", { rel: ve.rel, settings: veSettings() }, "Đang xuất video...");
     await veLoad("draft");
   } catch (e) { $("#ve-msg").textContent = e.message; toast(e.message, 8000); }

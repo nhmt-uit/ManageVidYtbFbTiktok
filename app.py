@@ -422,6 +422,34 @@ def api_edit_hook_generate():
     return jsonify({"job": job.id})
 
 
+@app.post("/api/edit/cuts")
+def api_edit_cuts_save():
+    """Lưu các đoạn giữ lại (cắt ngắn video). segments rỗng = bỏ cắt."""
+    d = body()
+    try:
+        return jsonify(editor.save_cuts(_edit_rel(d), d.get("segments") or []))
+    except editor.EditError as e:
+        return err(str(e), 409)
+    except ValueError as e:
+        return err(str(e), 404)
+
+
+@app.post("/api/edit/cuts/suggest")
+def api_edit_cuts_suggest():
+    d = body()
+    try:
+        folder = library.resolve(_edit_rel(d))
+    except ValueError as e:
+        return err(str(e), 404)
+    if manager.has_running("edit"):
+        return err("Đang có một tác vụ chỉnh sửa khác chạy. Đợi nó xong rồi thử lại.", 409)
+    if not editor.hooks.find_claude():
+        return err("Chưa tìm thấy lệnh `claude` (Claude Code) trên máy. Cài Claude Code và đăng nhập, hoặc đặt CLAUDE_BIN trong .env.", 409)
+    notes = str(d.get("notes") or "")[:400]
+    job = manager.start("edit", f"Đề xuất cắt ngắn: {folder.name}", editor.suggest_cuts_job, _edit_rel(d), notes)
+    return jsonify({"job": job.id})
+
+
 @app.post("/api/edit/hook")
 def api_edit_hook_save():
     d = body()

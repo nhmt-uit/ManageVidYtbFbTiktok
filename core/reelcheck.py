@@ -204,3 +204,34 @@ def run_check(job, page_id: str, force: bool = False) -> str:
             job.log(f"{'KHÔNG ĐẠT' if st == 'error' else 'Lưu ý'}: {folder.name}: {' '.join(res['errors'] + res['warnings'])}")
         job.set_progress(i, len(videos))
     return f"Đã kiểm tra {sum(counts.values())} video: {counts['ok']} đạt, {counts['warn']} cần xem lại, {counts['error']} không đạt yêu cầu Reels."
+
+
+# ---------- Chuẩn chung để đăng được cả Reels Facebook, Instagram Reels và YouTube Shorts ----------
+# Lấy mức chặt nhất của từng mục: dọc 9:16, tối thiểu 540x960, 3 đến 90 giây, 24 đến 60 fps, MP4 với hình H.264 và tiếng AAC.
+# (Instagram / YouTube có thể cho dài hơn, nhưng Reels Facebook qua API chỉ nhận tối đa 90 giây.)
+STANDARD_NAME = "Reels Facebook, Instagram Reels và YouTube Shorts"
+STRICT_RATIO_TOL = 0.02
+
+
+def strict_check(path: Path) -> dict:
+    """Kiểm tra một file video theo chuẩn chung. Trả về {errors, warnings, w, h, duration, fps, has_audio}.
+    errors rỗng = đăng được. Ném RuntimeError nếu không có ffprobe."""
+    info = probe(path)
+    res = evaluate(info)
+    errors, warnings = list(res["errors"]), [w for w in res["warnings"] if "9:16" not in w and "fps" not in w]
+    w, h, fps = res["w"], res["h"], res["fps"]
+    if w and h and abs(w / h - RATIO) > STRICT_RATIO_TOL:
+        errors.append(f"Khung hình {w}x{h} không phải dọc 9:16.")
+    if fps and not (MIN_FPS <= fps <= MAX_FPS):
+        errors.append(f"Tốc độ khung hình {fps:.0f} fps nằm ngoài khoảng 24 đến 60 fps.")
+    streams = info.get("streams") or []
+    v = next((s for s in streams if s.get("codec_type") == "video" and (s.get("disposition") or {}).get("attached_pic") != 1), None)
+    if v and v.get("codec_name") != "h264":
+        errors.append(f"Hình mã hoá {v.get('codec_name') or 'không rõ'}, cần H.264.")
+    a = next((s for s in streams if s.get("codec_type") == "audio"), None)
+    if a and a.get("codec_name") != "aac":
+        errors.append(f"Âm thanh mã hoá {a.get('codec_name') or 'không rõ'}, cần AAC.")
+    fmt = str((info.get("format") or {}).get("format_name") or "")
+    if info and "mp4" not in fmt.split(","):
+        errors.append("File không phải MP4.")
+    return {**res, "errors": errors, "warnings": warnings}

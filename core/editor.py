@@ -23,7 +23,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import audioscan, bars, config, hooks, library, origsubs, reelcheck, translate
+from . import audioscan, bars, config, cutplan, hooks, library, origsubs, reelcheck, translate
 from .videofile import APPROVED, DRAFT, ORIGINAL
 
 SUBS_FILE = "subs.json"
@@ -51,6 +51,7 @@ DEFAULT_SETTINGS = {
     "trim_bars": True,       # tự cắt viền đen có sẵn quanh hình trong video gốc trước khi phóng lên 1080x1920 (xem bars.py)
     "hook": False,           # in chữ hook đã duyệt ở 3 giây đầu (xem hooks.py)
     "quality": "standard",   # fast | standard | high: chất lượng hình và âm thanh khi xuất
+    "cut": False,            # chỉ giữ các đoạn trong cuts.json khi xuất (cắt ngắn video dài, xem cutplan.py)
 }
 CHOICES = {"framing": ("auto", "scale", "fit", "crop"), "position": ("bottom", "middle", "top", "orig"),   # orig = đúng chỗ sub gốc
            "size": ("small", "medium", "large"), "color": ("white", "yellow", "cyan"),
@@ -211,7 +212,7 @@ def clean_settings(raw: dict | None) -> dict:
     for k, allowed in CHOICES.items():
         if raw.get(k) in allowed:
             s[k] = raw[k]
-    for k in ("subs", "box", "loudnorm", "hide_orig", "hook", "trim_bars"):
+    for k in ("subs", "box", "loudnorm", "hide_orig", "hook", "trim_bars", "cut"):
         if isinstance(raw.get(k), bool):
             s[k] = raw[k]
     for k, lo, hi in (("orig_volume", 0, 200), ("voice_volume", 0, 300)):
@@ -355,7 +356,8 @@ def status(rel: str) -> dict:
         st = draft.stat()
         info = _read_json(folder / SETTINGS_FILE)
         dr = {"exists": True, "size_mb": round(st.st_size / 1048576, 1), "mtime": int(st.st_mtime), "settings": info.get("settings", {}),
-              "stale": subs.get("edited_at", subs.get("created_at", "")) > info.get("edited_at", "") if subs.get("cues") else False}
+              "stale": subs.get("edited_at", subs.get("created_at", "")) > info.get("edited_at", "") if subs.get("cues") else False,
+              "check": draft_check(draft)}
     settings = clean_settings(_read_json(folder / SETTINGS_FILE).get("settings"))
     return {"rel": rel, "tools": t, "source": src, "cues": subs["cues"], "language": subs.get("language", ""),
             "transcribed": bool(subs.get("created_at")), "voice": voice_info(folder), "draft": dr, "translate": {k: v for k, v in translate.settings().items() if k != "base"}, "translated_to": subs.get("translated_to", ""),
@@ -363,7 +365,8 @@ def status(rel: str) -> dict:
             "approved": _read_json(folder / APPROVED).get("approved_at", ""), "settings": settings,
             "scheduled": is_scheduled(folder), "langs": LANGS, "busy": _busy.locked(), "origsubs": origsubs_info(folder),
             "audioscan": _read_json(folder / audioscan.FILE),
-            "hooks": hook_info(folder), "claude": bool(hooks.find_claude())}
+            "hooks": hook_info(folder), "claude": bool(hooks.find_claude()), "cuts": cuts_info(folder, src.get("duration") or 0),
+            "max_seconds": MAX_SECONDS, "standard": reelcheck.STANDARD_NAME}
 
 
 def discard(rel: str) -> None:
@@ -391,9 +394,12 @@ def approve(rel: str) -> str:
         info = probe_media(draft)
         if not info["width"] or not info["duration"]:
             raise EditError("Bản nháp không đọc được (file hỏng?). Hãy xuất lại.")
+        chk = draft_check(draft)
+        if chk["errors"]:
+            raise EditError(f"Bản nháp chưa đạt chuẩn đăng {reelcheck.STANDARD_NAME} nên chưa duyệt được: " + " ".join(chk["errors"]))
         settings = _read_json(folder / SETTINGS_FILE).get("settings", {})
         os.replace(draft, folder / ORIGINAL)   # nguyên tử: video.mp4 luôn là một file đầy đủ
-        for name in (SUBS_FILE, SETTINGS_FILE, origsubs.FILE, audioscan.FILE, hooks.FILE):
+        for name in (SUBS_FILE, SETTINGS_FILE, origsubs.FILE, audioscan.FILE, hooks.FILE, cutplan.FILE):
             (folder / name).unlink(missing_ok=True)
         _remove_voice_files(folder)
         _write_json(folder / APPROVED, {"approved_at": datetime.now(timezone.utc).isoformat(), "settings": settings})
@@ -403,6 +409,62 @@ def approve(rel: str) -> str:
             except Exception:   # noqa: BLE001  kiểm tra Reels chỉ là phụ
                 pass
         return f"Đã duyệt: bản chỉnh sửa đã thay thế video gốc ({info['width']}x{info['height']}, {info['duration']:.0f} giây)."
+    finally:
+        _busy.release()
+
+
+def draft_check(path: Path) -> dict:
+    """Kiểm tra bản nháp theo chuẩn chung (reelcheck.strict_check). Không có ffprobe thì coi là chưa kiểm tra được (chặn duyệt)."""
+    try:
+        r = reelcheck.strict_check(path)
+    except RuntimeError as exc:
+        return {"errors": [f"Không kiểm tra được bản nháp: {exc}"], "warnings": [], "checked": False}
+    return {"errors": r["errors"], "warnings": r["warnings"], "duration": r["duration"], "w": r["w"], "h": r["h"], "checked": True}
+
+
+# ---------- cắt ngắn video dài (các đoạn giữ lại, cuts.json) ----------
+def cuts_info(folder: Path, duration: float) -> dict:
+    return cutplan.info(_read_json(folder / cutplan.FILE), duration)
+
+
+def save_cuts(rel: str, segments, enabled: bool | None = None) -> dict:
+    """Lưu các đoạn giữ lại do người dùng sửa (source = manual). Danh sách rỗng = bỏ cắt."""
+    folder = library.resolve(rel)
+    if is_scheduled(folder):
+        raise EditError("Video này đã lên lịch. Huỷ lịch trước rồi mới chỉnh sửa được.")
+    if _busy.locked():
+        raise EditError("Đang có tác vụ chỉnh sửa khác chạy, đợi xong rồi thử lại.")
+    dur = probe_media(folder / ORIGINAL)["duration"]
+    segs = cutplan.clean_segments(segments, dur)
+    if segs and cutplan.total(segs) < cutplan.MIN_TOTAL:
+        raise EditError(f"Tổng các đoạn giữ lại phải ít nhất {cutplan.MIN_TOTAL:g} giây.")
+    cur = _read_json(folder / cutplan.FILE)
+    if not segs:
+        (folder / cutplan.FILE).unlink(missing_ok=True)
+    else:
+        _write_json(folder / cutplan.FILE, {"segments": segs, "source": "manual", "summary": cur.get("summary", "") if isinstance(cur, dict) else "",
+                                            "updated_at": cutplan.now()})
+    return cuts_info(folder, dur)
+
+
+def suggest_cuts_job(job, rel: str, notes: str = "") -> str:
+    """Nhờ Claude Code đề xuất các đoạn giữ lại cho video dài (dựa vào phụ đề có mốc thời gian). Chỉ ghi cuts.json, không đụng video."""
+    if not _busy.acquire(blocking=False):
+        raise EditError("Đang có một tác vụ chỉnh sửa khác chạy. Đợi nó xong rồi thử lại.")
+    try:
+        folder = library.resolve(rel)
+        if is_scheduled(folder):
+            raise EditError("Video này đã lên lịch. Huỷ lịch trước rồi mới chỉnh sửa được.")
+        dur = probe_media(folder / ORIGINAL)["duration"]
+        cues = clean_cues(load_subs(folder)["cues"], dur)
+        job.log(f"Đang nhờ Claude chọn các đoạn giữ lại (video {dur:.0f} giây, {len(cues)} dòng phụ đề; khoảng 20 đến 90 giây)...")
+        try:
+            r = cutplan.suggest(folder.name, cues, dur, notes, cancelled=lambda: job.cancelled, model=config.get("HOOK_MODEL", "") or "")
+        except cutplan.CutError as exc:
+            raise EditError(str(exc)) from exc
+        _write_json(folder / cutplan.FILE, {"segments": r["segments"], "source": "claude", "summary": r["summary"], "updated_at": cutplan.now()})
+        return (f"Claude đề xuất giữ {len(r['segments'])} đoạn, tổng {cutplan.total(r['segments']):.0f} giây. "
+                "Xem lại từng đoạn (bấm ▶ để nghe), sửa nếu cần, tick \"Cắt theo các đoạn này khi xuất\" rồi Xuất video.")
     finally:
         _busy.release()
 
@@ -710,15 +772,41 @@ def build_ass(cues: list[dict], s: dict, center_y: float | None = None, hook: st
     return head + "\n".join(lines) + "\n"
 
 
-def build_filter(src: dict, s: dict, voice: bool, ass: bool, cover: str = "", crop: dict | None = None) -> tuple[str, list[str]]:
+def _cut_chain(inp: str, out: str, segs: list[dict], audio: bool) -> str:
+    """Giữ các đoạn `segs` (giây, theo video gốc) của luồng [inp] rồi nối lại thành [out]."""
+    trim, setpts, split, kind = ("atrim", "asetpts", "asplit", "v=0:a=1") if audio else ("trim", "setpts", "split", "v=1:a=0")
+    n = len(segs)
+    tag = "ca" if audio else "cv"
+    tag += out
+    parts = [f"[{inp}]{split}={n}" + "".join(f"[{tag}i{i}]" for i in range(n))] if n > 1 else []
+    for i, sg in enumerate(segs):
+        src = f"{tag}i{i}" if n > 1 else inp
+        parts.append(f"[{src}]{trim}=start={sg['start']:.3f}:end={sg['end']:.3f},{setpts}=PTS-STARTPTS[{tag}o{i}]")
+    parts.append("".join(f"[{tag}o{i}]" for i in range(n)) + f"concat=n={n}:{kind}[{out}]")
+    return ";".join(parts)
+
+
+def build_filter(src: dict, s: dict, voice: bool, ass: bool, cover: str = "", crop: dict | None = None,
+                 segs: list[dict] | None = None) -> tuple[str, list[str]]:
     """Trả về (filter_complex, các tham số -map). src là kết quả probe_media của video gốc.
     cover: đoạn filter che sub gốc (origsubs.cover_chain, đầu ra là [src]); rỗng = không che.
-    crop: vùng hình cần giữ (bars.detect) để cắt viền đen có sẵn; src phải là kích thước SAU khi cắt."""
+    crop: vùng hình cần giữ (bars.detect) để cắt viền đen có sẵn; src phải là kích thước SAU khi cắt.
+    segs: các đoạn giữ lại (cắt ngắn video). Che sub gốc làm TRƯỚC khi cắt vì khoảng che tính theo giờ của video gốc."""
     vin = "src" if cover else "0:v"
     pre = [cover] if cover else []
     if crop:
         pre.append(f"[{vin}]crop={crop['w']}:{crop['h']}:{crop['x']}:{crop['y']}[cb]")
         vin = "cb"
+    ain, voin = "0:a", "1:a"
+    if segs:
+        pre.append(_cut_chain(vin, "vcut", segs, audio=False))
+        vin = "vcut"
+        if src["has_audio"]:
+            pre.append(_cut_chain("0:a", "acut", segs, audio=True))
+            ain = "acut"
+        if voice:   # giọng đọc thu theo giờ của video gốc: cắt cùng các đoạn để không lệch
+            pre.append(_cut_chain("1:a", "vocut", segs, audio=True))
+            voin = "vocut"
     framing = s["framing"]
     if framing == "auto":
         ratio = src["width"] / src["height"] if src["width"] and src["height"] else 0
@@ -740,14 +828,14 @@ def build_filter(src: dict, s: dict, voice: bool, ass: bool, cover: str = "", cr
     maps = ["-map", "[v]"]
     parts = [vf]
     if src["has_audio"] and voice:
-        parts.append(f"[0:a]{clean}volume={s['orig_volume'] / 100:.2f}[o];[1:a]volume={s['voice_volume'] / 100:.2f}[vo];"
+        parts.append(f"[{ain}]{clean}volume={s['orig_volume'] / 100:.2f}[o];[{voin}]volume={s['voice_volume'] / 100:.2f}[vo];"
                      f"[o][vo]amix=inputs=2:duration=first:dropout_transition=0:normalize=0{norm}[a]")
         maps += ["-map", "[a]"]
     elif voice:
-        parts.append(f"[1:a]volume={s['voice_volume'] / 100:.2f}{norm}[a]")
+        parts.append(f"[{voin}]volume={s['voice_volume'] / 100:.2f}{norm}[a]")
         maps += ["-map", "[a]"]
     elif src["has_audio"]:
-        parts.append(f"[0:a]{clean}anull{norm}[a]")
+        parts.append(f"[{ain}]{clean}anull{norm}[a]")
         maps += ["-map", "[a]"]
     return ";".join(parts), maps
 
@@ -795,7 +883,16 @@ def render_job(job, rel: str, settings: dict | None = None) -> str:
                 else:
                     bar = None
         eff = dict(src, width=bar["w"], height=bar["h"]) if bar else src   # kích thước hình thật sau khi cắt viền đen
+        segs = cuts_info(folder, src["duration"])["segments"] if s["cut"] else []
+        if s["cut"] and not segs:
+            s["cut"] = False
+            job.log("Chưa lưu đoạn cắt nào nên xuất nguyên video.")
+        out_dur = cutplan.total(segs) if segs else src["duration"]
+        if segs:
+            job.log(f"Cắt ngắn: giữ {len(segs)} đoạn, tổng {out_dur:.1f} giây (video gốc {src['duration']:.0f} giây).")
         cues = clean_cues(load_subs(folder)["cues"], src["duration"]) if s["subs"] else []
+        if segs and cues:
+            cues = cutplan.retime_cues(cues, segs)
         if s["subs"] and not cues:
             s["subs"] = False
             job.log("Chưa có phụ đề nên xuất không kèm phụ đề.")
@@ -828,15 +925,16 @@ def render_job(job, rel: str, settings: dict | None = None) -> str:
         voice = voice_file(folder)
         crf, abr = QUALITY[s["quality"]]
         long_note = ""
-        if src["duration"] and src["duration"] > MAX_SECONDS + 0.5:
-            long_note = f" Lưu ý: video dài {src['duration']:.0f} giây, vượt mức {MAX_SECONDS} giây nên dễ bị giảm phân phối; cân nhắc cắt bớt hoặc tách thành 2 phần."
+        if out_dur and out_dur > MAX_SECONDS + 0.5:
+            long_note = (f" Lưu ý: bản xuất dài {out_dur:.0f} giây, vượt mức {MAX_SECONDS} giây nên KHÔNG duyệt được (không đăng được Reels)."
+                         " Dùng bước Cắt ngắn để giữ các đoạn dưới 90 giây rồi xuất lại.")
             job.log(long_note.strip())
-        fc, maps = build_filter(eff, s, voice is not None, bool(cues) or bool(hook_text), cover, bar)
+        fc, maps = build_filter(eff, s, voice is not None, bool(cues) or bool(hook_text), cover, bar, segs or None)
         job.log(f"Xuất video {OUT_W}x{OUT_H}" + (f", {len(cues)} dòng phụ đề" if cues else "") + (", kèm hook 3 giây đầu" if hook_text else "") + (f", kèm giọng đọc {voice.name}" if voice else "") + "...")
         with tempfile.TemporaryDirectory(prefix="mvt-render-") as tmp:
             tmpd = Path(tmp)
             if cues or hook_text:
-                hook_end = min(hooks.HOOK_SECONDS, src["duration"]) if src["duration"] else hooks.HOOK_SECONDS
+                hook_end = min(hooks.HOOK_SECONDS, out_dur) if out_dur else hooks.HOOK_SECONDS
                 (tmpd / "subs.ass").write_text(build_ass(cues, s, center_y, hook_text, hook_end), encoding="utf-8")
             out_tmp = folder / "video.draft.render.tmp.mp4"
             cmd = [t["ffmpeg"]["path"], "-nostdin", "-v", "error", "-nostats", "-y", "-i", str(src_path)]
@@ -844,8 +942,8 @@ def render_job(job, rel: str, settings: dict | None = None) -> str:
                 cmd += ["-i", str(voice)]
             cmd += ["-filter_complex", fc, *maps, "-c:v", "libx264", "-preset", "veryfast", "-crf", str(crf), "-pix_fmt", "yuv420p",
                     "-c:a", "aac", "-b:a", abr, "-ar", "44100", "-movflags", "+faststart", "-progress", "pipe:1"]
-            if src["duration"]:
-                cmd += ["-t", f"{src['duration']:.3f}"]
+            if out_dur:
+                cmd += ["-t", f"{out_dur:.3f}"]
             cmd.append(str(out_tmp))
             errf = tmpd / "ffmpeg.err"
             try:
@@ -857,8 +955,8 @@ def render_job(job, rel: str, settings: dict | None = None) -> str:
                             out_tmp.unlink(missing_ok=True)
                             return "Đã dừng theo yêu cầu."
                         m = _TIME_RE.match(line.strip())
-                        if m and src["duration"]:
-                            job.set_progress(min(99, int(int(m[1]) / 1_000_000 / src["duration"] * 100)), 100)
+                        if m and out_dur:
+                            job.set_progress(min(99, int(int(m[1]) / 1_000_000 / out_dur * 100)), 100)
                     proc.wait()
             except OSError as exc:
                 raise EditError(f"Không chạy được FFmpeg: {exc}") from exc
@@ -877,7 +975,7 @@ def render_job(job, rel: str, settings: dict | None = None) -> str:
             except (audioscan.ScanError, ValueError, OSError):
                 pass
         _write_json(folder / SETTINGS_FILE, {"settings": s, "edited_at": datetime.now(timezone.utc).isoformat(), "voice": voice.name if voice else "",
-                                              "cues": len(cues), "audio_report": audio_report})
+                                              "cues": len(cues), "audio_report": audio_report, "segments": segs})
         job.set_progress(100, 100)
         mb = (folder / DRAFT).stat().st_size / 1048576
         return f"Đã xuất bản nháp ({mb:.1f} MB). Xem thử rồi bấm Duyệt để thay video gốc; chưa duyệt thì hẹn giờ vẫn dùng video gốc." + long_note

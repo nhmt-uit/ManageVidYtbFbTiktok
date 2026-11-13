@@ -569,7 +569,7 @@
           </section>
           <section class="ve-sec" id="ve-os-sec">
             <h3>4. Che sub gốc (nếu video đã có sub in cứng)</h3>
-            <p class="hint">Dò chữ phụ đề in sẵn trong hình (chữ trắng viền đen), rồi làm mờ chỗ đó khi xuất để phụ đề mới không chồng lên chữ cũ. Nên chọn vị trí phụ đề "Đúng chỗ sub gốc" ở bước 6.</p>
+            <p class="hint">Dò chữ phụ đề in sẵn trong hình (chữ trắng viền đen), rồi làm mờ chỗ đó khi xuất để phụ đề mới không chồng lên chữ cũ. Nên chọn vị trí phụ đề "Đúng chỗ sub gốc" ở bước 7.</p>
             <div class="row">
               <button class="ghost" id="ve-os-detect" type="button">Dò sub gốc</button>
               <label class="ve-chk"><input type="checkbox" id="ve-hide" disabled> Che sub gốc khi xuất</label>
@@ -601,8 +601,24 @@
               <label class="ve-chk"><input type="checkbox" id="ve-hook-use" disabled> In hook ở 3 giây đầu khi xuất</label>
             </div>
           </section>
+          <section class="ve-sec" id="ve-cut-sec">
+            <h3>6. Cắt ngắn <span class="count" id="ve-cut-total"></span></h3>
+            <p class="hint" id="ve-cut-hint"></p>
+            <div class="row">
+              <input type="text" id="ve-cut-notes" maxlength="400" placeholder="Ghi chú cho Claude (tuỳ chọn): giữ phần nào, bỏ phần nào..." style="flex:1 1 260px">
+              <button class="ghost" id="ve-cut-gen" type="button">Nhờ Claude đề xuất cắt</button>
+            </div>
+            <p class="hint" id="ve-cut-sum"></p>
+            <div id="ve-cut-list" class="ve-cuts"></div>
+            <div class="row">
+              <button class="ghost" id="ve-cut-add" type="button">+ Thêm đoạn</button>
+              <button class="ghost" id="ve-cut-save" type="button">Lưu đoạn cắt</button>
+              <button class="link" id="ve-cut-clear" type="button">Bỏ cắt</button>
+              <label class="ve-chk"><input type="checkbox" id="ve-cut-use" disabled> Cắt theo các đoạn này khi xuất</label>
+            </div>
+          </section>
           <section class="ve-sec">
-            <h3>6. Kiểu hiển thị và xuất video</h3>
+            <h3>7. Kiểu hiển thị và xuất video</h3>
             <div class="ve-opts">
               <label>Khung hình <select id="ve-framing"><option value="auto">Tự chọn (khuyên dùng)</option><option value="fit">Nền mờ, video ở giữa</option><option value="crop">Cắt giữa cho đầy khung</option><option value="scale">Giữ nguyên, viền đen</option></select></label>
               <label>Vị trí phụ đề <select id="ve-position"><option value="bottom">Dưới</option><option value="middle">Giữa</option><option value="top">Trên</option><option value="orig">Đúng chỗ sub gốc (cần dò sub gốc)</option></select></label>
@@ -618,6 +634,7 @@
               <p class="hint" id="ve-ac-info">Đo độ ồn nền, tiếng ù, tiếng xì rồi gợi ý chế độ làm sạch phù hợp (chạy trên máy bạn, vài giây).</p>
               <label id="ve-ov-wrap">Âm gốc khi có giọng đọc <input type="range" id="ve-ov" min="0" max="100" step="5" value="25"> <span id="ve-ov-n">25%</span></label>
             </div>
+            <p class="msg" id="ve-check" hidden></p>
             <div class="actions">
               <button class="ghost" id="ve-discard" type="button" hidden>Bỏ bản nháp</button>
               <button class="primary danger" id="ve-approve" type="button" hidden>Duyệt &amp; thay video gốc</button>

@@ -14,7 +14,7 @@ Web app Flask chạy trên Mac của Tu (127.0.0.1:5173) để: tải video (You
 - `app.py`: Flask, toàn bộ route `/api/...`. `static/app.js` + `index.html` + `style.css`: giao diện thuần JS (id `ve-*` = hộp thoại chỉnh sửa video).
 - `core/`: `pages.py` (mỗi thư mục video thuộc đúng một Fanpage, `channel.json`), `library.py`, `scheduler.py`/`planner.py` (hẹn giờ, 29 ngày, 24h/Page), `publish.py`, `commenter.py`, `fbgate.py` (giới hạn lượt gọi Graph API, mặc định 150/giờ), `manage.py` (huỷ lịch, xác nhận đôi), `downloader.py`/`series.py`/`ytdlp_update.py`, `stats.py`, `notify.py`, `jobs.py` (JobManager, nhật ký ở `logs/jobs`).
 - Chỉnh sửa video: `editor.py` (xuất ffmpeg, bản nháp `video.draft.mp4`, duyệt thì thay video gốc), `origsubs.py` (dò + che sub gốc), `bars.py` (cắt viền đen), `audioscan.py` (phân tích âm thanh, cần numpy), `hooks.py` (`run_claude`, hook 3 giây), `translate.py` (provider `claude-code` mặc định, `anthropic`, `openai`).
-- Tệp theo từng video: `subs.json`, `edit.json`, `edit_approved.json`, `origsubs.json`, `audioscan.json`, `hooks.json` (3 tệp cuối xoá khi duyệt).
+- Tệp theo từng video: `subs.json`, `edit.json`, `edit_approved.json`, `origsubs.json`, `audioscan.json`, `hooks.json`, `cuts.json` (4 tệp cuối xoá khi duyệt). `cutplan.py`: cắt ngắn (đoạn giữ lại, đề xuất bằng `claude -p`). Duyệt bản nháp phải đạt `reelcheck.strict_check` (chuẩn chung FB/IG/YT Shorts).
 
 ## Quy ước kỹ thuật
 - Token trong `.env`/`pages.json` (quyền 600, đã gitignore), không bao giờ trả lại giao diện. Server chỉ nghe 127.0.0.1.
