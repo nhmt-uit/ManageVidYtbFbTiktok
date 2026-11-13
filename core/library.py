@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import threading
 from pathlib import Path
 
 from . import commenter, config, pages, publish, reelcheck, series
@@ -17,18 +19,32 @@ MAX_CAPTION = 2000
 YT_ID_RE = re.compile(r"\[([\w-]{11}|\d{15,20}|[0-9a-f]{24})\]\s*$")   # YouTube (11 ký tự), TikTok (dãy số dài), Rednote (24 ký tự hex)
 
 
-OWNER_FILE = "channel.json"   # nằm trong thư mục kênh, ghi Page sở hữu thư mục: {"page_id": "..."}
+OWNER_FILE = "channel.json"   # nằm trong thư mục kênh: {"targets": {"facebook": "<page_id>"}, "page_id": "...", "auto_delete": {...}}
+
+# Nơi đăng của một thư mục: mỗi nền tảng tối đa một tài khoản. Hiện chỉ có Facebook; sau này thêm instagram, tiktok, youtube.
+PLATFORMS = {"facebook": "Facebook"}
+
+
+def targets_of(channel_dir) -> dict:
+    """{nền tảng: ID tài khoản} của thư mục. File cũ chỉ có "page_id" thì hiểu là Facebook."""
+    if channel_dir is None:
+        return {}
+    d = _read_owner_file(channel_dir)
+    t = d.get("targets")
+    if isinstance(t, dict):
+        return {k: str(v) for k, v in t.items() if k in PLATFORMS and isinstance(v, (str, int)) and str(v)}
+    pid = d.get("page_id")
+    return {"facebook": str(pid)} if isinstance(pid, (str, int)) and str(pid) else {}
+
+
+def has_explicit_targets(channel_dir) -> bool:
+    """Thư mục đã được gán/bỏ gán theo kiểu mới (có khoá "targets"): khi đó không tự gán lại theo các video đã hẹn."""
+    return isinstance(_read_owner_file(channel_dir).get("targets"), dict)
 
 
 def owner_of(channel_dir) -> str:
-    """Page sở hữu một thư mục kênh ("" nếu chưa gán)."""
-    if channel_dir is None:
-        return ""
-    try:
-        d = json.loads((Path(channel_dir) / OWNER_FILE).read_text(encoding="utf-8"))
-    except (ValueError, OSError):
-        return ""
-    return str(d.get("page_id") or "") if isinstance(d, dict) else ""
+    """Page Facebook của một thư mục kênh ("" nếu chưa gán)."""
+    return targets_of(channel_dir).get("facebook", "")
 
 
 def _read_owner_file(channel_dir) -> dict:
@@ -40,13 +56,38 @@ def _read_owner_file(channel_dir) -> dict:
 
 
 def _write_owner_file(channel_dir, data: dict) -> None:
-    (Path(channel_dir) / OWNER_FILE).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    """Ghi channel.json kiểu nguyên tử (file tạm rồi đổi tên): file này quyết định thư mục thuộc Page nào."""
+    path = Path(channel_dir) / OWNER_FILE
+    tmp = path.with_name(f".{OWNER_FILE}.{os.getpid()}.{threading.get_ident()}.tmp")
+    try:
+        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def set_target(channel_dir, platform: str, account_id: str) -> dict:
+    """Đặt (hoặc bỏ, khi account_id rỗng) nơi đăng của thư mục trên một nền tảng. Giữ các cài đặt khác của thư mục."""
+    if platform not in PLATFORMS:
+        raise ValueError("Nền tảng chưa hỗ trợ.")
+    data = _read_owner_file(channel_dir)
+    t = targets_of(channel_dir)
+    if account_id:
+        t[platform] = str(account_id)
+    else:
+        t.pop(platform, None)
+    data["targets"] = t
+    if t.get("facebook"):
+        data["page_id"] = t["facebook"]   # giữ khoá cũ để bản cũ của app vẫn đọc được
+    else:
+        data.pop("page_id", None)
+    _write_owner_file(channel_dir, data)
+    return t
 
 
 def set_owner(channel_dir, page_id: str) -> None:
-    data = _read_owner_file(channel_dir)   # giữ các cài đặt khác của thư mục (ví dụ tự xoá sau khi đăng)
-    data["page_id"] = page_id
-    _write_owner_file(channel_dir, data)
+    set_target(channel_dir, "facebook", page_id)
 
 
 # Tự xoá video sau khi đăng (cài theo từng thư mục kênh). Ít nhất 2 ngày: giới hạn 24 giờ và số bài mỗi ngày của Page
@@ -266,7 +307,7 @@ def scan(page_id: str | None = None) -> dict:
         owner = owner_of(p)
         if owner and not pages.get(owner):
             owner = ""   # Page đã bị xóa khỏi app: thư mục quay về trạng thái chưa gán
-        if not owner:
+        if not owner and not has_explicit_targets(p):   # chỉ tự gán thư mục kiểu cũ; thư mục bạn đã bỏ gán thì để nguyên
             scheduled_pages = {v["page_id"] for v in group if v["scheduled"]}
             if len(scheduled_pages) == 1 and "" not in scheduled_pages:
                 owner = scheduled_pages.pop()
@@ -300,32 +341,90 @@ def scan(page_id: str | None = None) -> dict:
     }
 
 
+class PendingPosts(ValueError):
+    """Thư mục còn video đang chờ đăng trên Page cũ: phải huỷ lịch (hoặc chờ đăng xong) trước khi đổi/bỏ Page."""
+
+    def __init__(self, msg: str, page_id: str, rels: list[str]):
+        super().__init__(msg)
+        self.page_id, self.rels = page_id, rels
+
+
+def folder_dir(name: str) -> Path:
+    """Thư mục kênh theo tên (một cấp ngay dưới thư mục gốc). ValueError nếu không hợp lệ / không có."""
+    root = config.output_dir().resolve()
+    if not isinstance(name, str) or not name or name in (".", "..") or "/" in name or "\\" in name or name.startswith("."):
+        raise ValueError("Không tìm thấy thư mục.")
+    d = (root / name).resolve()
+    if d.parent != root or not d.is_dir() or (d / "video.mp4").exists():
+        raise ValueError("Không tìm thấy thư mục.")
+    return d
+
+
+def pending_posts(d: Path) -> dict:
+    """{page_id: [rel, ...]} các video trong thư mục còn lịch chưa đăng xong (chờ đăng, quá giờ, lỗi, không thấy)."""
+    root = config.output_dir().resolve()
+    out: dict = {}
+    for v in sorted(d.iterdir()):
+        if not (v.is_dir() and (v / "scheduled.json").exists()):
+            continue
+        sched = commenter.read_sched(v)
+        if sched.get("publish_status") == "published":
+            continue
+        pg = pages.resolve(sched)
+        out.setdefault(pg["id"] if pg else str(sched.get("page_id") or ""), []).append(v.relative_to(root).as_posix())
+    return out
+
+
+def change_target(name: str, platform: str, account_id: str) -> dict:
+    """Gán / đổi / bỏ nơi đăng của một thư mục. Video đã đăng giữ nguyên lịch sử; còn video chờ đăng trên tài khoản cũ
+    thì từ chối (PendingPosts) để không bỏ rơi bài đang hẹn mà không ai quản lý."""
+    d = folder_dir(name)
+    if platform != "facebook":
+        raise ValueError("Nền tảng chưa hỗ trợ.")
+    account_id = str(account_id or "")
+    if account_id and not pages.get(account_id):
+        raise ValueError("Không tìm thấy Fanpage.")
+    cur = owner_of(d)
+    if cur == account_id:
+        return {"name": d.name, "targets": targets_of(d)}
+    pend = {pid: rels for pid, rels in pending_posts(d).items() if pid != account_id}
+    if pend:
+        pid, rels = max(pend.items(), key=lambda kv: len(kv[1]))
+        pg = pages.get(pid)
+        n = sum(len(r) for r in pend.values())
+        raise PendingPosts(
+            f"Thư mục còn {n} video chờ đăng trên Page {pages.label(pg) if pg else pid}. "
+            "Huỷ lịch các video đó (hoặc chờ đăng xong) rồi mới đổi hoặc bỏ Page.", pid, rels)
+    return {"name": d.name, "targets": set_target(d, "facebook", account_id)}
+
+
 def assign_channel(name: str, page_id: str) -> dict:
-    """Gán thư mục kênh cho một Page. Không đổi Page của thư mục đang có video đã hẹn cho Page khác."""
+    """Gán thư mục kênh cho một Page (giữ cho màn hình Tổng quan)."""
     if not pages.get(page_id):
         raise ValueError("Không tìm thấy Fanpage.")
-    root = config.output_dir().resolve()
-    d = (root / (name or "")).resolve()
-    if not name or d.parent != root or not d.is_dir() or (d / "video.mp4").exists():
-        raise ValueError("Không tìm thấy thư mục.")
-    cur = owner_of(d)
-    if cur == page_id:
-        return {"name": d.name, "owner": page_id}
-    others = set()
-    for v in d.iterdir():
-        sj = v / "scheduled.json"
-        if v.is_dir() and sj.exists():
-            sched = commenter.read_sched(v)
-            pg = pages.resolve(sched)
-            if pg and pg["id"] != page_id:
-                others.add(pages.label(pg))
-    if others:
-        raise ValueError(
-            "Thư mục này có video đã hẹn giờ cho Page khác (" + ", ".join(sorted(others)) + "). "
-            "Hãy chờ các video đó đăng xong, hoặc hẹn lại chúng, trước khi đổi Page."
-        )
-    set_owner(d, page_id)
-    return {"name": d.name, "owner": page_id}
+    r = change_target(name, "facebook", page_id)
+    return {"name": r["name"], "owner": r["targets"].get("facebook", "")}
+
+
+def create_folder(name: str, page_id: str = "") -> dict:
+    from .downloader import safe_name
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("Chưa nhập tên thư mục.")
+    if not re.sub(r'[\\/:*?"<>|.\s]', "", name):   # chỉ toàn dấu chấm / ký tự bị lọc: safe_name sẽ đổi thành "untitled"
+        raise ValueError("Tên thư mục không hợp lệ.")
+    clean = safe_name(name)
+    if not clean or clean in (".", "..") or clean.startswith("."):
+        raise ValueError("Tên thư mục không hợp lệ.")
+    if page_id and not pages.get(page_id):
+        raise ValueError("Không tìm thấy Fanpage.")
+    root = config.output_dir()
+    root.mkdir(parents=True, exist_ok=True)
+    d = root / clean
+    if d.exists():
+        raise ValueError(f'Đã có thư mục "{clean}".')
+    d.mkdir()
+    set_target(d, "facebook", page_id)   # ghi rõ "targets" (kể cả rỗng) để không bị tự gán
+    return {"name": clean, "targets": targets_of(d)}
 
 
 def owner_of_video(rel: str) -> str:
@@ -373,3 +472,31 @@ def save_text(rel: str, caption: str) -> None:
         path.write_text(caption[:MAX_CAPTION], encoding="utf-8")
     elif path.exists():
         path.unlink()
+
+
+def folders_overview() -> list[dict]:
+    """Mọi thư mục kênh (cả thư mục trống), kèm nơi đăng, cài đặt tự xoá và số video theo trạng thái."""
+    root = config.output_dir()
+    if not root.exists():
+        return []
+    by: dict = {}
+    for v in scan(None)["videos"]:   # scan cũng tự gán thư mục kiểu cũ (giữ hành vi cũ) trước khi đọc nơi đăng bên dưới
+        if v["channel"]:
+            by.setdefault(v["channel"], []).append(v)
+    out = []
+    for d in sorted(root.iterdir(), key=lambda p: p.name.lower()):
+        if not d.is_dir() or d.name.startswith(".") or (d / "video.mp4").exists():
+            continue
+        vids = by.get(d.name, [])
+        fb = owner_of(d)
+        page = pages.get(fb) if fb else None
+        out.append({
+            "name": d.name,
+            "targets": {"facebook": {"id": fb, "label": pages.label(page) if page else "", "missing": bool(fb and not page)}},
+            "auto_delete": auto_delete_of(d),
+            "videos": len(vids),
+            "new": sum(1 for v in vids if not v["scheduled"]),
+            "pending": sum(1 for v in vids if v["scheduled"] and v["publish_status"] != "published"),
+            "published": sum(1 for v in vids if v["publish_status"] == "published"),
+        })
+    return out

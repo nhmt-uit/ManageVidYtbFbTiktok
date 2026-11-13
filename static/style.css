@@ -464,9 +464,15 @@ details.rn-tool ol { margin: 6px 0 8px 18px; padding: 0; }
 .removed-list { margin: 6px 0 0 18px; padding: 0; max-height: 360px; overflow: auto; }
 .removed-list li { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; margin: 4px 0; word-break: break-all; }
 
-.ps-folder { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line, #e5e7eb); }
-.ps-folder:first-child { border-top: 0; }
-.ps-folder-name { min-width: 160px; word-break: break-all; }
-.ps-folder label.check { margin: 0; }
-.ps-folder label.psf-days { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; margin: 0; }
-.psf-days input { width: 70px; margin: 0; }
+.ps-flist { margin: 0 0 8px 18px; padding: 0; }
+.fd-create { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.fd-create input { flex: 1 1 220px; width: auto; }
+.fd-create select { width: auto; }
+.fd-row { display: grid; gap: 8px; }
+.fd-head { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.fd-head h3 { margin: 0; word-break: break-all; }
+.fd-line { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+.fd-line label.check { margin: 0; }
+label.fd-field, label.fd-days { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; margin: 0; }
+.fd-field select { width: auto; min-width: 220px; }
+.fd-days input { width: 70px; margin: 0; }

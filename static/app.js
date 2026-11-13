@@ -121,7 +121,7 @@ function follow(jobId, pre, bar, onDone) {
 // app.page = Fanpage đang làm việc ("" = các màn hình chung: Tổng quan, Kết nối Fanpage, Cài đặt chung, Nhật ký)
 const app = { page: "", tab: "", last: "", view: "" };   // last = Page làm việc gần nhất (giữ lựa chọn khi qua Tổng quan rồi quay lại)
 const PAGE_TABS = ["download", "library", "calendar", "stats", "pagesettings", "jobs"];
-const GLOBAL_VIEWS = ["overview", "download", "editor", "fanpages", "settings", "jobs"];
+const GLOBAL_VIEWS = ["overview", "download", "editor", "folders", "fanpages", "settings", "jobs"];
 const DEFAULT_TZ = "Asia/Ho_Chi_Minh";
 
 function curPage() { return pg.list.find((p) => p.id === app.page); }
@@ -165,6 +165,7 @@ async function showView(name, sub) {
   if (name === "overview") loadOverview();
   if (name === "download") renderDlHeader();   // tải video không gắn Fanpage
   if (name === "editor") loadEditorList();     // chỉnh sửa video không gắn Fanpage
+  if (name === "folders") loadFolders();
   if (name === "fanpages") loadPages().then(renderFanpage);
   if (name === "settings") { loadSettings(); showSub(sub || ($("#subtabs .active") || {}).dataset?.sub); }
   if (name === "jobs") loadJobs();
@@ -245,7 +246,7 @@ function renderCtx() {
 function dlHeaderText() {
   const p = curPage();
   return p ? `Video tải về được lưu vào thư mục thuộc Fanpage "${p.name}". Mỗi thư mục chỉ thuộc một Page.`
-    : "Tải video không gắn Fanpage: video được lưu vào thư mục bạn đặt tên (chưa thuộc Page nào). Muốn đăng thì về Tổng quan, bấm Gán Page cho thư mục đó.";
+    : "Tải video không gắn Fanpage: video được lưu vào thư mục bạn đặt tên (chưa thuộc Page nào). Muốn đăng thì vào mục Thư mục để chọn Page cho thư mục đó.";
 }
 function renderDlHeader() {
   $("#dl-page").textContent = dlHeaderText();
@@ -486,7 +487,7 @@ async function loadLibrary() {
     $("#lib-root").textContent = "Thư mục video: " + d.root;
     const un = $("#lib-unassigned");
     un.hidden = !d.unassigned.length;
-    if (d.unassigned.length) un.textContent = `Có ${d.unassigned.length} thư mục chưa thuộc Page nào (${d.unassigned.map((i) => i.name).join(", ")}). Về Tổng quan để gán Page cho chúng.`;
+    if (d.unassigned.length) un.textContent = `Có ${d.unassigned.length} thư mục chưa thuộc Page nào (${d.unassigned.map((i) => i.name).join(", ")}). Vào mục Thư mục để gán Page cho chúng.`;
     await loadPages();
     renderCtx();
     renderLibrary();
@@ -2277,33 +2278,15 @@ async function loadPsFolders() {
   const pageId = app.page;
   if (!pageId) { box.innerHTML = ""; return; }
   try {
-    const d = await api("/api/library?page_id=" + encodeURIComponent(pageId));
+    const d = await api("/api/folders");
     if (pageId !== app.page) return;
-    const infos = d.channel_info || [];
-    box.innerHTML = infos.length ? infos.map((i) => {
-      const ad = i.auto_delete || { enabled: false, days: 3 };
-      return `<div class="ps-folder" data-name="${esc(i.name)}">
-        <b class="ps-folder-name">${esc(i.name)}</b> <small class="hint">${i.videos} video, ${i.scheduled} đã hẹn/đã đăng</small>
-        <label class="check"><input type="checkbox" class="psf-on" ${ad.enabled ? "checked" : ""}> <span>Xoá video sau khi đăng</span></label>
-        <label class="psf-days">sau <input type="number" class="psf-n" min="2" max="365" value="${ad.days}"> ngày</label>
-        <button class="ghost psf-save" type="button">Lưu</button>
-        <span class="msg psf-msg"></span>
-      </div>`;
-    }).join("") : '<p class="hint">Page này chưa có thư mục video nào.</p>';
+    const mine = d.folders.filter((f) => f.targets.facebook.id === pageId);
+    box.innerHTML = mine.length
+      ? `<ul class="ps-flist">${mine.map((f) => `<li><b>${esc(f.name)}</b> <small class="hint">${f.videos} video${f.auto_delete.enabled ? ` · tự xoá sau khi đăng ${f.auto_delete.days} ngày` : ""}</small></li>`).join("")}</ul>`
+      : '<p class="hint">Page này chưa có thư mục nào.</p>';
   } catch (e) { box.innerHTML = `<p class="hint">${esc(e.message)}</p>`; }
 }
-$("#ps-folder-list").addEventListener("click", async (e) => {
-  if (!e.target.classList.contains("psf-save")) return;
-  const row = e.target.closest(".ps-folder");
-  const on = $(".psf-on", row).checked, days = Number($(".psf-n", row).value);
-  const msg = $(".psf-msg", row);
-  if (on && !confirm(`Bật tự xoá cho thư mục "${row.dataset.name}"?\n\nVideo đã đăng (và đã comment xong) sẽ tự được chuyển cả thư mục vào Thùng rác sau ${days} ngày kể từ giờ đăng.`)) return;
-  try {
-    const r = await api("/api/channels/auto-delete", "POST", { name: row.dataset.name, page_id: app.page, enabled: on, days });
-    $(".psf-n", row).value = r.auto_delete.days;
-    msg.textContent = r.auto_delete.enabled ? `Đã bật: xoá sau ${r.auto_delete.days} ngày.` : "Đã tắt tự xoá.";
-  } catch (err) { msg.textContent = err.message; }
-});
+$("#ps-folders-open").addEventListener("click", () => showView("folders"));
 function renderPageSettings() {
   const p = curPage();
   const root = $("#ps-root");
@@ -2697,16 +2680,12 @@ function renderOverview() {
     const opts = pg.list.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("");
     un.innerHTML = `
       <h3>Thư mục chưa thuộc Fanpage nào</h3>
-      <p class="hint">Mỗi thư mục chỉ thuộc đúng một Fanpage. Chọn Fanpage rồi bấm Gán. Thư mục chưa gán không hiện trong Thư viện của Page nào.</p>
-      ${ov.unassigned.map((i) => {
-        const names = (i.pages || []).map((id) => (pg.list.find((p) => p.id === id) || {}).name || id);
-        const multi = names.length > 1;
-        return `<div class="ov-un" data-name="${esc(i.name)}">
-          <span><b>${esc(i.name)}</b> · ${i.videos} video${i.scheduled ? `, ${i.scheduled} đã hẹn` : ""}${multi ? `<br><small class="bad">Có video đã hẹn cho nhiều Page (${esc(names.join(", "))}). Hãy hẹn lại hoặc chờ đăng xong để gán.</small>` : ""}</span>
-          <select aria-label="Fanpage cho thư mục ${esc(i.name)}"${multi ? " disabled" : ""}>${opts}</select>
-          <button class="ghost ov-assign" type="button"${multi ? " disabled" : ""}>Gán</button>
-        </div>`;
-      }).join("")}
+      <p class="hint">Thư mục chưa gán không hiện trong Thư viện của Page nào. Chọn Fanpage rồi bấm Gán, hoặc quản lý ở mục <a href="#folders" class="ov-folders">Thư mục</a>.</p>
+      ${ov.unassigned.map((i) => `<div class="ov-un" data-name="${esc(i.name)}">
+          <span><b>${esc(i.name)}</b> · ${i.videos} video${i.scheduled ? `, ${i.scheduled} đã hẹn` : ""}</span>
+          <select aria-label="Fanpage cho thư mục ${esc(i.name)}">${opts}</select>
+          <button class="ghost ov-assign" type="button">Gán</button>
+        </div>`).join("")}
       <p class="msg" id="ov-msg"></p>`;
   }
   $("#ov-empty").hidden = ov.pages.length > 0;
@@ -2750,6 +2729,7 @@ $("#ov-grid").addEventListener("click", (e) => {
   else if (t.contains("ov-cal")) showPageTab(card.dataset.id, "calendar");
 });
 $("#ov-unassigned").addEventListener("click", async (e) => {
+  if (e.target.classList.contains("ov-folders")) { e.preventDefault(); showView("folders"); return; }
   const btn = e.target.closest(".ov-assign");
   if (!btn) return;
   const row = btn.closest(".ov-un");
@@ -2762,6 +2742,108 @@ $("#ov-unassigned").addEventListener("click", async (e) => {
     m.textContent = err.message;
     m.className = "msg bad";
   }
+});
+
+/* ---------- Thư mục video: nơi đăng, tạo thư mục, tự xoá ---------- */
+const fd = { list: [], days: { min: 2, max: 365 } };
+function fbOptions(selected, missing) {
+  return `<option value="">— Không đăng Facebook —</option>` +
+    (missing ? `<option value="${esc(selected)}" selected>(Page đã bị xoá khỏi app)</option>` : "") +
+    pg.list.map((p) => `<option value="${esc(p.id)}"${p.id === selected ? " selected" : ""}>${esc(p.name)}</option>`).join("");
+}
+async function loadFolders() {
+  try {
+    await loadPages();
+    const d = await api("/api/folders");
+    if (app.view !== "folders") return;
+    fd.list = d.folders;
+    fd.days = d.auto_delete_days || fd.days;
+    renderFolders();
+  } catch (e) { toast(e.message); }
+}
+function renderFolders() {
+  $("#fd-new-fb").innerHTML = fbOptions("", false);
+  $("#fd-root").textContent = fd.list.length ? `${fd.list.length} thư mục.` : "";
+  $("#fd-list").innerHTML = fd.list.length ? fd.list.map((f) => {
+    const fb = f.targets.facebook, ad = f.auto_delete;
+    return `<article class="panel fd-row" data-name="${esc(f.name)}" data-fb="${esc(fb.id)}">
+      <div class="fd-head">
+        <h3>${esc(f.name)}</h3>
+        <small class="hint">${f.videos} video · ${f.new} chưa hẹn · ${f.pending} chờ đăng · ${f.published} đã đăng</small>
+      </div>
+      <div class="fd-line">
+        <label class="fd-field">Facebook
+          <select class="fd-fb" aria-label="Page Facebook của thư mục ${esc(f.name)}">${fbOptions(fb.id, fb.missing)}</select>
+        </label>
+        <span class="hint fd-soon">Instagram · TikTok · YouTube: sẽ thêm sau</span>
+      </div>
+      <div class="fd-line">
+        <label class="check"><input type="checkbox" class="fd-ad-on" ${ad.enabled ? "checked" : ""}> <span>Xoá video sau khi đăng</span></label>
+        <label class="fd-days">sau <input type="number" class="fd-ad-n" min="${fd.days.min}" max="${fd.days.max}" value="${ad.days}"> ngày</label>
+        <button class="ghost fd-ad-save" type="button">Lưu tự xoá</button>
+      </div>
+      <p class="msg fd-msg"></p>
+      <pre class="log fd-log" hidden></pre>
+    </article>`;
+  }).join("") : '<div class="empty">Chưa có thư mục nào. Tạo thư mục mới ở trên, hoặc tải video về.</div>';
+}
+function fdMsg(row, text, ok) { const m = $(".fd-msg", row); m.textContent = text; m.className = "msg fd-msg " + (ok ? "ok" : "bad"); }
+function waitJob(jobId, row) {
+  return new Promise((resolve) => follow(jobId, $(".fd-log", row), null, resolve));
+}
+async function fdSetFacebook(row, sel) {
+  const name = row.dataset.name, prev = row.dataset.fb, next = sel.value;
+  const label = (id) => (pg.list.find((p) => p.id === id) || {}).name || id;
+  const what = next ? `gán thư mục "${name}" cho Page ${label(next)}` : `bỏ gán Page Facebook của thư mục "${name}"`;
+  if (prev && !confirm(`Đổi nơi đăng: ${what}?\n\nVideo đã đăng giữ nguyên. Video chưa hẹn sẽ thuộc ${next ? "Page mới" : "không Page nào"}.`)) { sel.value = prev; return; }
+  sel.disabled = true;
+  try {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        await api("/api/folders/target", "POST", { name, platform: "facebook", account_id: next });
+        row.dataset.fb = next;
+        fdMsg(row, next ? `Đã gán cho ${label(next)}.` : "Đã bỏ gán Page Facebook.", true);
+        loadFolders();
+        return;
+      } catch (err) {
+        const p = err.data && err.data.pending;
+        if (p && attempt > 0) throw new Error(err.message + " Một số lịch chưa huỷ được (xem nhật ký bên dưới). Chưa đổi nơi đăng.");
+        if (!p) throw err;
+        if (!confirm(`${err.message}\n\nHuỷ lịch ${p.rels.length} video này ngay (xoá bài hẹn trên Facebook) rồi ${what}?`)) throw err;
+        fdMsg(row, `Đang huỷ lịch ${p.rels.length} video...`, true);
+        const r = await api("/api/sched/cancel-many", "POST", { page_id: p.page_id, rels: p.rels });
+        await waitJob(r.job, row);   // huỷ xong (hết hay chưa) thì thử đổi lại: server kiểm tra còn video chờ đăng không
+      }
+    }
+  } catch (err) {
+    sel.value = prev;
+    fdMsg(row, err.message, false);
+  } finally {
+    sel.disabled = false;
+  }
+}
+$("#fd-list").addEventListener("change", (e) => {
+  if (e.target.classList.contains("fd-fb")) fdSetFacebook(e.target.closest(".fd-row"), e.target);
+});
+$("#fd-list").addEventListener("click", async (e) => {
+  if (!e.target.classList.contains("fd-ad-save")) return;
+  const row = e.target.closest(".fd-row");
+  const on = $(".fd-ad-on", row).checked, days = Number($(".fd-ad-n", row).value);
+  if (on && !confirm(`Bật tự xoá cho thư mục "${row.dataset.name}"?\n\nVideo đã đăng (và đã comment xong) sẽ tự được chuyển cả thư mục vào Thùng rác sau ${days} ngày kể từ giờ đăng.`)) return;
+  try {
+    const r = await api("/api/folders/auto-delete", "POST", { name: row.dataset.name, enabled: on, days });
+    $(".fd-ad-n", row).value = r.auto_delete.days;
+    fdMsg(row, r.auto_delete.enabled ? `Đã bật: xoá sau ${r.auto_delete.days} ngày.` : "Đã tắt tự xoá.", true);
+  } catch (err) { fdMsg(row, err.message, false); }
+});
+$("#fd-new-btn").addEventListener("click", async () => {
+  const m = $("#fd-new-msg");
+  try {
+    const r = await api("/api/folders/create", "POST", { name: $("#fd-new-name").value, page_id: $("#fd-new-fb").value });
+    $("#fd-new-name").value = "";
+    m.textContent = `Đã tạo thư mục "${r.name}".`; m.className = "msg ok";
+    loadFolders();
+  } catch (err) { m.textContent = err.message; m.className = "msg bad"; }
 });
 
 /* ---------- Khởi động ---------- */

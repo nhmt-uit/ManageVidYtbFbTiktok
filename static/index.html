@@ -13,6 +13,7 @@
       <button data-view="overview" class="active">Tổng quan</button>
       <button data-view="download">Tải video</button>
       <button data-view="editor">Chỉnh sửa video</button>
+      <button data-view="folders">Thư mục</button>
       <button data-view="fanpages">Kết nối Fanpage</button>
       <button data-view="settings">Cài đặt chung</button>
       <button data-view="jobs">Nhật ký</button>
@@ -271,13 +272,30 @@
       </div>
     </section>
 
+    <!-- THƯ MỤC VIDEO: nơi đăng, tạo thư mục, tự xoá -->
+    <section id="tab-folders" class="tab">
+      <h2 class="ov-title">Thư mục video</h2>
+      <p class="hint">Mỗi thư mục chứa video. Chọn nơi đăng cho từng thư mục: mỗi nền tảng tối đa một tài khoản (ví dụ một Page Facebook). Một Page có thể có nhiều thư mục, hoặc không có thư mục nào. Thư mục không chọn Page Facebook thì video của nó không hiện ở Thư viện của Page nào. Instagram, TikTok, YouTube: sẽ thêm sau.</p>
+      <div class="panel">
+        <h3>Tạo thư mục mới</h3>
+        <div class="row fd-create">
+          <input id="fd-new-name" maxlength="80" placeholder="Tên thư mục, ví dụ MiuMiu-2">
+          <select id="fd-new-fb" aria-label="Page Facebook cho thư mục mới"></select>
+          <button class="primary" id="fd-new-btn" type="button">Tạo thư mục</button>
+        </div>
+        <p class="msg" id="fd-new-msg"></p>
+      </div>
+      <p class="hint" id="fd-root"></p>
+      <div id="fd-list"></div>
+    </section>
+
     <!-- CÀI ĐẶT PAGE -->
     <section id="tab-pagesettings" class="tab">
       <div id="ps-root" class="panel"></div>
       <div class="panel" id="ps-folders">
         <h2>Thư mục video của Page</h2>
-        <p class="hint">Bật <b>Xoá video sau khi đăng</b> cho từng thư mục: video đã đăng thành công và đã comment xong (hoặc không cần comment) sẽ được tự chuyển cả thư mục vào Thùng rác sau số ngày bạn chọn, tính từ giờ đăng. Link được ghi vào danh sách "Video đã xoá" để không tải lại. Tối thiểu 2 ngày vì app đếm giới hạn 24 giờ và số bài mỗi ngày dựa trên video còn trong thư mục. Thống kê bài đăng chỉ tính video còn trong thư mục.</p>
         <div id="ps-folder-list"></div>
+        <button class="ghost" id="ps-folders-open" type="button">Gán / bỏ gán thư mục, cài tự xoá</button>
       </div>
       <div class="panel" id="ps-pool">
         <h2>Kho comment của Fanpage</h2>

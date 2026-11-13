@@ -144,9 +144,69 @@ def api_notify_chat():
 def api_channel_assign():
     d = body()
     try:
+        locked = _folder_lock_err()
+        if locked:
+            return locked
         return jsonify({"ok": True, **library.assign_channel(str(d.get("name") or ""), str(d.get("page_id") or ""))})
     except ValueError as e:
         return err(str(e))
+
+
+# ---------- Thư mục video: nơi đăng (Facebook...), tạo thư mục, tự xoá sau khi đăng ----------
+def _folder_lock_err():
+    if manager.has_running("schedule") or manager.has_running("cancel") or manager.has_running("download"):
+        return err("Đang có tác vụ tải video, hẹn lịch hoặc huỷ lịch chạy. Đợi xong rồi đổi thư mục.")
+    return None
+
+
+@app.get("/api/folders")
+def api_folders():
+    return jsonify({"folders": library.folders_overview(), "platforms": library.PLATFORMS,
+                    "auto_delete_days": {"min": library.AUTO_DELETE_MIN_DAYS, "max": library.AUTO_DELETE_MAX_DAYS}})
+
+
+@app.post("/api/folders/target")
+def api_folder_target():
+    """Gán / đổi / bỏ nơi đăng của thư mục (account_id rỗng = bỏ gán)."""
+    d = body()
+    locked = _folder_lock_err()
+    if locked:
+        return locked
+    try:
+        return jsonify({"ok": True, **library.change_target(str(d.get("name") or ""), str(d.get("platform") or "facebook"),
+                                                             str(d.get("account_id") or ""))})
+    except library.PendingPosts as e:
+        return jsonify({"error": str(e), "pending": {"page_id": e.page_id, "rels": e.rels}}), 409
+    except ValueError as e:
+        return err(str(e))
+    except OSError as e:
+        return err(f"Không lưu được: {e}")
+
+
+@app.post("/api/folders/create")
+def api_folder_create():
+    d = body()
+    try:
+        return jsonify({"ok": True, **library.create_folder(str(d.get("name") or ""), str(d.get("page_id") or ""))})
+    except ValueError as e:
+        return err(str(e))
+    except OSError as e:
+        return err(f"Không tạo được thư mục: {e}")
+
+
+@app.post("/api/folders/auto-delete")
+def api_folder_auto_delete():
+    """Bật/tắt tự xoá video sau khi đăng cho một thư mục."""
+    d = body()
+    try:
+        ch = library.folder_dir(str(d.get("name") or ""))
+        days = int(d.get("days", library.AUTO_DELETE_DEFAULT_DAYS))
+        return jsonify({"ok": True, "auto_delete": library.set_auto_delete(ch, bool(d.get("enabled")), days)})
+    except (TypeError, ValueError) as e:
+        msg = str(e)
+        return err(msg if ("ngày" in msg or "thư mục" in msg) else "Số ngày không hợp lệ.")
+    except OSError as e:
+        return err(f"Không lưu được cài đặt: {e}")
 
 
 @app.get("/api/overview")
@@ -869,26 +929,6 @@ def api_videos_delete():
         except (ValueError, removed.DeleteError, OSError) as e:
             errors.append({"rel": rel, "error": str(e)})
     return jsonify({"deleted": done, "errors": errors})
-
-
-@app.post("/api/channels/auto-delete")
-def api_channel_auto_delete():
-    """Bật/tắt tự xoá video sau khi đăng cho một thư mục kênh của Page."""
-    d = body()
-    name, page_id = str(d.get("name") or ""), str(d.get("page_id") or "")
-    root = config.output_dir().resolve()
-    ch = (root / name).resolve() if name and "/" not in name and "\\" not in name else None
-    if ch is None or ch.parent != root or not ch.is_dir():
-        return err("Không tìm thấy thư mục này.")
-    if not page_id or library.owner_of(ch) != page_id:
-        return err("Thư mục này không thuộc Page đang chọn.")
-    try:
-        days = int(d.get("days", library.AUTO_DELETE_DEFAULT_DAYS))
-        return jsonify({"ok": True, "auto_delete": library.set_auto_delete(ch, bool(d.get("enabled")), days)})
-    except (TypeError, ValueError) as e:
-        return err(str(e) if "ngày" in str(e) else "Số ngày không hợp lệ.")
-    except OSError as e:
-        return err(f"Không lưu được cài đặt: {e}")
 
 
 @app.get("/api/removed")

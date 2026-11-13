@@ -596,7 +596,7 @@ def _run(job, url: str, folder_name: str, kind: str, limit: int, note: str, page
     channel_dir.mkdir(parents=True, exist_ok=True)
     if page_id and not cur_owner:
         if any(v.is_dir() and (v / "video.mp4").exists() for v in channel_dir.iterdir()):
-            raise RuntimeError(f'Thư mục "{name}" đã có video nhưng chưa gán Page. Gán Page cho thư mục ở trang Tổng quan trước, hoặc đặt tên thư mục khác.')
+            raise RuntimeError(f'Thư mục "{name}" đã có video nhưng chưa gán Page. Chọn Page cho thư mục ở mục Thư mục trước, hoặc đặt tên thư mục khác.')
         library.set_owner(channel_dir, page_id)
     perm = channel_dir / "permission.json"
     if not perm.exists():
