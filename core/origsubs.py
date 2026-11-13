@@ -18,6 +18,8 @@ FILE = "origsubs.json"
 MAX_FRAMES = 800          # số khung hình tối đa lấy mẫu
 ANALYZE_W = 360           # độ rộng khung hình khi phân tích
 MODES = ("ranges", "always")
+DEFAULT_H = 0.10          # vùng che mặc định sau khi dò: cao 10% khung hình...
+DEFAULT_W = 0.90          # ...rộng 90%, đặt giữa chỗ sub gốc dò được (dò ra to hơn thì giữ kích thước dò được để không che hụt)
 
 
 class DetectError(Exception):
@@ -188,6 +190,17 @@ def detect(ffmpeg: str, video, duration: float, width: int, height: int, progres
     if progress:
         progress(100, 100)
     return result
+
+
+def default_band(band: dict) -> dict:
+    """Đổi vùng dò được sang kích thước mặc định (DEFAULT_W x DEFAULT_H), giữ tâm ở chỗ sub gốc, không ra ngoài khung."""
+    w = min(1.0, max(DEFAULT_W, float(band.get("w") or 0)))
+    h = min(1.0, max(DEFAULT_H, float(band.get("h") or 0)))
+    cx = float(band.get("x") or 0) + float(band.get("w") or 0) / 2
+    cy = float(band.get("y") or 0) + float(band.get("h") or 0) / 2
+    x = min(max(0.0, cx - w / 2), 1.0 - w)
+    y = min(max(0.0, cy - h / 2), 1.0 - h)
+    return {"x": round(x, 4), "y": round(y, 4), "w": round(w, 4), "h": round(h, 4)}
 
 
 def clean(raw) -> dict:

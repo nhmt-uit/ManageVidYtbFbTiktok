@@ -1680,11 +1680,12 @@ function veCutRender() {
   veCutTotal();
 }
 async function veSaveCuts() {
+  const had = !$("#ve-cut-use").disabled;   // trước đó đã có đoạn cắt: giữ đúng lựa chọn tick / bỏ tick của bạn
+  const use = $("#ve-cut-use").checked;
   const r = await api("/api/edit/cuts", "POST", { rel: ve.rel, segments: veCutRows() });
   ve.st.cuts = r;
-  const use = $("#ve-cut-use").checked;
   veCutRender();
-  $("#ve-cut-use").checked = use && r.segments.length > 0;
+  $("#ve-cut-use").checked = r.segments.length > 0 && (had ? use : ve.st.settings.cut);
   return r;
 }
 $("#ve-cut-list").addEventListener("input", veCutTotal);
@@ -1751,12 +1752,12 @@ $("#ve-ac-scan").addEventListener("click", async () => {
 });
 $("#ve-ac-apply").addEventListener("click", () => { const a = ve.st.audioscan || {}; if (a.recommend) $("#ve-aclean").value = a.recommend; });
 function veOsRender() {
-  const os = ve.st.origsubs || { found: false, detected_at: "", band: { x: 0.1, y: 0.74, w: 0.8, h: 0.05 }, ranges: [], mode: "ranges" };
+  const os = ve.st.origsubs || { found: false, detected_at: "", band: { x: 0.05, y: 0.74, w: 0.9, h: 0.1 }, ranges: [], mode: "ranges" };
   const ran = !!os.detected_at;
   $("#ve-hide").disabled = !os.found;
   $("#ve-hide").checked = !!(os.found && ve.st.settings.hide_orig);
   $("#ve-os-opts").hidden = !(os.found || ran);
-  const b = os.found ? os.band : { x: 0.1, y: 0.74, w: 0.8, h: 0.05 };
+  const b = os.found ? os.band : { x: 0.05, y: 0.74, w: 0.9, h: 0.1 };   // khoanh tay khi chưa dò: rộng 90%, cao 10%
   const pc = (n) => Math.round(n * 1000) / 10;
   $("#ve-os-x").value = pc(b.x); $("#ve-os-y").value = pc(b.y); $("#ve-os-w").value = pc(b.w); $("#ve-os-h").value = pc(b.h);
   $("#ve-os-mode").value = os.mode;

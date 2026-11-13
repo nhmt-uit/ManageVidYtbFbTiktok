@@ -42,16 +42,16 @@ DEFAULT_SETTINGS = {
     "position": "bottom",    # bottom | middle | top
     "size": "medium",        # small | medium | large
     "color": "white",        # white | yellow | cyan
-    "box": False,            # nền mờ phía sau chữ
+    "box": True,             # nền mờ phía sau chữ
     "orig_volume": 25,       # % âm lượng video gốc khi có giọng đọc
     "voice_volume": 100,     # % âm lượng giọng đọc
     "loudnorm": True,        # chuẩn hóa âm lượng về mức Reels hay dùng
-    "hide_orig": False,      # làm mờ sub in cứng có sẵn trong video (cần dò trước, xem origsubs.py)
+    "hide_orig": True,       # làm mờ sub in cứng có sẵn trong video (cần dò trước, xem origsubs.py; chưa dò thì xuất không che)
     "audio_clean": "off",    # off | light | voice: làm sạch âm thanh của video gốc (không áp cho giọng đọc thêm vào)
     "trim_bars": True,       # tự cắt viền đen có sẵn quanh hình trong video gốc trước khi phóng lên 1080x1920 (xem bars.py)
-    "hook": False,           # in chữ hook đã duyệt ở 3 giây đầu (xem hooks.py)
+    "hook": True,            # in chữ hook đã duyệt ở 3 giây đầu (xem hooks.py; chưa duyệt hook thì bỏ qua)
     "quality": "standard",   # fast | standard | high: chất lượng hình và âm thanh khi xuất
-    "cut": False,            # chỉ giữ các đoạn trong cuts.json khi xuất (cắt ngắn video dài, xem cutplan.py)
+    "cut": True,             # chỉ giữ các đoạn trong cuts.json khi xuất (cắt ngắn video dài, xem cutplan.py; chưa có đoạn thì xuất nguyên)
 }
 CHOICES = {"framing": ("auto", "scale", "fit", "crop"), "position": ("bottom", "middle", "top", "orig"),   # orig = đúng chỗ sub gốc
            "size": ("small", "medium", "large"), "color": ("white", "yellow", "cyan"),
@@ -397,7 +397,8 @@ def approve(rel: str) -> str:
         chk = draft_check(draft)
         if chk["errors"]:
             raise EditError(f"Bản nháp chưa đạt chuẩn đăng {reelcheck.STANDARD_NAME} nên chưa duyệt được: " + " ".join(chk["errors"]))
-        settings = _read_json(folder / SETTINGS_FILE).get("settings", {})
+        info_set = _read_json(folder / SETTINGS_FILE)
+        settings = info_set.get("applied") or info_set.get("settings", {})   # ghi lại cái thực sự đã dùng cho video được duyệt
         os.replace(draft, folder / ORIGINAL)   # nguyên tử: video.mp4 luôn là một file đầy đủ
         for name in (SUBS_FILE, SETTINGS_FILE, origsubs.FILE, audioscan.FILE, hooks.FILE, cutplan.FILE):
             (folder / name).unlink(missing_ok=True)
@@ -508,6 +509,8 @@ def detect_origsubs_job(job, rel: str) -> str:
                                   progress=job.set_progress, cancelled=lambda: job.cancelled)
         except origsubs.DetectError as exc:
             raise EditError(str(exc)) from exc
+        if res.get("found"):
+            res["band"] = origsubs.default_band(res["band"])   # mặc định cao 10%, rộng 90% quanh chỗ sub gốc
         res = origsubs.clean(res)
         _write_json(folder / origsubs.FILE, res)
         if not res["found"]:
@@ -851,6 +854,7 @@ def render_job(job, rel: str, settings: dict | None = None) -> str:
         if not t["ffmpeg"]["ok"]:
             raise EditError(t["ffmpeg"]["problem"])
         s = clean_settings(settings)
+        wanted = dict(s)   # lựa chọn của bạn; s bên dưới có thể bị tắt bớt (chưa có phụ đề, chưa dò sub gốc...) và là cái thực sự dùng
         folder = library.resolve(rel)
         if is_scheduled(folder):
             raise EditError("Video này đã lên lịch (Facebook đã nhận bản cũ). Huỷ lịch trước, chỉnh sửa xong rồi hẹn lại.")
@@ -907,9 +911,10 @@ def render_job(job, rel: str, settings: dict | None = None) -> str:
             raise EditError(t["ffmpeg"]["problem"])
         oi = origsubs_info(folder)
         cover, center_y = "", None
+        if s["hide_orig"] and not oi["found"]:   # mặc định bật: video chưa dò (hoặc không có) sub gốc thì xuất không che
+            s["hide_orig"] = False
+            job.log("Chưa dò sub gốc (hoặc video không có sub gốc) nên xuất không che.")
         if s["hide_orig"]:
-            if not oi["found"]:
-                raise EditError("Chưa dò sub gốc cho video này. Bấm \"Dò sub gốc\" ở bước Che sub gốc, hoặc bỏ tick \"Che sub gốc khi xuất\".")
             cover = origsubs.cover_chain(oi, src["width"], src["height"])
             job.log("Che sub gốc: " + ("chỉ trong các khoảng có sub." if oi["mode"] == "ranges" else "suốt video."))
         if s["hide_orig"] and s["subs"] and s["position"] != "orig":
@@ -974,7 +979,9 @@ def render_job(job, rel: str, settings: dict | None = None) -> str:
                     job.log("Làm sạch âm thanh: " + audio_report)
             except (audioscan.ScanError, ValueError, OSError):
                 pass
-        _write_json(folder / SETTINGS_FILE, {"settings": s, "edited_at": datetime.now(timezone.utc).isoformat(), "voice": voice.name if voice else "",
+        # "settings" = lựa chọn của bạn (mở lại hộp thoại vẫn thấy đúng, ví dụ Che sub gốc vẫn bật để lần sau dò xong là dùng);
+        # "applied" = cái thực sự dùng cho bản nháp này
+        _write_json(folder / SETTINGS_FILE, {"settings": wanted, "applied": s, "edited_at": datetime.now(timezone.utc).isoformat(), "voice": voice.name if voice else "",
                                               "cues": len(cues), "audio_report": audio_report, "segments": segs})
         job.set_progress(100, 100)
         mb = (folder / DRAFT).stat().st_size / 1048576
