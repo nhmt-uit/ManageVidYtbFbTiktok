@@ -2,18 +2,17 @@
 
 Ứng dụng web chạy trên máy bạn (http://127.0.0.1:5173), quản lý nhiều Fanpage theo kiểu mỗi Page là một không gian làm việc riêng, giống Meta Business Suite.
 
-**Mở app là vào trang Tổng quan**: mỗi Fanpage là một thẻ cho biết hôm nay đã hẹn mấy bài (so với số bài mỗi ngày của Page), bao nhiêu video chờ đăng, chưa lên lịch, đã đăng, lỗi, đã hẹn bao nhiêu trong 24 giờ qua, bài kế tiếp, **kho video còn đủ đăng mấy ngày** (chuyển đỏ khi sắp hết) và trạng thái bị Facebook giới hạn. Bấm **Mở Page** để vào làm việc với Page đó. Trong Page, thanh phía trên có **← Tổng quan** để quay về và ô **Đang làm việc với Fanpage** để chuyển sang Page khác. Mọi thứ bên dưới chỉ thuộc về Page đang chọn:
+**Mở app là vào trang Tổng quan**: mỗi Fanpage là một thẻ cho biết hôm nay đã hẹn mấy bài (so với số bài mỗi ngày của Page), bao nhiêu video chờ đăng, chưa lên lịch, đã đăng, lỗi, đã hẹn bao nhiêu trong 24 giờ qua, bài kế tiếp, **kho video còn đủ đăng mấy ngày** (chuyển đỏ khi sắp hết) và trạng thái bị Facebook giới hạn. Thẻ Page có nút **Xem video**, **Tải video**, **Lịch**. Thanh trên cùng (xem phần Điều hướng):
 
-1. **Tải video** từ kênh YouTube, TikTok hoặc Rednote đã đồng ý cho bạn dùng, lưu vào thư mục đặt tên (thư mục đó thuộc Page đang chọn), kèm tiêu đề, mô tả, hashtag.
-2. **Thư viện & Lên lịch**: xem, sửa nội dung, chọn video rồi hẹn giờ đăng Reels lên Fanpage Facebook. Chỉ thấy video của các thư mục thuộc Page này. Có theo dõi video đã đăng thật chưa, hẹn lại video lỗi và nhập link affiliate riêng cho từng video bằng CSV.
-3. **Lịch**: xem theo tuần các video đã hẹn giờ của Page, ngày nghỉ được tô xám, giờ theo múi giờ của Page. Bài chưa đăng có thể huỷ hoặc đổi giờ (xem mục bên dưới).
-4. **Thống kê**: đã đăng bao nhiêu bài, tỷ lệ đăng thành công, lịch sắp tới, kho video và số bài hẹn thêm được ngay (xem mục "Thống kê bài đăng").
-5. **Cài đặt Page**: đổi tên, bật/tắt tự động comment, quy tắc đăng (khung giờ, ngày nghỉ, số bài tối đa mỗi ngày), múi giờ riêng (mặc định Việt Nam, Asia/Ho_Chi_Minh), giới hạn 24 giờ, nghỉ giữa các video, thời gian chờ và nghỉ giữa các comment, kho comment, kiểm tra token.
-6. **Nhật ký**: các tác vụ của Page đang chọn.
+1. **Video**: mọi video, lọc theo Page / thư mục / trạng thái; xem, chỉnh sửa, sửa nội dung, xoá, chọn video rồi hẹn giờ đăng Reels lên Fanpage (chọn một Page ở ô Page). Có theo dõi video đã đăng thật chưa, hẹn lại video lỗi và nhập link affiliate riêng cho từng video.
+2. **Lịch**: xem theo tuần các video đã hẹn giờ của một Page (chọn ở ô Fanpage), ngày nghỉ tô xám, giờ theo múi giờ của Page. Bài chưa đăng có thể huỷ hoặc đổi giờ.
+3. **Thống kê**: đã đăng bao nhiêu bài, tỷ lệ đăng thành công, lịch sắp tới, kho video và số bài hẹn thêm được ngay (xem mục "Thống kê bài đăng").
+4. **Tải video** từ kênh YouTube, TikTok hoặc Rednote đã đồng ý cho bạn dùng, lưu vào thư mục (Page đi theo thư mục), kèm tiêu đề, mô tả, hashtag.
+5. **Cài đặt**: Fanpage, Cài đặt Page (đổi tên, tự động comment, quy tắc đăng, múi giờ, giới hạn 24 giờ, kho comment...), Thư mục, các cài đặt chung và Nhật ký.
 
 Ở màn hình chung (Tổng quan) còn có:
-- **Kết nối Fanpage**: thêm Page từ Facebook, kiểm tra token, mở Page, xóa khỏi app.
-- **Cài đặt chung**: **Mặc định Page** (giá trị dùng cho Page nào chưa đặt riêng: giới hạn 24 giờ, nghỉ giữa video, thời gian chờ và nghỉ giữa comment), **Token FB** (App ID, App Secret, User token lưu trong `.env`, nút kiểm tra), **Thông báo** (macOS và Telegram, xem mục "Thông báo sự cố") và **Chung** (thư mục lưu video, chất lượng tải, khoảng cách giờ mặc định...).
+- **Cài đặt > Fanpage**: thêm Page từ Facebook, kiểm tra token, mở Page, xóa khỏi app.
+- **Cài đặt > Chung**: **Mặc định Page** (giá trị dùng cho Page nào chưa đặt riêng: giới hạn 24 giờ, nghỉ giữa video, thời gian chờ và nghỉ giữa comment), **Token FB** (App ID, App Secret, User token lưu trong `.env`, nút kiểm tra), **Thông báo** (macOS và Telegram, xem mục "Thông báo sự cố") và **Chung** (thư mục lưu video, chất lượng tải, khoảng cách giờ mặc định...).
 - **Nhật ký** của mọi Page.
 
 Chỉ dùng với video của bạn, hoặc video có sự đồng ý của chủ kênh. Mỗi lần tải, app yêu cầu xác nhận và lưu ghi chú đồng ý vào `permission.json` trong thư mục kênh.
@@ -59,11 +58,20 @@ Lưu ý:
 Nếu bạn đã dùng bản một Page: Page cũ, token, kho comment và công tắc tự động comment tự chuyển sang `pages.json` ở lần chạy đầu, các video đã hẹn giờ vẫn thuộc về Page đó.
 
 1. **Cài đặt > Token FB**: điền App ID, App Secret, User token (lấy ở Graph API Explorer, nhớ chọn tất cả Fanpage muốn quản lý), bấm **Lưu**.
-2. **Kết nối Fanpage**: bấm **Lấy danh sách từ Facebook**, tick các Page muốn dùng rồi **Thêm**. Bấm **Kiểm tra token** ở từng Page để xem hạn dùng và quyền còn thiếu (cần `pages_manage_posts` và `publish_video`).
-3. Mở Page rồi vào tab **Tải video**: dán link kênh (ví dụ `https://www.youtube.com/@tenkenh`), đặt tên thư mục, chọn Shorts hoặc Video thường, tích xác nhận, bấm **Tải về**.
+2. **Cài đặt > Fanpage**: bấm **Lấy danh sách từ Facebook**, tick các Page muốn dùng rồi **Thêm**. Bấm **Kiểm tra token** ở từng Page để xem hạn dùng và quyền còn thiếu (cần `pages_manage_posts` và `publish_video`).
+3. Vào mục **Tải video** (chọn Page ở ô "Đăng lên Fanpage"): dán link kênh (ví dụ `https://www.youtube.com/@tenkenh`), đặt tên thư mục, chọn Shorts hoặc Video thường, tích xác nhận, bấm **Tải về**.
    - Ô **Số video mới cần tải** chỉ đếm video MỚI: video đã có trong các thư mục của Page được bỏ qua và không tính vào số này. Ví dụ đã có 100 video, nhập 100 thì app tải thêm 100 video mới (nhập 0 = tải tất cả video mới). Video lỗi không tính vào số này, nhưng 10 video liên tiếp lỗi thì app dừng (YouTube có thể đang chặn).
    - Ô **Tải về** cho chọn **Chỉ âm thanh (MP3 320 kbps)**: mỗi video lưu thành `audio.mp3` trong thư mục con của video. Nếu video đó đã được tải rồi (kể cả khi tiêu đề trên YouTube đã đổi), MP3 vào đúng thư mục của video, không ghi đè tiêu đề hay mô tả. MP3 chống trùng riêng theo file `audio.mp3` trong các thư mục của Page. Thư mục chỉ có MP3 không hiện ở Thư viện và không dùng để hẹn đăng. Video có kèm MP3 hiện nhãn "Có MP3". Cần ffmpeg (đã cần sẵn để ghép video). Tải xong mà không thấy file (ví dụ thiếu ffmpeg) thì tính là lỗi và app dọn thư mục vừa tạo.
 4. Tab **Thư viện & Lên lịch**: tích chọn video rồi bấm **Lên lịch...** (nút ở thanh trên hoặc ở thanh nổi phía dưới). Cửa sổ **Lên lịch đăng lên Fanpage** hiện ra, Fanpage và múi giờ lấy theo Page đang làm việc (muốn đổi Page, đóng cửa sổ rồi chuyển Page ở thanh phía trên): chọn kiểu hẹn giờ (cách nhau cố định hoặc tự xếp theo khung giờ của Page), bấm **Xem trước kế hoạch** rồi **Lên lịch đăng**. Cửa sổ này đóng được bất cứ lúc nào (nút Đóng, phím Esc hoặc bấm ra ngoài); tác vụ đang chạy vẫn tiếp tục. Nên thử với 1 video trước. Facebook chỉ cho hẹn giờ trong khoảng từ 10 phút đến 29 ngày kể từ bây giờ; app kiểm tra trước và báo nếu video cuối cùng vượt giới hạn này.
+
+## Điều hướng
+
+Thanh trên cùng luôn giống nhau: **Tổng quan | Video | Lịch | Thống kê | Tải video | Cài đặt** (không còn "chế độ Page").
+
+- **Lịch** và **Thống kê** xem cho một Fanpage: chọn Page ở ô **Fanpage** đầu màn hình (mặc định Page vừa làm việc).
+- **Tải video**: chọn thư mục, Page đi theo thư mục có sẵn (ô "Đăng lên Fanpage" bị khoá theo thư mục); thư mục mới thì thuộc Page đang chọn ở ô đó.
+- **Cài đặt** có thanh con: Fanpage (kết nối, quy tắc, giới hạn), Cài đặt Page (kho comment, thư mục của Page; chọn Page ở ô Fanpage), Thư mục, Mặc định Page, Token FB, Thông báo, Dịch phụ đề, Chung, Nhật ký (lọc theo Fanpage).
+- Thẻ Page ở Tổng quan có **Xem video** (mục Video lọc theo Page), **Tải video** (chọn sẵn Page), **Lịch**. Địa chỉ cũ (`#p/<id>/library`, `#editor`...) tự chuyển sang màn hình mới.
 
 ## Màn hình Video
 
@@ -80,17 +88,17 @@ Mục **Thư mục** (thanh trên cùng) liệt kê mọi thư mục video, kể
 - **Nơi đăng:** mỗi thư mục chọn nơi đăng cho từng nền tảng, mỗi nền tảng tối đa một tài khoản. Hiện có Facebook (một Page). Instagram, TikTok, YouTube sẽ thêm sau. Một Page có thể có nhiều thư mục, hoặc không có thư mục nào. Lưu trong `channel.json` của thư mục: `{"targets": {"facebook": "<page_id>"}, "page_id": "...", "auto_delete": {...}}` (giữ `page_id` để bản cũ vẫn đọc được; file cũ chỉ có `page_id` được hiểu là Facebook).
 - **Gán / đổi / bỏ gán:** chọn Page trong ô Facebook của thư mục (chọn "Không đăng Facebook" để bỏ gán). Video đã đăng giữ nguyên lịch sử. Nếu thư mục còn video **chờ đăng** (kể cả bài lỗi / quá giờ) trên Page cũ, app hỏi có huỷ lịch các video đó (xóa bài hẹn trên Facebook) rồi đổi không; huỷ chưa hết thì không đổi. Không đổi được khi đang tải video, hẹn lịch hoặc huỷ lịch.
 - **Tạo thư mục mới** (có thể chọn Page luôn). **Tự xoá sau khi đăng** cài ở từng thư mục (xem phần Xoá video).
-- Thư mục tải về từ một Page tự thuộc Page đó. Tải cho Page khác vào thư mục đang thuộc Page này sẽ bị từ chối. Thư mục không có Page Facebook thì không hiện trong Thư viện của Page nào (Tổng quan và Thư viện có nhắc).
+- Thư mục tải về từ một Page tự thuộc Page đó. Tải cho Page khác vào thư mục đang thuộc Page này sẽ bị từ chối. Thư mục không có Page Facebook thì không hiện khi lọc theo Page ở mục Video (chọn "Chưa gán Page" để xem).
 - Nâng cấp từ bản cũ: thư mục chưa ghi Page mà mọi video đã hẹn đều của cùng một Page thì tự gán cho Page đó. Thư mục bạn đã bỏ gán (hoặc tạo mới không chọn Page) thì không bao giờ bị tự gán lại. Xóa một Page khỏi app thì thư mục của nó hiện "(Page đã bị xoá khỏi app)" để chọn lại.
 - Video nằm thẳng ở thư mục gốc (tải bằng script cũ) không có thư mục kênh nên chỉ hiện ở Page đã hẹn nó.
 
 ## Múi giờ và cài đặt riêng từng Page
 
-Mỗi Page có múi giờ riêng (mặc định Asia/Ho_Chi_Minh). Khung giờ đăng, giờ mặc định trong khung Lên lịch, giờ hiển thị trên thẻ video và Lịch đều tính theo múi giờ của Page. Giới hạn 24 giờ, nghỉ giữa hai video, thời gian chờ và nghỉ giữa các comment có thể đặt riêng cho Page (ô để trống = dùng mặc định ở Cài đặt chung > Mặc định Page).
+Mỗi Page có múi giờ riêng (mặc định Asia/Ho_Chi_Minh). Khung giờ đăng, giờ mặc định trong khung Lên lịch, giờ hiển thị trên thẻ video và Lịch đều tính theo múi giờ của Page. Giới hạn 24 giờ, nghỉ giữa hai video, thời gian chờ và nghỉ giữa các comment có thể đặt riêng cho Page (ô để trống = dùng mặc định ở Cài đặt > Mặc định Page).
 
 ## Lên lịch thông minh
 
-Mỗi Fanpage có **Quy tắc đăng** (tab Cài đặt Page): các khung giờ trong ngày (ví dụ `12:00, 19:00, 21:00`), ngày nghỉ và số bài tối đa mỗi ngày. Trong cửa sổ **Lên lịch đăng** có hai kiểu hẹn giờ:
+Mỗi Fanpage có **Quy tắc đăng** (Cài đặt > Cài đặt Page): các khung giờ trong ngày (ví dụ `12:00, 19:00, 21:00`), ngày nghỉ và số bài tối đa mỗi ngày. Trong cửa sổ **Lên lịch đăng** có hai kiểu hẹn giờ:
 
 - **Cách nhau cố định**: giờ đầu tiên + khoảng cách giờ như trước.
 - **Tự xếp vào khung giờ của Page**: app lần lượt điền video vào các khung giờ còn trống từ thời điểm bạn chọn (mặc định là ngay bây giờ). Nó bỏ qua ngày nghỉ, khung giờ đã có bài của Page đó (kể cả bài đã hẹn từ trước), giờ chưa cách hiện tại đủ xa và quá 29 ngày. Không đủ chỗ thì báo rõ xếp được bao nhiêu video, không hẹn gì cả. Khung giờ tính theo múi giờ của Page.
@@ -98,7 +106,7 @@ Mỗi Fanpage có **Quy tắc đăng** (tab Cài đặt Page): các khung giờ 
 **Chọn đủ video cho 1 tuần, 2 tuần hoặc 1 tháng**: ở Thư viện bấm **Chọn đủ cho...** rồi chọn 1 tuần, 2 tuần hoặc 1 tháng. App tính theo Fanpage đang làm việc. App chỉ tích chọn một số lượng video, chưa xếp lịch gì cả:
 - Số video = số ngày đăng × số bài mỗi ngày của Page (số khung giờ, không vượt "tối đa mỗi ngày"), trừ các ngày nghỉ trong tuần. Ví dụ khung giờ 12:00, 14:00, 16:00 và tối đa 3 bài/ngày thì 1 tuần (7 ngày, không có ngày nghỉ) = 21 video.
 - Số này không phụ thuộc ngày bắt đầu, kiểu hẹn giờ hay các bài đã hẹn sẵn. Chọn xong, bấm **Lên lịch...** rồi đăng theo "Tự xếp" hoặc "Cách nhau cố định", bắt đầu từ ngày nào cũng được. Với "Cách nhau cố định" bạn có thể đăng né các khung giờ/ngày đã đầy (app chỉ cảnh báo, không chặn); "Tự xếp" tự bỏ qua ngày và khung giờ đã đầy.
-- Chọn theo "Thứ tự đăng" đang chọn, chỉ trong các video chưa lên lịch đang hiển thị. Không đủ video thì chọn hết và báo còn thiếu bao nhiêu. Page chưa có khung giờ thì báo cần thêm khung giờ ở tab Cài đặt Page.
+- Chọn theo "Thứ tự đăng" đang chọn, chỉ trong các video chưa lên lịch đang hiển thị. Không đủ video thì chọn hết và báo còn thiếu bao nhiêu. Page chưa có khung giờ thì báo cần thêm khung giờ ở Cài đặt > Cài đặt Page.
 - "1 tháng" tính là 28 ngày vì Facebook chỉ cho hẹn giờ trong 29 ngày. Nếu số video vượt giới hạn mỗi 24 giờ (mục bên dưới), app báo rõ mỗi đợt chỉ hẹn được bao nhiêu video, phần còn lại hẹn tiếp sau.
 
 **Thứ tự đăng** có bốn lựa chọn: video cũ trước (mặc định), mới trước, ngẫu nhiên, hoặc theo thứ tự bạn tích chọn.
@@ -169,7 +177,7 @@ Facebook giảm phân phối video đăng lại nguyên bản. Nút **Chỉnh s�
 Xuất xong chỉ ra **bản nháp** `video.draft.mp4`; chưa duyệt thì video thật (`video.mp4`), kiểm tra Reels và hẹn giờ đăng vẫn dùng video hiện tại. Xem thử bản nháp trong hộp thoại rồi chọn: **Bỏ bản nháp** (không đổi gì, phụ đề và giọng đọc vẫn giữ để xuất lại) hoặc **Duyệt & thay video gốc**. **Duyệt là không hoàn tác được**: bản nháp ghi đè `video.mp4`, video gốc bị xoá hẳn, phụ đề/giọng đọc đã dùng được dọn đi, và thẻ có nhãn "Đã chỉnh sửa video" (file `edit_approved.json`). Video đã lên lịch thì không xuất/duyệt được (Facebook đã nhận bản cũ): huỷ lịch, chỉnh, rồi hẹn lại. Mỗi lúc chỉ chạy một tác vụ chỉnh sửa.
 
 **Dịch phụ đề sang tiếng Việt** (video tiếng Anh, Nhật, Hàn, Trung...): phiên âm với đúng ngôn ngữ trong video, rồi dùng một trong hai cách ở bước 2 (mỗi dòng phụ đề có số thứ tự; hộp thoại rộng để xem video và danh sách cùng lúc):
-- **Dịch tự động bằng AI**: chọn ngôn ngữ đích ở ô *Dịch sang* (Tiếng Việt, Anh, Nhật, Trung) rồi bấm *Dịch tự động*; dịch lại sang ngôn ngữ khác luôn xuất phát từ câu gốc, không dịch chồng lên bản dịch. Nhà cung cấp chọn ở *Cài đặt chung > Dịch phụ đề*. Mặc định là **Claude Code** (không cần khóa API): app chạy `claude -p` trên máy bạn với đăng nhập Claude Code sẵn có, mỗi lượt 40 dòng, tính vào hạn mức Claude Code của bạn (xem mục Hook về cách cài, `CLAUDE_BIN`, `HOOK_MODEL`). Nếu máy chưa có Claude Code mà bạn đã nhập khóa API thì app vẫn dùng API như trước. Hoặc chọn Anthropic (Claude) qua API, hoặc mọi dịch vụ theo chuẩn OpenAI (OpenAI, Google Gemini, OpenRouter, Groq, Ollama chạy trên máy...). Nhập khóa API, model, địa chỉ API (nếu cần) rồi bấm *Thử dịch*. Cấu hình lưu vào `.env` (`TRANSLATE_PROVIDER`, `TRANSLATE_API_KEY`, `TRANSLATE_MODEL`, `TRANSLATE_BASE_URL`); khóa không bao giờ hiện lại trên giao diện. App chỉ gửi chữ của phụ đề, không gửi video hay âm thanh. Mốc thời gian giữ nguyên; mỗi câu dịch có câu gốc hiện bên dưới để đối chiếu.
+- **Dịch tự động bằng AI**: chọn ngôn ngữ đích ở ô *Dịch sang* (Tiếng Việt, Anh, Nhật, Trung) rồi bấm *Dịch tự động*; dịch lại sang ngôn ngữ khác luôn xuất phát từ câu gốc, không dịch chồng lên bản dịch. Nhà cung cấp chọn ở *Cài đặt > Dịch phụ đề*. Mặc định là **Claude Code** (không cần khóa API): app chạy `claude -p` trên máy bạn với đăng nhập Claude Code sẵn có, mỗi lượt 40 dòng, tính vào hạn mức Claude Code của bạn (xem mục Hook về cách cài, `CLAUDE_BIN`, `HOOK_MODEL`). Nếu máy chưa có Claude Code mà bạn đã nhập khóa API thì app vẫn dùng API như trước. Hoặc chọn Anthropic (Claude) qua API, hoặc mọi dịch vụ theo chuẩn OpenAI (OpenAI, Google Gemini, OpenRouter, Groq, Ollama chạy trên máy...). Nhập khóa API, model, địa chỉ API (nếu cần) rồi bấm *Thử dịch*. Cấu hình lưu vào `.env` (`TRANSLATE_PROVIDER`, `TRANSLATE_API_KEY`, `TRANSLATE_MODEL`, `TRANSLATE_BASE_URL`); khóa không bao giờ hiện lại trên giao diện. App chỉ gửi chữ của phụ đề, không gửi video hay âm thanh. Mốc thời gian giữ nguyên; mỗi câu dịch có câu gốc hiện bên dưới để đối chiếu.
 - **Dịch tay**: bấm *Sao chép bản gốc* (các câu được đánh số), dịch ở đâu cũng được (ChatGPT, Google Dịch, tự dịch...), rồi bấm *Dán bản dịch…* và dán lại, mỗi câu một dòng đúng thứ tự (có hoặc không có số đầu dòng). Hoặc sửa thẳng từng ô: với video không phải tiếng Việt, câu bạn gõ đè lên được coi là bản dịch và câu gốc được giữ lại.
 *Trả về bản gốc* hoàn tác bản dịch. Hình xuất ra chỉ in bản dịch. AI có thể dịch sai tên riêng hay thuật ngữ nên luôn đọc lại.
 
@@ -205,7 +213,7 @@ Cài công cụ một lần: `bash tools/install_editor_tools.sh` (FFmpeg, whisp
 - Không xoá được video đã hẹn lịch (huỷ lịch trong Fanpage trước), video đã đăng mà app còn chờ tự comment, hoặc khi đang có tác vụ chỉnh sửa / hẹn lịch / huỷ lịch chạy.
 - **Ghi nhớ video đã xoá:** ID, link, tiêu đề, thư mục và ngày xoá được ghi vào `removed_videos.json` (đã gitignore). Khi tải video, link của video đã xoá được bỏ qua (nhật ký ghi "đã tải và xoá ngày ...") và được xoá khỏi file .txt như link đã tải. Muốn tải lại: tick **Tải lại cả video đã xoá trước đây** ở tab Tải video, hoặc bấm **Cho tải lại** trong mục **Video đã xoá** (cuối trang Video). Tải lại xong thì video tự ra khỏi danh sách đã xoá.
 - Chỉ ghi nhớ video có ID (video tải bằng app). Sổ áp dụng chung cho mọi Page. Video đã xoá trước khi có tính năng này thì app không biết.
-- **Tự xoá sau khi đăng (theo từng thư mục):** mục **Thư mục**, ở thư mục muốn dọn tick **Xoá video sau khi đăng**, chọn số ngày (2 đến 365, mặc định 3) rồi bấm **Lưu tự xoá**. Cài đặt lưu trong `channel.json` của thư mục. Tiến trình nền kiểm tra 30 phút một lần và chuyển vào Thùng rác những video: đã đăng thành công; đã comment xong, không cần comment, hoặc đã quá hạn tự comment (3 ngày sau giờ đăng); giờ đăng cũ hơn số ngày đã chọn; lần hẹn giờ cũ hơn 25 giờ. Video được ghi vào danh sách Video đã xoá như khi xoá tay. Xoá lỗi thì ghi nhật ký (Nhật ký > Tự động comment) và 6 giờ sau mới thử lại. Tối thiểu 2 ngày vì giới hạn 24 giờ và số bài mỗi ngày của Page được đếm từ các video còn trong thư mục. **Thống kê bài đăng chỉ tính video còn trong thư mục**, nên đặt số ngày lớn hơn nếu muốn xem thống kê đủ 14 ngày.
+- **Tự xoá sau khi đăng (theo từng thư mục):** **Cài đặt > Thư mục**, ở thư mục muốn dọn tick **Xoá video sau khi đăng**, chọn số ngày (2 đến 365, mặc định 3) rồi bấm **Lưu tự xoá**. Cài đặt lưu trong `channel.json` của thư mục. Tiến trình nền kiểm tra 30 phút một lần và chuyển vào Thùng rác những video: đã đăng thành công; đã comment xong, không cần comment, hoặc đã quá hạn tự comment (3 ngày sau giờ đăng); giờ đăng cũ hơn số ngày đã chọn; lần hẹn giờ cũ hơn 25 giờ. Video được ghi vào danh sách Video đã xoá như khi xoá tay. Xoá lỗi thì ghi nhật ký (Nhật ký > Tự động comment) và 6 giờ sau mới thử lại. Tối thiểu 2 ngày vì giới hạn 24 giờ và số bài mỗi ngày của Page được đếm từ các video còn trong thư mục. **Thống kê bài đăng chỉ tính video còn trong thư mục**, nên đặt số ngày lớn hơn nếu muốn xem thống kê đủ 14 ngày.
 - Video đã đăng nhưng Page đang tắt tự comment: sau 3 ngày (hạn tự comment) app coi như không comment nữa, xoá tay hay tự xoá đều được.
 
 ## Tải video TikTok (không logo), Rednote và nhóm theo phim
@@ -219,13 +227,13 @@ Cài công cụ một lần: `bash tools/install_editor_tools.sh` (FFmpeg, whisp
 - Chất lượng tối đa theo "DOWNLOAD_MAX_HEIGHT" (mặc định 1080, tính theo cạnh ngắn nên video dọc 1080x1920 vẫn lấy bản 1080p). Trước đây bộ lọc đếm theo chiều cao nên video dọc YouTube Shorts bị tải bản 480p; bản này đã sửa.
 - Chỉ tải nội dung của bạn hoặc kênh đã cho phép. Cắt từ phim, nhạc có bản quyền dễ bị Facebook gỡ hoặc hạn chế Page (nội dung không gốc).
 
-**Tải không cần vào Fanpage:** ở màn hình chung (Tổng quan, Kết nối Fanpage, Cài đặt chung...) có tab **Tải video**. Video lưu vào thư mục bạn đặt tên và chưa thuộc Page nào (vẫn có `permission.json` và ô xác nhận quyền). Thư mục đó hiện ở Tổng quan, mục "Thư mục chưa thuộc Fanpage nào": khi muốn đăng thì chọn Page rồi bấm **Gán**, video sẽ vào Thư viện của Page. Tải không gắn Page chỉ chống trùng với các thư mục cũng chưa gán Page, và không tải thêm vào thư mục đã thuộc một Page (hãy vào Page đó để tải). Đang tải kiểu này vẫn vào được Fanpage khác.
+**Chọn Page khi tải:** ô **Đăng lên Fanpage** ở mục Tải video. Tải vào thư mục có sẵn thì Page theo thư mục đó (ô bị khoá); thư mục mới thuộc Page đang chọn, hoặc chọn "Không gắn Fanpage" để lưu vào thư mục chưa thuộc Page nào (vẫn có `permission.json` và ô xác nhận quyền), gán Page sau ở Cài đặt > Thư mục. Tải không gắn Page chỉ chống trùng với các thư mục cũng chưa gán Page.
 
 **Dán nhiều link:** ô đường dẫn nhận nhiều link, mỗi dòng một link (trộn YouTube, TikTok, Rednote cũng được). Link trùng chỉ tải một lần; link nào lỗi thì bỏ qua, ghi vào nhật ký và các link còn lại vẫn chạy. Tối đa 1000 link mỗi lần. Có thể bấm **Mở file .txt chứa link** (hộp chọn file của macOS) để nạp link từ file vào ô. **Tự dọn file .txt:** link đã tải xong, đã có từ trước, hoặc bài đã kiểm tra là không có video/ảnh nào để tải sẽ được xoá khỏi file ngay khi xong (dòng chỉ bị xoá khi mọi link trong dòng đã xong; dòng không có link giữ nguyên; nạp nhiều file thì xoá ở đúng file chứa link; cùng một video có hai dạng link thì cả hai dòng đều được xoá). Link kênh/danh sách, link lỗi, link bỏ qua vì không đúng loại đã chọn và link chưa mở tới đều giữ lại. Nếu hộp chọn file của macOS không mở được, app mở file bằng trình duyệt và không tự xoá link. **Báo link lỗi:** cuối lượt tải, nhật ký và khung bên dưới liệt kê từng link lỗi kèm lý do (bấm để mở, có nút chép cả danh sách) để bạn tự kiểm tra. **Bỏ qua link đã tải và dừng khi đủ số:** ô "Số video mới cần tải" là số video MỚI. Link một video đã có trong thư mục thì bỏ qua ngay, không mở lại trang; app chỉ mở link cho đến khi đủ số cần tải (link còn lại không được mở, trừ khi có video lỗi và còn thiếu). Ví dụ dán 100 link, đặt 10: bỏ qua những link đã tải, tải đúng 10 video mới rồi dừng. Đặt 0 để tải tất cả link mới. **Tự dừng khi bị chặn:** Rednote báo cần đăng nhập/xác minh (hoặc chuyển sang trang đăng nhập) thì app dừng ngay ở link đó; lỗi khác mà 3 link liên tiếp không mở được cũng dừng, báo trong nhật ký và thông báo, không mở tiếp các link còn lại để tránh bị khóa tài khoản; giữa hai lần mở bài Rednote app nghỉ 1–2,5 giây. Mở thử một bài trong trình duyệt, đợi một lúc rồi tải lại (link đã tải sẽ được bỏ qua).
 
 **Rednote (Xiaohongshu):** chỉ tải theo link từng bài, không tải theo trang cá nhân (yt-dlp không đọc được danh sách bài của một người). Dạng nhận được: `xiaohongshu.com/explore/<id>`, `/discovery/item/<id>` (cả tên miền `rednote.com`, link chia sẻ từ web hay dùng; app tự đổi sang xiaohongshu.com để yt-dlp đọc được), bài mở từ trang cá nhân, và link rút gọn `xhslink.com` (kể cả khi bạn dán nguyên đoạn "chia sẻ" từ app, app tự lấy link trong đó).
 
-- **Cookie đăng nhập:** Rednote hay đòi đăng nhập hoặc xác minh. Đăng nhập Rednote trên Chrome (hoặc Safari, Firefox) ở máy này, rồi ở Cài đặt chung > Chung điền ô **Rednote: trình duyệt đã đăng nhập** (ví dụ `chrome`). Có thể điền đường dẫn file `cookies.txt` thay cho tên trình duyệt (yt-dlp có thể ghi cập nhật lại file này). Cookie chỉ được đọc trên máy bạn để mở bài, không gửi đi đâu và không bao giờ ghi vào nhật ký. Cài đặt này tách riêng với cookie YouTube.
+- **Cookie đăng nhập:** Rednote hay đòi đăng nhập hoặc xác minh. Đăng nhập Rednote trên Chrome (hoặc Safari, Firefox) ở máy này, rồi ở Cài đặt > Chung điền ô **Rednote: trình duyệt đã đăng nhập** (ví dụ `chrome`). Có thể điền đường dẫn file `cookies.txt` thay cho tên trình duyệt (yt-dlp có thể ghi cập nhật lại file này). Cookie chỉ được đọc trên máy bạn để mở bài, không gửi đi đâu và không bao giờ ghi vào nhật ký. Cài đặt này tách riêng với cookie YouTube.
 - Link nên giữ nguyên phần `?xsec_token=...` nếu có. Rednote không trả ngày đăng nên tên thư mục video dùng ngày tải. Thư mục mặc định là `Rednote` nếu bạn không đặt tên.
 - **Lấy link cả trang cá nhân (script tự chạy):** app không đọc được danh sách bài của một người, nên dùng script `tools/rednote_collect_links.js` (ở tab Tải video, mục "Rednote: lấy link cả trang cá nhân" có nút **Chép script** để khỏi mở file). Đăng nhập Rednote trên Chrome, mở trang cá nhân (của bạn hoặc người cho phép), mở Console (F12; nếu Chrome chặn dán thì gõ `allow pasting`), dán nguyên nội dung file rồi Enter. Script cuộn chậm đến cuối trang, gom link và hiện nút **Chép** (mỗi nút 100 link) để dán vào tab Tải video; cũng có nút tải file `.txt`. Script chỉ đọc link trên trang, không gửi dữ liệu đi, không đọc cookie. Trang có hàng trăm bài thì chia làm nhiều lần tải, đừng tải dồn dập.
 - **Chọn Ảnh / Video / Toàn bộ:** ô **Nội dung (Rednote)** ở tab Tải video: *Toàn bộ* (mặc định) tải video và lưu ảnh của bài ảnh; *Chỉ video* bỏ qua bài ảnh; *Chỉ ảnh* chỉ lưu ảnh và bỏ qua bài video (không cần yt-dlp, chỉ mở trang bài một lần). Bài bị bỏ qua vì khác loại không tính là lỗi và được đếm riêng ở dòng kết quả. YouTube và TikTok bỏ qua ô này.
@@ -244,7 +252,7 @@ Cài công cụ một lần: `bash tools/install_editor_tools.sh` (FFmpeg, whisp
 
 Mỗi thẻ Page ở Tổng quan có dòng **Kho** cho biết số video chưa lên lịch (không tính video không đạt yêu cầu Reels), mỗi ngày Page đăng bao nhiêu bài theo quy tắc của Page (khung giờ, ngày nghỉ), và tổng cộng Page còn bài để đăng trong bao nhiêu ngày. Con số này gồm lịch đã hẹn (tính đến bài hẹn xa nhất) cộng số ngày kho chưa hẹn đủ dùng.
 
-- Màu đỏ khi còn ít hơn **LOW_STOCK_DAYS** ngày (mặc định 3, đổi ở Cài đặt chung > Thông báo), vàng khi dưới 7 ngày. Khi có Page đỏ, đầu trang Tổng quan hiện khung nhắc "Sắp hết video".
+- Màu đỏ khi còn ít hơn **LOW_STOCK_DAYS** ngày (mặc định 3, đổi ở Cài đặt > Thông báo), vàng khi dưới 7 ngày. Khi có Page đỏ, đầu trang Tổng quan hiện khung nhắc "Sắp hết video".
 - Page chưa có khung giờ đăng thì app chưa tính được kho. Page chưa có video nào thì không nhắc.
 - Mỗi giờ app kiểm tra một lần, nếu có Page đỏ thì báo qua kênh thông báo (không báo lặp quá 1 lần mỗi 20 giờ cho cùng một Page).
 
@@ -259,12 +267,12 @@ Trước khi hẹn giờ, app dùng `ffprobe` (đi kèm ffmpeg) đọc từng vi
 
 - Video vừa tải xong được kiểm tra luôn, kết quả hiện thành nhãn trên thẻ video ("Không đạt yêu cầu Reels", "Cần xem lại (Reels)"). Rê chuột vào nhãn để xem lý do. Video không đạt không chọn được và bị loại khi bấm "Chọn đủ cho...".
 - Nút **Kiểm tra Reels** (tab Thư viện) kiểm tra các video chưa lên lịch của Page; giữ **Shift** khi bấm để kiểm tra lại từ đầu. Kết quả lưu trong `reels_check.json` của từng thư mục video và tự làm mới khi file video đổi.
-- Chưa cài ffprobe thì bước này tự bỏ qua và nhật ký có ghi chú. Muốn tắt hẳn: Cài đặt chung > Chung, "Kiểm tra video đạt yêu cầu Reels" chọn Tắt (hoặc `REELS_CHECK=0`).
+- Chưa cài ffprobe thì bước này tự bỏ qua và nhật ký có ghi chú. Muốn tắt hẳn: Cài đặt > Chung, "Kiểm tra video đạt yêu cầu Reels" chọn Tắt (hoặc `REELS_CHECK=0`).
 - Đây là kiểm tra theo tài liệu công khai của Meta. Facebook vẫn có thể từ chối video vì lý do khác (ví dụ bản quyền nhạc).
 
 ## Thông báo sự cố (macOS và Telegram)
 
-Khi có sự cố, app gửi thông báo để bạn khỏi phải mở giao diện kiểm tra. Cài đặt chung > **Thông báo**.
+Khi có sự cố, app gửi thông báo để bạn khỏi phải mở giao diện kiểm tra. Cài đặt > **Thông báo**.
 
 Các sự cố được báo:
 - Page bị Facebook giới hạn tần suất (app đã tự dừng hẹn giờ và comment của Page đó).
@@ -297,7 +305,7 @@ Mỗi thao tác chạm Facebook (hẹn giờ, huỷ, đổi giờ, kiểm tra tr
 
 Mọi lệnh gọi Facebook đều đi qua một cổng duy nhất (`core/fbgate.py`) nên mọi tính năng, kể cả tính năng thêm sau này, bị giới hạn như nhau:
 
-- **Ngân sách theo giờ:** mặc định tối đa **150 lượt trong 60 phút qua** (Cài đặt chung > Chung > "Số lượt gọi Facebook tối đa mỗi giờ", từ 20 đến 5000). Số đếm lưu trong `fbgate_state.json` nên tắt/mở lại app không làm số đếm về 0. Hết ngân sách thì lệnh kế tiếp bị từ chối ngay, **không gọi Facebook**, kèm số phút phải chờ.
+- **Ngân sách theo giờ:** mặc định tối đa **150 lượt trong 60 phút qua** (Cài đặt > Chung > "Số lượt gọi Facebook tối đa mỗi giờ", từ 20 đến 5000). Số đếm lưu trong `fbgate_state.json` nên tắt/mở lại app không làm số đếm về 0. Hết ngân sách thì lệnh kế tiếp bị từ chối ngay, **không gọi Facebook**, kèm số phút phải chờ.
 - **Việc chạy nền không chiếm chỗ của bạn:** kiểm tra trạng thái tự động tối đa 25% ngân sách, kiểm tra tự động cộng comment tối đa 60%; phần còn lại luôn dành cho thao tác của bạn. Nút **Kiểm tra trạng thái** (hàng loạt) luôn chừa lại 25% ngân sách cho hẹn giờ, huỷ, comment.
 - **Giãn nhịp:** khoảng 0,6 giây giữa hai lệnh; chậm gấp ba cho việc chạy nền và khi đã dùng từ 70% ngân sách. Không bao giờ bắn dồn dập.
 - **Đọc mức dùng thật từ Facebook:** mỗi phản hồi có header `X-App-Usage`, `X-Business-Use-Case-Usage`... Facebook báo đã dùng từ 85% hạn mức thì app tự dừng 10 phút **trước khi** bị chặn (việc mới bị chặn; một lần hẹn giờ đã bắt đầu tải lên thì vẫn được làm nốt để không bỏ dở); Facebook báo thời gian chờ (`estimated_time_to_regain_access`) thì dừng đúng bằng thời gian đó.
@@ -313,9 +321,9 @@ Khoảng nghỉ giữa hai lệnh có thể chỉnh bằng biến `FB_MIN_INTERV
 
 Để tránh bị chặn vì đăng quá dày, app có:
 
-- **Giới hạn mỗi 24 giờ** (mặc định 30 video cho mỗi Fanpage, đặt ở Cài đặt chung > Mặc định Page hoặc riêng cho từng Page ở tab Cài đặt Page; Facebook tính khoảng 30 bài đăng qua API mỗi 24 giờ). Chọn nhiều hơn mức còn lại thì app chỉ xếp phần vừa đủ và để phần còn lại cho lần sau. Đặt 0 để tắt giới hạn.
+- **Giới hạn mỗi 24 giờ** (mặc định 30 video cho mỗi Fanpage, đặt ở Cài đặt > Mặc định Page hoặc riêng cho từng Page ở Cài đặt > Cài đặt Page; Facebook tính khoảng 30 bài đăng qua API mỗi 24 giờ). Chọn nhiều hơn mức còn lại thì app chỉ xếp phần vừa đủ và để phần còn lại cho lần sau. Đặt 0 để tắt giới hạn.
 - **Nghỉ giữa hai video** (mặc định khoảng 15 giây, có ngẫu nhiên thêm).
-- **Tự dừng khi bị chặn**: app dừng ngay, ghi nhận Page đang bị giới hạn (hiện ở Tổng quan, thanh phía trên Page và khung Lên lịch), không hẹn thêm và tạm dừng tự động comment của Page đó, mặc định 24 giờ. Facebook không công bố thời gian chặn cụ thể, thường là một đến hai ngày. Nếu chắc chắn đã hết bị chặn, bấm **Bỏ cảnh báo** ở tab Cài đặt Page hoặc Kết nối Fanpage.
+- **Tự dừng khi bị chặn**: app dừng ngay, ghi nhận Page đang bị giới hạn (hiện ở Tổng quan, thanh phía trên Page và khung Lên lịch), không hẹn thêm và tạm dừng tự động comment của Page đó, mặc định 24 giờ. Facebook không công bố thời gian chặn cụ thể, thường là một đến hai ngày. Nếu chắc chắn đã hết bị chặn, bấm **Bỏ cảnh báo** ở Cài đặt > Cài đặt Page hoặc Cài đặt > Fanpage.
 
 Nếu bị chặn: đừng thử lại liên tục, đợi vài giờ đến một hai ngày, và giảm tần suất đăng và comment.
 
@@ -348,7 +356,7 @@ Cách Facebook trả trạng thái Reel có thể thay đổi. Nếu bạn thấ
 1. Trong Thư viện bấm **Tải CSV mẫu**: file có cột `video` (ID YouTube), `title` và `link` cho các video chưa lên lịch trong bộ lọc hiện tại.
 2. Điền cột `link` (link Shopee...) rồi bấm **Nhập CSV link affiliate**. Cột `video` nhận ID YouTube, link YouTube, tên thư mục hoặc một đoạn tên đủ nhận ra đúng một video. App báo những dòng không khớp hoặc link không hợp lệ. Ô link trống thì bỏ qua, không xóa link cũ. Dùng được dấu `,` hoặc `;` và file lưu từ Excel.
 3. Hoặc nhập từng video ở **Sửa nội dung > Link affiliate**. Link lưu trong `affiliate.txt` của video.
-4. Trong kho comment (tab Cài đặt Page) dùng `{link}` để chèn link của video, ví dụ `Mua tại đây 👉 {link}`. Câu có `{link}` chỉ được dùng cho video đã có link. Câu không có `{link}` sẽ được thêm link xuống dòng cuối nếu video có link. Video không có link thì chỉ dùng các câu không có `{link}`.
+4. Trong kho comment (Cài đặt > Cài đặt Page) dùng `{link}` để chèn link của video, ví dụ `Mua tại đây 👉 {link}`. Câu có `{link}` chỉ được dùng cho video đã có link. Câu không có `{link}` sẽ được thêm link xuống dòng cuối nếu video có link. Video không có link thì chỉ dùng các câu không có `{link}`.
 
 ## Chống trùng video
 
@@ -361,7 +369,7 @@ Video đã tải rồi **xoá** (ở mục Video) cũng không bị tải lại,
 App có thể tự comment vào bài ngay sau khi bài được đăng (Facebook không cho comment khi bài còn ở trạng thái hẹn giờ).
 
 1. Token của Page cần có quyền `pages_manage_engagement` (kiểm tra bằng nút **Kiểm tra token**).
-2. Mở Page, tab **Cài đặt Page**: tick **Tự động comment**, rồi ở khung **Kho comment của Fanpage** bấm **+ Thêm comment** để lưu sẵn nhiều câu (Comment 1, Comment 2, ...), bấm **Lưu kho comment**. Mỗi Page có kho comment riêng. Mỗi video, đến lúc comment app chọn ngẫu nhiên một câu trong kho, cố gắng không trùng câu vừa dùng ngay trước đó. Câu đã chọn được ghi vào `scheduled.json` nên nếu phải thử lại vẫn dùng đúng câu đó. Kho lưu trong `pages.json`.
+2. Vào **Cài đặt > Cài đặt Page** (chọn Page ở ô Fanpage): tick **Tự động comment**, rồi ở khung **Kho comment của Fanpage** bấm **+ Thêm comment** để lưu sẵn nhiều câu (Comment 1, Comment 2, ...), bấm **Lưu kho comment**. Mỗi Page có kho comment riêng. Mỗi video, đến lúc comment app chọn ngẫu nhiên một câu trong kho, cố gắng không trùng câu vừa dùng ngay trước đó. Câu đã chọn được ghi vào `scheduled.json` nên nếu phải thử lại vẫn dùng đúng câu đó. Kho lưu trong `pages.json`.
 3. Muốn comment riêng cho từng video (ví dụ mỗi video một link): bấm **Sửa nội dung** ở video đó và nhập vào ô comment. Để trống ô này thì video dùng kho comment ngẫu nhiên; gõ một dấu `-` nếu video đó không cần comment.
 4. App chờ đến giờ hẹn cộng thêm vài phút (mặc định 3 phút) rồi gửi comment, các comment cách nhau ít nhất 30 giây (cả hai chỉnh được riêng cho từng Page). Nhãn trên thẻ video: "Chờ comment", "Đã comment", "Đang thử lại comment", "Lỗi comment", "Quá hạn comment".
 5. App **phải đang chạy** (máy bật, không ngủ) vào lúc đó. Nếu tắt lúc đến giờ, lần mở lại app tự bù, nhưng quá 3 ngày sau giờ đăng thì bỏ qua. Nút **Comment ngay** trên thẻ video để gửi tay hoặc thử lại.
@@ -415,7 +423,7 @@ Mỗi tác vụ (tải video, hẹn giờ, kiểm tra Reels, cập nhật yt-dlp
 
 YouTube hay đổi nên yt-dlp bản cũ là nguyên nhân thường gặp khi tải lỗi hàng loạt. App có:
 
-- Khối **yt-dlp** ở Cài đặt chung > Chung: hiện bản đang dùng, bản mới nhất đã biết, nút **Kiểm tra và cập nhật** (cài bằng pip vào đúng môi trường `.venv` của app; bản mới không chạy được thì tự trả về bản cũ).
+- Khối **yt-dlp** ở Cài đặt > Chung: hiện bản đang dùng, bản mới nhất đã biết, nút **Kiểm tra và cập nhật** (cài bằng pip vào đúng môi trường `.venv` của app; bản mới không chạy được thì tự trả về bản cũ).
 - **Tự cập nhật mỗi ngày** (bật sẵn, tắt ở ô "Tự kiểm tra và cập nhật yt-dlp mỗi ngày"): chỉ chạy khi không có tác vụ nào đang chạy, lỗi thì thử lại sau 6 giờ và báo qua Telegram/macOS (một lần mỗi ngày). Cập nhật xong cũng có báo.
 - **Áp dụng bản mới cần khởi động lại app.** Chạy nền bằng `service.sh`: app tự khởi động lại một lần khi rảnh sau lần tự cập nhật (launchd bật lại ngay, trang mất kết nối vài giây). Cập nhật bằng tay thì hiện nút **Khởi động lại app** để bạn chọn lúc. Chạy bằng `./run.sh`: bấm Ctrl+C rồi chạy lại.
 - Khi bản yt-dlp đang dùng đã quá 45 ngày, nhật ký tải ghi nhắc cập nhật, và thông báo "Tải video bị dừng" cũng kèm nhắc này.
@@ -424,14 +432,14 @@ YouTube hay đổi nên yt-dlp bản cũ là nguyên nhân thường gặp khi t
 ## Gặp lỗi
 
 - Không tải được, YouTube đòi xác minh: Cài đặt > Chung, đặt "Trình duyệt lấy cookie" là `chrome`.
-- Facebook báo thiếu quyền: bấm **Kiểm tra token** (Kết nối Fanpage hoặc Cài đặt Page), thêm quyền còn thiếu trong app Meta rồi lấy token lại.
+- Facebook báo thiếu quyền: bấm **Kiểm tra token** (Cài đặt > Fanpage hoặc Cài đặt Page), thêm quyền còn thiếu trong app Meta rồi lấy token lại.
 - Reel hẹn giờ nhưng người ngoài không thấy: app Meta có thể còn ở chế độ Development, cần chuyển sang Live.
 - Video bị báo "Không đạt yêu cầu Reels": rê chuột vào nhãn xem lý do (thường là quá ngắn/dài hoặc độ phân giải thấp). Sửa hoặc thay video rồi bấm **Kiểm tra Reels** (giữ Shift để kiểm tra lại).
 - Không thấy nút Kiểm tra Reels làm việc, nhật ký báo chưa cài ffprobe: `brew install ffmpeg`.
 - Telegram "Gửi thử" báo lỗi 401 hoặc Unauthorized: token bot sai. Báo "Chưa thấy tin nhắn nào gửi cho bot": mở bot, bấm Start rồi bấm lại **Tự lấy chat ID**.
-- Rednote báo "đòi đăng nhập hoặc xác minh": kiểm tra ô cookie Rednote ở Cài đặt chung, đã đăng nhập Rednote trên đúng trình duyệt đó chưa, mở thử bài trong trình duyệt rồi tải lại. Mở Chrome/Safari lần đầu có thể hiện hộp thoại cho phép đọc cookie.
+- Rednote báo "đòi đăng nhập hoặc xác minh": kiểm tra ô cookie Rednote ở Cài đặt > Chung, đã đăng nhập Rednote trên đúng trình duyệt đó chưa, mở thử bài trong trình duyệt rồi tải lại. Mở Chrome/Safari lần đầu có thể hiện hộp thoại cho phép đọc cookie.
 - TikTok báo "chỉ trả bản có logo" hoặc lỗi impersonation: cài `curl-cffi` (xem mục Tải video TikTok), cập nhật yt-dlp, thử lại sau; TikTok hay chặn tạm thời.
-- Tải video lỗi hàng loạt dù link đúng: vào Cài đặt chung > Chung bấm **Kiểm tra và cập nhật** yt-dlp, rồi khởi động lại app.
-- App báo "đã dùng X/150 lượt gọi Facebook nên tự dừng" hoặc chip Facebook đỏ: đó là cổng giới hạn lượt gọi đang bảo vệ app khỏi lỗi "Application request limit reached". Đợi đúng số phút app báo rồi làm tiếp (không cần bỏ trạng thái dừng). Nếu bạn thường xuyên chạm mức này mà Facebook chưa từng báo lỗi, tăng "Số lượt gọi Facebook tối đa mỗi giờ" ở Cài đặt chung > Chung từng chút một (tối đa khoảng 200 nếu app chỉ có một người dùng).
+- Tải video lỗi hàng loạt dù link đúng: vào Cài đặt > Chung bấm **Kiểm tra và cập nhật** yt-dlp, rồi khởi động lại app.
+- App báo "đã dùng X/150 lượt gọi Facebook nên tự dừng" hoặc chip Facebook đỏ: đó là cổng giới hạn lượt gọi đang bảo vệ app khỏi lỗi "Application request limit reached". Đợi đúng số phút app báo rồi làm tiếp (không cần bỏ trạng thái dừng). Nếu bạn thường xuyên chạm mức này mà Facebook chưa từng báo lỗi, tăng "Số lượt gọi Facebook tối đa mỗi giờ" ở Cài đặt > Chung từng chút một (tối đa khoảng 200 nếu app chỉ có một người dùng).
 - Đổi cổng: `PORT=8080 ./run.sh`.
 - Graph API: app dùng phiên bản trong Cài đặt > Chung (mặc định v21.0, Facebook cho dùng đến 21/01/2027). Khi gần hết hạn, đổi sang v25.0 hoặc mới hơn rồi thử lại với 1 video.

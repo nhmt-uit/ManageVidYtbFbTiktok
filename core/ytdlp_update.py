@@ -96,7 +96,7 @@ def stale_hint() -> str:
     ver = loaded_version()
     age = age_days(ver)
     if age is not None and age > STALE_DAYS:
-        return f"yt-dlp đang dùng ({ver}) đã {age} ngày chưa cập nhật, có thể là nguyên nhân gây lỗi. Vào Cài đặt chung > Chung để cập nhật."
+        return f"yt-dlp đang dùng ({ver}) đã {age} ngày chưa cập nhật, có thể là nguyên nhân gây lỗi. Vào Cài đặt > Chung để cập nhật."
     return ""
 
 

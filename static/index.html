@@ -9,14 +9,13 @@
 <body>
   <header class="top">
     <h1>Quản lý video</h1>
-    <nav class="tabs" id="gtabs" aria-label="Chung">
+    <nav class="tabs" id="gtabs" aria-label="Điều hướng">
       <button data-view="overview" class="active">Tổng quan</button>
-      <button data-view="download">Tải video</button>
       <button data-view="videos">Video</button>
-      <button data-view="folders">Thư mục</button>
-      <button data-view="fanpages">Kết nối Fanpage</button>
-      <button data-view="settings">Cài đặt chung</button>
-      <button data-view="jobs">Nhật ký</button>
+      <button data-ptab="calendar" title="Lịch đăng của một Fanpage (chọn Page ở đầu màn hình)">Lịch</button>
+      <button data-ptab="stats" title="Thống kê bài đăng của một Fanpage (chọn Page ở đầu màn hình)">Thống kê</button>
+      <button data-view="download">Tải video</button>
+      <button data-view="settings">Cài đặt</button>
     </nav>
     <div class="fbu" id="fbu">
       <button type="button" class="fbu-chip ok" id="fbu-chip" aria-haspopup="true" aria-expanded="false"
@@ -32,25 +31,28 @@
         <p class="fbu-line bad" id="fbu-pause" hidden></p>
         <button type="button" class="ghost" id="fbu-clear" hidden title="Chỉ dùng khi bạn chắc Facebook đã hết giới hạn">Bỏ trạng thái dừng</button>
         <p class="fbu-line muted" id="fbu-cost"></p>
-        <p class="fbu-line muted">Facebook cho khoảng 200 lượt gọi mỗi giờ với app của bạn và khóa cả app nếu vượt, nên app tự chừa dư. Đổi mức tối đa ở Cài đặt chung.</p>
+        <p class="fbu-line muted">Facebook cho khoảng 200 lượt gọi mỗi giờ với app của bạn và khóa cả app nếu vượt, nên app tự chừa dư. Đổi mức tối đa ở Cài đặt > Chung.</p>
       </div>
     </div>
   </header>
 
+  <nav class="subtabs setnav" id="setnav" hidden aria-label="Cài đặt">
+    <button data-go="fanpages">Fanpage</button>
+    <button data-go="pagesettings" title="Kho comment, quy tắc và giới hạn riêng của từng Page">Cài đặt Page</button>
+    <button data-go="folders">Thư mục</button>
+    <button data-go="settings:comment">Mặc định Page</button>
+    <button data-go="settings:token">Token FB</button>
+    <button data-go="settings:notify">Thông báo</button>
+    <button data-go="settings:translate">Dịch phụ đề</button>
+    <button data-go="settings:general">Chung</button>
+    <button data-go="jobs">Nhật ký</button>
+  </nav>
+
   <div class="ctx" id="ctx" hidden>
     <div class="ctx-row">
-      <button class="ghost" id="ctx-home" type="button" title="Về trang Tổng quan của mọi Fanpage">&larr; Tổng quan</button>
-      <label class="ctx-pick">Đang làm việc với Fanpage
-        <select id="ctx-page" aria-label="Chuyển sang Fanpage khác"></select>
+      <label class="ctx-pick">Fanpage
+        <select id="ctx-page" aria-label="Chọn Fanpage"></select>
       </label>
-      <nav class="tabs" id="tabs" aria-label="Trong Fanpage">
-        <button data-tab="download">Tải video</button>
-        <button data-tab="library">Thư viện &amp; Lên lịch</button>
-        <button data-tab="calendar">Lịch</button>
-        <button data-tab="stats">Thống kê</button>
-        <button data-tab="pagesettings">Cài đặt Page</button>
-        <button data-tab="jobs">Nhật ký</button>
-      </nav>
     </div>
     <p class="hint" id="ctx-hint"></p>
   </div>
@@ -63,7 +65,7 @@
       <h2 class="ov-title">Tổng quan các Fanpage</h2>
       <p class="hint">Bấm một Fanpage để vào làm việc: tải video, thư viện, lịch và cài đặt đều tách riêng theo từng Page.</p>
       <div id="ov-grid" class="ov-grid"></div>
-      <div id="ov-empty" class="empty" hidden>Chưa có Fanpage nào. Vào "Kết nối Fanpage" để thêm.</div>
+      <div id="ov-empty" class="empty" hidden>Chưa có Fanpage nào. Vào Cài đặt > Fanpage để thêm.</div>
     </section>
 
     <!-- TẢI VIDEO -->
@@ -71,7 +73,7 @@
       <div class="panel">
         <h2>Tải video từ YouTube, TikTok hoặc Rednote</h2>
         <p class="hint" id="dl-page"></p>
-        <p class="hint">Chỉ tải nội dung của kênh đã đồng ý cho bạn tải và đăng lại. Mỗi kênh lưu vào một thư mục riêng, kèm ghi chú sự đồng ý. Video TikTok được tải bản gốc không logo; nếu TikTok chỉ cho bản có logo thì app bỏ qua video đó và báo trong nhật ký. Rednote (xiaohongshu.com, rednote.com, xhslink.com) chỉ tải được theo link từng bài (dán cả đoạn chia sẻ từ app cũng được; bài chỉ có ảnh thì lưu ảnh vào thư mục images) và nên đặt cookie đăng nhập ở Cài đặt chung.</p>
+        <p class="hint">Chỉ tải nội dung của kênh đã đồng ý cho bạn tải và đăng lại. Mỗi kênh lưu vào một thư mục riêng, kèm ghi chú sự đồng ý. Video TikTok được tải bản gốc không logo; nếu TikTok chỉ cho bản có logo thì app bỏ qua video đó và báo trong nhật ký. Rednote (xiaohongshu.com, rednote.com, xhslink.com) chỉ tải được theo link từng bài (dán cả đoạn chia sẻ từ app cũng được; bài chỉ có ảnh thì lưu ảnh vào thư mục images) và nên đặt cookie đăng nhập ở Cài đặt > Chung.</p>
         <form id="dl-form" class="form">
           <label>Đường dẫn kênh hoặc video (nhiều link: mỗi dòng một link)
             <textarea id="dl-url" required rows="2" placeholder="https://www.youtube.com/@tenkenh hoặc https://www.tiktok.com/@tenkenh&#10;Rednote: dán link từng bài. Nhiều link thì mỗi dòng một link."></textarea>
@@ -93,6 +95,10 @@
           <label>Tên thư mục lưu
             <input id="dl-folder" list="dl-folders" autocomplete="off" placeholder="Để trống = lấy theo tên kênh; bấm vào đây để chọn thư mục có sẵn">
             <datalist id="dl-folders"></datalist>
+          </label>
+          <label>Đăng lên Fanpage
+            <select id="dl-target" aria-label="Fanpage cho thư mục tải về"></select>
+            <small class="hint" id="dl-target-note"></small>
           </label>
           <div class="row">
             <label>Tải về
@@ -165,7 +171,7 @@
       <div class="lib-actions">
         <button class="ghost" id="lib-selall" type="button" title="Chọn mọi video chưa lên lịch đang hiển thị">Chọn tất cả</button>
         <details class="menu left" id="sel-menu">
-          <summary class="ghost-summary" title="Tự chọn đủ số video cho 1 tuần, 2 tuần hoặc 1 tháng, tính theo số bài mỗi ngày của Fanpage đang làm việc">Chọn đủ cho...</summary>
+          <summary class="ghost-summary" title="Tự chọn đủ số video cho 1 tuần, 2 tuần hoặc 1 tháng, tính theo số bài mỗi ngày của Fanpage đang chọn">Chọn đủ cho...</summary>
           <div class="menu-pop">
             <button class="link" type="button" data-days="7">1 tuần (7 ngày)</button>
             <button class="link" type="button" data-days="14">2 tuần (14 ngày)</button>
@@ -219,7 +225,7 @@
         <button class="ghost" id="cal-next" type="button">Tuần sau &raquo;</button>
         <span class="count" id="cal-range"></span>
       </div>
-      <p class="hint" id="cal-hint">Lịch của Fanpage đang làm việc, giờ theo múi giờ của Page. Ngày tô xám là ngày nghỉ theo quy tắc của Page. Bài chưa đăng có nút "Đổi giờ" và "Huỷ lịch" (không kéo thả được). Muốn huỷ nhiều bài một lúc, vào Thư viện, mở tab "Chờ đăng", tích chọn rồi bấm "Huỷ lịch".</p>
+      <p class="hint" id="cal-hint">Lịch của Fanpage đang chọn ở đầu trang, giờ theo múi giờ của Page. Ngày tô xám là ngày nghỉ theo quy tắc của Page. Bài chưa đăng có nút "Đổi giờ" và "Huỷ lịch" (không kéo thả được). Muốn huỷ nhiều bài một lúc, vào mục Video, chọn Page, mở tab "Chờ đăng", tích chọn rồi bấm "Huỷ lịch".</p>
       <div id="cal-grid" class="cal"></div>
     </section>
 
@@ -237,7 +243,7 @@
     <section id="tab-fanpage" class="tab">
       <div class="panel">
         <h2>Fanpage đã kết nối</h2>
-        <p class="hint">Mỗi thư mục video thuộc đúng một Fanpage, và mỗi Page có khung giờ, giới hạn, múi giờ, kho comment riêng (vào Page, tab Cài đặt Page). Xóa một Page ở đây chỉ bỏ nó khỏi app, không xóa gì trên Facebook.</p>
+        <p class="hint">Mỗi thư mục video thuộc đúng một Fanpage, và mỗi Page có khung giờ, giới hạn, múi giờ, kho comment riêng (Cài đặt &gt; Cài đặt Page). Xóa một Page ở đây chỉ bỏ nó khỏi app, không xóa gì trên Facebook.</p>
         <div id="pg-list" class="pages"></div>
         <div id="pg-empty" class="empty" hidden>Chưa có Fanpage nào. Bấm "Lấy danh sách từ Facebook" bên dưới để thêm.</div>
       </div>
@@ -258,7 +264,7 @@
     <!-- THƯ MỤC VIDEO: nơi đăng, tạo thư mục, tự xoá -->
     <section id="tab-folders" class="tab">
       <h2 class="ov-title">Thư mục video</h2>
-      <p class="hint">Mỗi thư mục chứa video. Chọn nơi đăng cho từng thư mục: mỗi nền tảng tối đa một tài khoản (ví dụ một Page Facebook). Một Page có thể có nhiều thư mục, hoặc không có thư mục nào. Thư mục không chọn Page Facebook thì video của nó không hiện ở Thư viện của Page nào. Instagram, TikTok, YouTube: sẽ thêm sau.</p>
+      <p class="hint">Mỗi thư mục chứa video. Chọn nơi đăng cho từng thư mục: mỗi nền tảng tối đa một tài khoản (ví dụ một Page Facebook). Một Page có thể có nhiều thư mục, hoặc không có thư mục nào. Thư mục không chọn Page Facebook thì video của nó không hiện khi lọc theo Page ở mục Video. Instagram, TikTok, YouTube: sẽ thêm sau.</p>
       <div class="panel">
         <h3>Tạo thư mục mới</h3>
         <div class="row fd-create">
@@ -298,18 +304,11 @@
 
     <!-- CÀI ĐẶT CHUNG -->
     <section id="tab-settings" class="tab">
-      <nav class="subtabs" id="subtabs">
-        <button data-sub="comment" class="active">Mặc định Page</button>
-        <button data-sub="token">Token FB</button>
-        <button data-sub="notify">Thông báo</button>
-        <button data-sub="translate">Dịch phụ đề</button>
-        <button data-sub="general">Chung</button>
-      </nav>
 
       <!-- Comment -->
       <div id="sub-comment" class="panel subpanel active">
         <h2>Mặc định cho mọi Fanpage</h2>
-        <p class="hint">Các giá trị dưới đây áp dụng cho Page nào chưa đặt riêng. Mỗi Page có thể đặt giới hạn, múi giờ và thời gian comment riêng ở Page đó, tab Cài đặt Page. Tự động comment bật/tắt và kho comment cũng nằm ở đó. Cần quyền <code>pages_manage_engagement</code> trong token và app phải đang chạy lúc đến giờ.</p>
+        <p class="hint">Các giá trị dưới đây áp dụng cho Page nào chưa đặt riêng. Mỗi Page có thể đặt giới hạn, múi giờ và thời gian comment riêng ở Cài đặt &gt; Cài đặt Page. Tự động comment bật/tắt và kho comment cũng nằm ở đó. Cần quyền <code>pages_manage_engagement</code> trong token và app phải đang chạy lúc đến giờ.</p>
         <form id="cm-form" class="form"></form>
         <div class="actions">
           <button class="primary" id="cm-save" type="button">Lưu</button>
@@ -406,6 +405,7 @@
     <section id="tab-jobs" class="tab">
       <div class="panel">
         <h2>Nhật ký tác vụ</h2>
+        <label class="fd-field">Lọc theo Fanpage <select id="jobs-page" aria-label="Lọc nhật ký theo Fanpage"></select></label>
         <div id="jobs-list" class="jobs"></div>
         <pre id="jobs-log" class="log" hidden></pre>
       </div>

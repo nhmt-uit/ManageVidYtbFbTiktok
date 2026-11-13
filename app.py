@@ -891,7 +891,7 @@ def api_capacity():
         return err("Số ngày phải từ 1 đến 28.")
     rules = planner.rules_of(page)
     if not rules["slots"]:
-        return err("Page này chưa có khung giờ đăng nên chưa biết mỗi ngày đăng mấy bài. Vào tab Cài đặt Page > Quy tắc đăng để thêm khung giờ.")
+        return err("Page này chưa có khung giờ đăng nên chưa biết mỗi ngày đăng mấy bài. Vào Cài đặt > Cài đặt Page > Quy tắc đăng để thêm khung giờ.")
     per_day = planner.posts_per_day(rules)
     cap = pages.effective(page)["publish_limit_24h"]
     cap_left = max(0, cap - len(scheduler.recent_created(page["id"]))) if cap else None
@@ -982,6 +982,16 @@ def api_download():
     content = d.get("content") if d.get("content") in downloader.CONTENT_CHOICES else "all"   # Rednote: all | video | images
     again = bool(d.get("redownload_removed"))   # tải lại cả video đã tải và xoá trước đây
     page_id = str(d.get("page_id") or "")   # trống = tải không gắn Fanpage, lưu vào thư mục chưa thuộc Page nào
+    if folder:   # tải vào thư mục có sẵn: Page đi theo thư mục
+        try:
+            owner = library.owner_of(library.folder_dir(downloader.safe_name(folder)))
+        except ValueError:
+            owner = ""   # thư mục mới
+        if owner and not pages.get(owner):
+            return err(f'Thư mục "{folder}" đang gắn với một Fanpage đã bị xoá khỏi app. Chọn lại Page cho thư mục ở Cài đặt > Thư mục rồi tải.')
+        if owner and page_id and owner != page_id:
+            return err(f'Thư mục "{folder}" thuộc Page {pages.label(pages.get(owner))}. Chọn thư mục khác, hoặc đổi Page của thư mục ở Cài đặt > Thư mục.')
+        page_id = owner or page_id
     page = pages.get(page_id) if page_id else None
     if page_id and page is None:
         return err("Không tìm thấy Fanpage này. Chọn lại Fanpage rồi tải video.")
@@ -1011,7 +1021,7 @@ def api_schedule():
     page_id = str(d.get("page_id") or "")
     page = pages.get(page_id)
     if page is None:
-        return err("Chưa chọn Fanpage. Vào mục Kết nối Fanpage để thêm Page.")
+        return err("Chưa chọn Fanpage. Vào Cài đặt > Fanpage để thêm Page.")
     try:
         datetime.strptime(d.get("start", ""), "%Y-%m-%d %H:%M")
     except (TypeError, ValueError):
@@ -1037,12 +1047,12 @@ def api_schedule():
         return err(f"{len(foreign)} video không thuộc Fanpage này (mỗi thư mục chỉ thuộc một Page). Tải lại trang Thư viện rồi chọn lại.")
     order = d.get("order") if d.get("order") in ("oldest", "newest", "random", "selected", "episode") else "oldest"
     if mode == "auto" and not planner.rules_of(page)["slots"]:
-        return err("Page này chưa có khung giờ đăng. Vào tab Cài đặt Page > Quy tắc đăng để thêm, hoặc chọn kiểu hẹn cách nhau cố định.")
+        return err("Page này chưa có khung giờ đăng. Vào Cài đặt > Cài đặt Page > Quy tắc đăng để thêm, hoặc chọn kiểu hẹn cách nhau cố định.")
     blocked = pages.blocked_until(page)
     if blocked and not dry_run:
         return err(
             f"Facebook đang giới hạn tần suất đăng của Page này, dự kiến đến {blocked.astimezone():%H:%M %d/%m}. "
-            "Hãy đợi rồi hẹn tiếp để tránh bị chặn lâu hơn, hoặc bấm \"Bỏ cảnh báo\" ở tab Cài đặt Page nếu chắc chắn đã hết bị chặn."
+            "Hãy đợi rồi hẹn tiếp để tránh bị chặn lâu hơn, hoặc bấm \"Bỏ cảnh báo\" ở Cài đặt > Cài đặt Page nếu chắc chắn đã hết bị chặn."
         )
     why = "" if dry_run else fbgate.why_not(fbgate.COSTS["schedule"])
     if why:

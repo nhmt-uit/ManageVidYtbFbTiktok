@@ -1,6 +1,6 @@
 """Gửi thông báo khi có sự cố: thông báo macOS và/hoặc tin nhắn Telegram.
 
-Cấu hình (Cài đặt chung > Thông báo, lưu trong .env):
+Cấu hình (Cài đặt > Thông báo, lưu trong .env):
   NOTIFY_MAC          1 = bật thông báo macOS (mặc định bật, chỉ có tác dụng trên macOS)
   TELEGRAM_BOT_TOKEN  token của bot (tạo bằng @BotFather)
   TELEGRAM_CHAT_ID    ID cuộc trò chuyện nhận tin

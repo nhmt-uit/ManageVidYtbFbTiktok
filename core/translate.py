@@ -1,6 +1,6 @@
 """Dịch phụ đề bằng AI qua API của nhà cung cấp do bạn chọn (không cố định một hãng).
 
-Cài trong tab Cài đặt chung > Dịch phụ đề (lưu vào .env):
+Cài trong tab Cài đặt > Dịch phụ đề (lưu vào .env):
   TRANSLATE_PROVIDER   anthropic | openai   ("openai" = mọi dịch vụ theo chuẩn OpenAI: OpenAI, Gemini, OpenRouter, Groq, Ollama, LM Studio...)
   TRANSLATE_API_KEY    khóa API (không bao giờ trả về giao diện hay ghi log)
   TRANSLATE_MODEL      tên model
@@ -49,7 +49,7 @@ def settings() -> dict:
     spec = PROVIDERS[provider]
     if provider == "claude-code":
         model = (config.get("HOOK_MODEL") or "").strip() or "mặc định của Claude Code"
-        problem = "" if hooks.find_claude() else "Chưa tìm thấy lệnh `claude` (Claude Code) trên máy. Cài Claude Code và đăng nhập, hoặc chọn nhà cung cấp khác ở Cài đặt chung > Dịch phụ đề."
+        problem = "" if hooks.find_claude() else "Chưa tìm thấy lệnh `claude` (Claude Code) trên máy. Cài Claude Code và đăng nhập, hoặc chọn nhà cung cấp khác ở Cài đặt > Dịch phụ đề."
         return {"provider": provider, "label": spec["label"], "base": "", "model": model, "ok": not problem, "problem": problem}
     base = (config.get("TRANSLATE_BASE_URL") or spec["base"]).strip().rstrip("/")
     model = (config.get("TRANSLATE_MODEL") or spec["model"]).strip()
@@ -59,7 +59,7 @@ def settings() -> dict:
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
         problem = "Địa chỉ API (TRANSLATE_BASE_URL) không hợp lệ, phải bắt đầu bằng http:// hoặc https://."
     elif not config.get("TRANSLATE_API_KEY") and not local:
-        problem = "Chưa có khóa API dịch. Vào Cài đặt chung > Dịch phụ đề để nhập (hoặc dịch tay)."
+        problem = "Chưa có khóa API dịch. Vào Cài đặt > Dịch phụ đề để nhập (hoặc dịch tay)."
     elif not model:
         problem = "Chưa chọn model dịch."
     return {"provider": provider, "label": spec["label"], "base": base, "model": model, "ok": not problem, "problem": problem}

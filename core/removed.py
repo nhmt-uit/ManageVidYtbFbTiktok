@@ -109,9 +109,9 @@ def blocked_reason(folder: Path) -> str:
         if not isinstance(sched, dict):
             raise ValueError
     except (OSError, ValueError):
-        return "Video có lịch đăng nhưng không đọc được trạng thái lịch: kiểm tra trong Fanpage trước."
+        return "Video có lịch đăng nhưng không đọc được trạng thái lịch: kiểm tra ở mục Video trước."
     if sched.get("publish_status") != "published":
-        return "Video đã hẹn lên lịch: huỷ lịch trong Fanpage trước khi xoá."
+        return "Video đã hẹn lên lịch: huỷ lịch (mục Video, tab Chờ đăng) trước khi xoá."
     state, _ = commenter.comment_status(folder, sched)
     if state not in _COMMENT_FINISHED and not comment_window_over(sched):
         return "Video đã đăng nhưng app còn chờ tự comment link: đợi comment xong rồi xoá."

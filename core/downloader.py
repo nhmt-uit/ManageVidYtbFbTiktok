@@ -314,7 +314,7 @@ def save_rednote_images(job, opts: dict, url: str, note_id: str, channel_dir: Pa
         html = _read_limited(resp, 8 * 1024 * 1024).decode("utf-8", "replace")
         note = parse_rednote_note(html, note_id)
         if note is None:
-            raise RuntimeError("Không đọc được bài này (Rednote có thể đòi đăng nhập hoặc xác minh, hoặc đã xóa bài). Đăng nhập Rednote trên trình duyệt đã đặt ở Cài đặt chung và thử lại.")
+            raise RuntimeError("Không đọc được bài này (Rednote có thể đòi đăng nhập hoặc xác minh, hoặc đã xóa bài). Đăng nhập Rednote trên trình duyệt đã đặt ở Cài đặt > Chung và thử lại.")
         if note.get("type") == "video" or note.get("video"):   # bài video có imageList nhưng đó chỉ là ảnh bìa
             raise _WrongType("bài video")
         urls = rednote_image_urls(note)
@@ -378,7 +378,7 @@ def _explain(platform: str, msg: str) -> str:
     if platform == "tiktok" and "requested format is not available" in low:
         return "TikTok chỉ trả bản có logo cho video này (không có bản gốc không logo). Đã bỏ qua để không lẫn logo vào video."
     if platform == "rednote" and (rednote_needs_login(msg) or any(k in low for k in ("initial state", "403", "unable to extract"))):
-        return ("Rednote đòi đăng nhập hoặc xác minh. Đăng nhập Rednote trên trình duyệt đã đặt ở Cài đặt chung (ô Rednote: cookie), "
+        return ("Rednote đòi đăng nhập hoặc xác minh. Đăng nhập Rednote trên trình duyệt đã đặt ở Cài đặt > Chung (ô Rednote: cookie), "
                 "mở thử bài đó trong trình duyệt rồi tải lại. Chi tiết: " + msg[:160])
     return msg
 
@@ -425,7 +425,7 @@ def _run(job, url: str, folder_name: str, kind: str, limit: int, note: str, page
     if any(platform_of(u) == "tiktok" for u in urls) and importlib.util.find_spec("curl_cffi") is None:
         job.log("Lưu ý: TikTok cần thư viện curl-cffi để tải ổn định. Cài bằng: pip install \"yt-dlp[default,curl-cffi]\" rồi chạy lại ./service.sh restart.")
     if any(platform_of(u) == "rednote" for u in urls) and not (config.get("REDNOTE_COOKIES_BROWSER") or "").strip():
-        job.log("Lưu ý: chưa đặt cookie đăng nhập cho Rednote (Cài đặt chung). Bài nào Rednote đòi đăng nhập sẽ bị lỗi.")
+        job.log("Lưu ý: chưa đặt cookie đăng nhập cho Rednote (Cài đặt > Chung). Bài nào Rednote đòi đăng nhập sẽ bị lỗi.")
 
     # video đã có ở một thư mục của chính Page này (theo ID video) thì không tải lại.
     # Tải không gắn Page (page_id trống): chỉ đối chiếu với các thư mục cũng chưa thuộc Page nào
@@ -478,7 +478,7 @@ def _run(job, url: str, folder_name: str, kind: str, limit: int, note: str, page
         book.mark_done(src)
 
     def login_halt() -> None:
-        stop_now("Dừng ngay vì Rednote đòi đăng nhập hoặc xác minh. Mở Rednote trong trình duyệt đã đặt ở Cài đặt chung, đăng nhập (và làm xác minh nếu có), đợi một lúc rồi tải lại; các link chưa xong vẫn giữ trong file.")
+        stop_now("Dừng ngay vì Rednote đòi đăng nhập hoặc xác minh. Mở Rednote trong trình duyệt đã đặt ở Cài đặt > Chung, đăng nhập (và làm xác minh nếu có), đợi một lúc rồi tải lại; các link chưa xong vẫn giữ trong file.")
 
     def take_url(u0: str) -> list:
         """Mở một đường dẫn và trả về các video MỚI trong đó: [(nền tảng, thông tin video)]. Link một video đã tải rồi thì bỏ qua ngay, không mở trang."""
@@ -591,7 +591,7 @@ def _run(job, url: str, folder_name: str, kind: str, limit: int, note: str, page
         other = pages.get(cur_owner)
         raise RuntimeError(
             f'Thư mục "{name}" đang thuộc Page "{pages.label(other) if other else cur_owner}". '
-            + ("Hãy vào Page đó để tải thêm vào thư mục này, hoặc đặt tên thư mục khác." if not page_id else "Mỗi thư mục chỉ thuộc một Page: hãy đặt tên thư mục khác cho Page này.")
+            + ("Chọn đúng thư mục đó (app tự theo Page của thư mục) để tải thêm, hoặc đặt tên thư mục khác." if not page_id else "Mỗi thư mục chỉ thuộc một Page: hãy đặt tên thư mục khác cho Page này.")
         )
     channel_dir.mkdir(parents=True, exist_ok=True)
     if page_id and not cur_owner:

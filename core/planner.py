@@ -102,7 +102,7 @@ def plan(rules: dict, n: int, earliest: datetime, tz: ZoneInfo, existing: list[d
     """Trả về n giờ đăng. Không đủ chỗ trong 29 ngày thì ném PlanError; với partial=True trả về số giờ xếp được
     (ít hơn n), và chỉ ném lỗi khi không còn chỗ nào."""
     if not rules["slots"]:
-        raise PlanError("Page này chưa có khung giờ đăng. Vào tab Cài đặt Page > Quy tắc đăng để thêm, hoặc chọn kiểu hẹn cách nhau cố định.")
+        raise PlanError("Page này chưa có khung giờ đăng. Vào Cài đặt > Cài đặt Page > Quy tắc đăng để thêm, hoặc chọn kiểu hẹn cách nhau cố định.")
     now = now or datetime.now(tz)
     start_at = max(earliest, now + timedelta(minutes=LEAD_MINUTES))
     limit = now + timedelta(days=MAX_DAYS) - timedelta(hours=1)

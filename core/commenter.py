@@ -2,7 +2,7 @@
 
 Nội dung comment của mỗi video, theo thứ tự ưu tiên:
   1. comment.txt trong thư mục video (nếu là "-" thì video này không comment)
-  2. Kho comment của Fanpage đã đăng video đó (tab Cài đặt Page): chọn ngẫu nhiên một câu
+  2. Kho comment của Fanpage đã đăng video đó (Cài đặt > Cài đặt Page): chọn ngẫu nhiên một câu
      khi đến lúc comment, cố gắng không trùng câu vừa dùng ngay trước đó.
 
 Câu đã chọn được lưu vào scheduled.json (comment_text) nên các lần thử lại vẫn dùng đúng câu đó.
@@ -233,7 +233,7 @@ def _notify_bad_status(folder: Path, sched: dict, prev: str, state: str) -> None
             if not publish.due(sched):
                 return   # chưa đến giờ hẹn mà bài biến mất: gần như chắc là bạn tự xóa, không cần báo
             title = f"Bài không còn trên Facebook: {label}"
-            body = f"{folder.name[:90]}\nApp sẽ không comment cho bài này. Nếu bạn tự xóa thì bỏ qua; muốn đăng lại thì vào Thư viện, bấm Hẹn lại."
+            body = f"{folder.name[:90]}\nApp sẽ không comment cho bài này. Nếu bạn tự xóa thì bỏ qua; muốn đăng lại thì vào mục Video, bấm Hẹn lại."
         else:
             title = f"Bài đăng bị lỗi: {label}"
             body = f"{folder.name[:90]}\n{(sched.get('publish_detail') or 'Facebook không đăng được bài này.')[:250]}\nVào Thư viện, bấm Hẹn lại để hẹn lại."
@@ -538,7 +538,7 @@ def _comment_round(job) -> int:
 
 def _worker(job, manager) -> None:
     fbgate.mark_background()   # mọi lượt đọc trạng thái của luồng này tính vào phần ngân sách dành cho việc chạy nền
-    job.log("Tự động comment: sẵn sàng. Bật/tắt cho từng Page trong tab Cài đặt Page.")
+    job.log("Tự động comment: sẵn sàng. Bật/tắt cho từng Page ở Cài đặt > Cài đặt Page.")
     announced = None
     last_stock = 0.0
     gate_noted = False

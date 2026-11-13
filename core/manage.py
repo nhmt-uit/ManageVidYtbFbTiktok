@@ -126,7 +126,7 @@ def fb_delete(page: dict, video_id: str) -> Outcome:
     """Xóa bài hẹn trên Facebook. Trả về "deleted" hoặc "gone" (Facebook báo không còn bài đó; .detail là câu gốc)."""
     token = page.get("token")
     if not token:
-        raise ManageError("Fanpage này chưa có Page token. Vào mục Kết nối Fanpage để lấy lại.")
+        raise ManageError("Fanpage này chưa có Page token. Vào Cài đặt > Fanpage để lấy lại.")
     try:
         r = fbgate.request("delete", f"{config.graph_url()}/{video_id}", params={"access_token": token}, timeout=60)
     except fbgate.RateLimited as exc:
@@ -166,7 +166,7 @@ def fb_delete(page: dict, video_id: str) -> Outcome:
 def fb_retime(page: dict, video_id: str, when_ts: int) -> None:
     token = page.get("token")
     if not token:
-        raise ManageError("Fanpage này chưa có Page token. Vào mục Kết nối Fanpage để lấy lại.")
+        raise ManageError("Fanpage này chưa có Page token. Vào Cài đặt > Fanpage để lấy lại.")
     try:
         r = fbgate.request(
             "post",

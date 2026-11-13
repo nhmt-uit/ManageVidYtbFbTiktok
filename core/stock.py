@@ -93,7 +93,7 @@ def alerts(job=None) -> list[str]:
             continue
         until = info["queue_until"][8:10] + "/" + info["queue_until"][5:7] if info["queue_until"] else "chưa hẹn bài nào"
         body = (f"Còn {info['new']} video chưa lên lịch, lịch đã hẹn đến {until}. "
-                f"Page chỉ còn đủ bài cho khoảng {info['runway_days']} ngày. Vào tab Tải video để tải thêm.")
+                f"Page chỉ còn đủ bài cho khoảng {info['runway_days']} ngày. Vào mục Tải video để tải thêm.")
         if notify.send(f"Sắp hết video: {pages.label(p)}", body, key=f"stock:{p['id']}", ttl_hours=20):
             sent.append(p["id"])
             if job is not None:

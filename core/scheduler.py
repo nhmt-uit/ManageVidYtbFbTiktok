@@ -131,17 +131,17 @@ def run(job, page_id: str, rels: list[str], start: str, interval_hours: float, t
         mode: str = "interval", order: str = "oldest", partial: bool = False) -> str:
     page = pages.get(page_id)
     if page is None:
-        raise RuntimeError("Không tìm thấy Fanpage này. Vào mục Kết nối Fanpage để thêm.")
+        raise RuntimeError("Không tìm thấy Fanpage này. Vào Cài đặt > Fanpage để thêm.")
     token = page.get("token", "")
     if not dry_run and not token:
-        raise RuntimeError("Fanpage này chưa có Page token. Vào mục Kết nối Fanpage, lấy lại danh sách từ Facebook.")
+        raise RuntimeError("Fanpage này chưa có Page token. Vào Cài đặt > Fanpage, lấy lại danh sách từ Facebook.")
 
     tz = ZoneInfo(tz_name)
     blocked = pages.blocked_until(page)
     if blocked and not dry_run:
         raise RuntimeError(
             f"Facebook đang giới hạn tần suất đăng của Page này, dự kiến đến {blocked.astimezone(tz):%H:%M %d/%m} ({tz_name}). "
-            "Đợi hết thời gian này rồi hẹn tiếp để tránh bị chặn lâu hơn. Nếu bạn chắc chắn đã hết bị chặn, bấm \"Bỏ cảnh báo\" ở tab Cài đặt Page."
+            "Đợi hết thời gian này rồi hẹn tiếp để tránh bị chặn lâu hơn. Nếu bạn chắc chắn đã hết bị chặn, bấm \"Bỏ cảnh báo\" ở Cài đặt > Cài đặt Page."
         )
     first = datetime.strptime(start, "%Y-%m-%d %H:%M").replace(tzinfo=tz)
     if mode != "auto" and first < datetime.now(tz) + timedelta(minutes=15):
@@ -309,7 +309,7 @@ def run(job, page_id: str, rels: list[str], start: str, interval_hours: float, t
                 pages.mark_blocked(page_id, hours, str(exc))
                 raise RuntimeError(
                     f"Facebook đang giới hạn tần suất đăng của Page này. Đã hẹn thành công {done}/{total} video trước khi bị chặn; "
-                    f"app dừng lại để không bị chặn lâu hơn. Hãy đợi ít nhất {hours} giờ rồi hẹn tiếp (app sẽ nhắc ở Tổng quan và tab Cài đặt Page). "
+                    f"app dừng lại để không bị chặn lâu hơn. Hãy đợi ít nhất {hours} giờ rồi hẹn tiếp (app sẽ nhắc ở Tổng quan và Cài đặt > Cài đặt Page). "
                     f"Chi tiết từ Facebook: {exc}"
                 ) from None
             raise

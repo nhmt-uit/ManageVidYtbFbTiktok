@@ -119,8 +119,9 @@ function follow(jobId, pre, bar, onDone) {
 
 /* ---------- Điều hướng: Tổng quan -> chọn Fanpage -> làm việc trong Fanpage đó ---------- */
 // app.page = Fanpage đang làm việc ("" = các màn hình chung: Tổng quan, Kết nối Fanpage, Cài đặt chung, Nhật ký)
-const app = { page: "", tab: "", last: "", view: "" };   // last = Page làm việc gần nhất (giữ lựa chọn khi qua Tổng quan rồi quay lại)
-const PAGE_TABS = ["download", "library", "calendar", "stats", "pagesettings", "jobs"];
+const app = { page: "", tab: "", last: "", view: "", sub: "comment", dlPage: "" };   // last = Page làm việc gần nhất (giữ lựa chọn khi qua Tổng quan rồi quay lại)
+const PAGE_TABS = ["calendar", "stats", "pagesettings"];   // màn hình cần chọn một Page (ô Fanpage ở đầu màn hình)
+const SETTINGS_VIEWS = ["fanpages", "folders", "settings", "jobs"];   // các mục nằm dưới Cài đặt (thanh con #setnav)
 const GLOBAL_VIEWS = ["overview", "download", "videos", "folders", "fanpages", "settings", "jobs"];
 const DEFAULT_TZ = "Asia/Ho_Chi_Minh";
 
@@ -131,13 +132,19 @@ function setHash(h) { history.replaceState(null, "", "#" + h); }
 const SUBS = ["comment", "token", "notify", "translate", "general"];
 function showSub(sub) {
   if (!SUBS.includes(sub)) sub = "comment";
-  $$("#subtabs button").forEach((b) => b.classList.toggle("active", b.dataset.sub === sub));
+  app.sub = sub;
   $$(".subpanel").forEach((p) => p.classList.toggle("active", p.id === "sub-" + sub));
   setHash("settings/" + sub);
+  applyMode();
 }
-$("#subtabs").addEventListener("click", (e) => {
-  const b = e.target.closest("button");
-  if (b) showSub(b.dataset.sub);
+// Thanh con của Cài đặt: Fanpage, Cài đặt Page, Thư mục, các mục cài đặt chung, Nhật ký
+$("#setnav").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-go]");
+  if (!b) return;
+  const go = b.dataset.go;
+  if (go.startsWith("settings:")) showView("settings", go.slice(9));
+  else if (go === "pagesettings") openPageTab("pagesettings");
+  else showView(go);
 });
 
 function activateSection(name) {
@@ -146,9 +153,33 @@ function activateSection(name) {
 }
 function applyMode() {
   const inPage = !!app.page;
-  $("#gtabs").hidden = inPage;
-  $("#ctx").hidden = !inPage;
+  $("#ctx").hidden = !inPage;   // ô chọn Fanpage chỉ hiện ở Lịch, Thống kê, Cài đặt Page
   document.body.classList.toggle("in-page", inPage);
+  const inSettings = app.tab === "pagesettings" || SETTINGS_VIEWS.includes(app.view);
+  $("#setnav").hidden = !inSettings;
+  const top = inSettings ? "settings" : inPage ? app.tab : app.view;
+  $$("#gtabs button").forEach((b) => b.classList.toggle("active", (b.dataset.view || b.dataset.ptab) === top));
+  const cur = app.tab === "pagesettings" ? "pagesettings" : app.view === "settings" ? "settings:" + app.sub : app.view;
+  $$("#setnav button").forEach((b) => b.classList.toggle("active", b.dataset.go === cur));
+}
+// Mở Lịch / Thống kê / Cài đặt Page: dùng Page vừa làm việc, chưa có thì Page đầu tiên
+async function openPageTab(tab) {
+  if (!pg.list.length) await loadPages();
+  const id = pg.list.some((p) => p.id === app.last) ? app.last : (pg.list[0] || {}).id;
+  if (!id) { toast("Chưa có Fanpage nào. Thêm Page ở Cài đặt > Fanpage."); showView("fanpages"); return; }
+  showPageTab(id, tab);
+}
+// Mở mục Video, lọc sẵn theo một Page
+function showVideosFor(id) {
+  lib.scope = id;
+  rememberPage("lib-scope", id);
+  if (app.view === "videos") { lib.selected.clear(); selMsg("", true); loadLibrary(); }
+  else showView("videos");
+}
+// Mở Tải video, chọn sẵn Page
+function showDownloadFor(id) {
+  app.dlPage = id;
+  showView("download");
 }
 
 // Màn hình chung (không thuộc Fanpage nào)
@@ -162,7 +193,6 @@ async function showView(name, sub) {
   app.view = name;
   applyMode();
   activateSection(name);
-  $$("#gtabs button").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
   setHash(name);
   if (name === "overview") loadOverview();
   if (name === "download") renderDlHeader();   // tải video không gắn Fanpage
@@ -172,19 +202,26 @@ async function showView(name, sub) {
   }
   if (name === "folders") loadFolders();
   if (name === "fanpages") loadPages().then(renderFanpage);
-  if (name === "settings") { loadSettings(); showSub(sub || ($("#subtabs .active") || {}).dataset?.sub); }
+  if (name === "settings") { loadSettings(); showSub(sub || app.sub); }
   if (name === "jobs") loadJobs();
 }
 $("#gtabs").addEventListener("click", (e) => {
   const b = e.target.closest("button");
-  if (b) showView(b.dataset.view);
+  if (!b) return;
+  if (b.dataset.ptab) openPageTab(b.dataset.ptab);
+  else if (b.dataset.view === "settings" && !SETTINGS_VIEWS.includes(app.view) && app.tab !== "pagesettings") showView("fanpages");   // vào Cài đặt: mở mục Fanpage trước
+  else if (b.dataset.view !== "settings") showView(b.dataset.view);
 });
 
 // Làm việc trong một Fanpage
 async function showPageTab(id, tab) {
   if (!pg.list.length) await loadPages();
   if (!pg.list.some((p) => p.id === id)) { showView("overview"); return; }
-  if (!PAGE_TABS.includes(tab)) tab = "library";
+  // Đường dẫn cũ của chế độ Page: Thư viện -> Video lọc theo Page; Tải video, Nhật ký -> màn hình chung
+  if (tab === "library" || !tab) { showVideosFor(id); return; }
+  if (tab === "download") { showDownloadFor(id); return; }
+  if (tab === "jobs") { app.jobsPage = id; showView("jobs"); return; }
+  if (!PAGE_TABS.includes(tab)) tab = "calendar";
   const prev = app.page || app.last || "";
   if (prev && prev !== id) {
     const busy = busyMsg();
@@ -199,21 +236,12 @@ async function showPageTab(id, tab) {
   applyMode();
   renderCtx();
   activateSection(tab);
-  $$("#tabs button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   setHash(`p/${encodeURIComponent(id)}/${tab}`);
   window.scrollTo(0, 0);
-  if (tab === "download") renderDlHeader();
-  if (tab === "library") loadLibrary();
   if (tab === "calendar") loadCalendar();
   if (tab === "stats") loadStats();
   if (tab === "pagesettings") { await loadPages(); renderCtx(); renderPageSettings(); loadPool(); }
-  if (tab === "jobs") loadJobs();
 }
-$("#tabs").addEventListener("click", (e) => {
-  const b = e.target.closest("button");
-  if (b) showPageTab(app.page, b.dataset.tab);
-});
-$("#ctx-home").addEventListener("click", () => showView("overview"));
 $("#ctx-page").addEventListener("change", () => showPageTab($("#ctx-page").value, app.tab));
 
 // Đổi Fanpage thì mọi trạng thái của Page cũ (video đã chọn, bộ lọc, khung lên lịch) được dọn đi
@@ -232,7 +260,7 @@ function resetForPage() {
 
 function ruleText(p) {
   const r = p.schedule || {};
-  if (!r.slots || !r.slots.length) return "chưa có khung giờ đăng (thêm ở tab Cài đặt Page)";
+  if (!r.slots || !r.slots.length) return "chưa có khung giờ đăng (thêm ở Cài đặt > Cài đặt Page)";
   const n = Math.min(r.slots.length, r.max_per_day || r.slots.length);
   const off = (r.days_off || []).length ? `, nghỉ ${r.days_off.map((i) => DAY_SHORT[i]).join(", ")}` : "";
   return `${n} bài/ngày (khung giờ ${r.slots.join(", ")}${off})`;
@@ -248,30 +276,52 @@ function renderCtx() {
   $("#ctx-hint").classList.toggle("bad", !!p.blocked_until);
 }
 
-/* ---------- Tải video (cho Fanpage đang làm việc) ---------- */
+/* ---------- Tải video: chọn thư mục; Page đi theo thư mục (thư mục mới thì chọn Page ở ô "Đăng lên Fanpage") ---------- */
+const dlf = { owners: new Map(), pick: "" };   // owners: tên thư mục -> Page Facebook ("" = chưa gán); pick: Page bạn tự chọn cho thư mục mới
+function dlPage() { return $("#dl-target").value; }
 function dlHeaderText() {
-  const p = curPage();
-  return p ? `Video tải về được lưu vào thư mục thuộc Fanpage "${p.name}". Mỗi thư mục chỉ thuộc một Page.`
-    : "Tải video không gắn Fanpage: video được lưu vào thư mục bạn đặt tên (chưa thuộc Page nào). Muốn đăng thì vào mục Thư mục để chọn Page cho thư mục đó.";
+  const p = pg.list.find((x) => x.id === dlPage());
+  return p ? `Video tải về thuộc Fanpage "${p.name}".`
+    : "Tải không gắn Fanpage: video được lưu vào thư mục bạn đặt tên (chưa thuộc Page nào). Muốn đăng thì vào Cài đặt > Thư mục để chọn Page cho thư mục đó.";
 }
 function renderDlHeader() {
+  const sel = $("#dl-target");
+  const cur = app.dlPage || sel.value;
+  app.dlPage = "";
+  sel.innerHTML = '<option value="">— Không gắn Fanpage —</option>' + pageOptions(cur);
+  sel.value = pg.list.some((p) => p.id === cur) ? cur : "";
+  dlf.pick = sel.value;
   $("#dl-page").textContent = dlHeaderText();
   loadDlFolders();
 }
-// Gợi ý các thư mục đang thuộc Page này để tải thêm video vào đúng thư mục đó
-async function loadDlFolders() {
-  const pageId = app.page;
-  try {
-    const d = await api("/api/library" + (pageId ? "?page_id=" + encodeURIComponent(pageId) : ""));
-    if (pageId !== app.page) return;
-    // không gắn Page: chỉ gợi ý các thư mục cũng chưa thuộc Page nào
-    const names = pageId ? d.channels : (d.channel_info || []).filter((i) => !i.owner).map((i) => i.name);
-    $("#dl-folders").innerHTML = names.map((c) => `<option value="${esc(c)}"></option>`).join("");
-    $("#dl-page").textContent = dlHeaderText() + (names.length
-      ? ` Thư mục hiện có${pageId ? " của Page" : " chưa thuộc Page nào"}: ${names.join(", ")}. Gõ hoặc chọn tên đó để tải thêm vào thư mục có sẵn, bỏ trống để tạo thư mục mới theo tên kênh.`
-      : "");
-  } catch (e) { /* bỏ qua, chỉ là gợi ý */ }
+// Thư mục có sẵn thì Page theo thư mục đó (khoá ô Page); thư mục mới thì chọn Page tuỳ ý
+function syncDlTarget() {
+  const name = $("#dl-folder").value.trim();
+  const sel = $("#dl-target"), note = $("#dl-target-note");
+  if (name && dlf.owners.has(name)) {
+    const owner = dlf.owners.get(name);
+    sel.value = pg.list.some((p) => p.id === owner) ? owner : "";
+    sel.disabled = true;
+    const p = pg.list.find((x) => x.id === owner);
+    note.textContent = p ? `Thư mục "${name}" thuộc Page ${p.name}: video tải về vào Page này.` : `Thư mục "${name}" chưa gán Page: video tải về chưa đăng được cho tới khi gán Page ở Cài đặt > Thư mục.`;
+  } else {
+    if (sel.disabled) sel.value = pg.list.some((p) => p.id === dlf.pick) ? dlf.pick : "";   // vừa rời thư mục có sẵn: trả lại Page bạn đã chọn
+    sel.disabled = false;
+    note.textContent = name ? `Thư mục mới "${name}" sẽ thuộc Page đang chọn.` : "Để trống tên thư mục: thư mục đặt theo tên kênh, thuộc Page đang chọn.";
+  }
+  $("#dl-page").textContent = dlHeaderText();
 }
+async function loadDlFolders() {
+  try {
+    const d = await api("/api/folders");
+    dlf.owners = new Map(d.folders.map((f) => [f.name, f.targets.facebook.id || ""]));
+    const label = (id) => (pg.list.find((p) => p.id === id) || {}).name || "chưa gán Page";
+    $("#dl-folders").innerHTML = d.folders.map((f) => `<option value="${esc(f.name)}">${esc(label(f.targets.facebook.id))}</option>`).join("");
+  } catch (e) { /* bỏ qua, chỉ là gợi ý */ }
+  syncDlTarget();
+}
+$("#dl-folder").addEventListener("input", syncDlTarget);
+$("#dl-target").addEventListener("change", () => { dlf.pick = $("#dl-target").value; syncDlTarget(); });
 let dlJob = null;
 let dlRunning = false;
 let dlFor = "";   // Page đang được tải video ("" = tải không gắn Fanpage, không cản việc chuyển Page)
@@ -295,7 +345,6 @@ function showDlErrors(list) {
 }
 function busyMsg() {
   if (schedRunning) return "Đang hẹn lịch cho Page hiện tại, đợi xong rồi hãy chuyển Page.";
-  if (dlRunning && dlFor) return "Đang tải video cho Page hiện tại, đợi xong (hoặc bấm Dừng) rồi hãy chuyển Page.";
   return "";
 }
 $("#dl-form").addEventListener("submit", async (e) => {
@@ -303,7 +352,7 @@ $("#dl-form").addEventListener("submit", async (e) => {
   const btn = $("#dl-btn");
   btn.disabled = true;
   dlRunning = true;
-  dlFor = app.page;
+  dlFor = dlPage();
   showDlErrors([]);
   try {
     const r = await api("/api/download", "POST", {
@@ -317,7 +366,7 @@ $("#dl-form").addEventListener("submit", async (e) => {
       limit: $("#dl-limit").value,
       note: $("#dl-note").value,
       confirm: $("#dl-confirm").checked,
-      page_id: app.page,
+      page_id: dlPage(),
     });
     dlJob = r.job;
     $("#dl-cancel").hidden = false;
@@ -327,7 +376,7 @@ $("#dl-form").addEventListener("submit", async (e) => {
       $("#dl-cancel").hidden = true;
       showDlErrors(j.data && j.data.link_errors);
       if (j.data && j.data.links_removed) $("#dl-file-info").textContent = `Đã xoá ${j.data.links_removed} dòng link đã xong khỏi file .txt.`;
-      if (j.status === "done") toast($("#dl-format").value === "audio" ? "Tải xong MP3. File audio.mp3 nằm trong thư mục từng video." : (dlFor ? "Tải xong. Xem trong tab Thư viện." : "Tải xong. Thư mục chưa thuộc Page nào: về Tổng quan để gán Page khi muốn đăng."));
+      if (j.status === "done") toast($("#dl-format").value === "audio" ? "Tải xong MP3. File audio.mp3 nằm trong thư mục từng video." : (dlFor ? "Tải xong. Xem ở mục Video." : "Tải xong. Thư mục chưa thuộc Page nào: vào Cài đặt > Thư mục để gán Page khi muốn đăng."));
     });
   } catch (err) {
     dlRunning = false;
@@ -774,7 +823,7 @@ function renderLibrary() {
   const sm = $("#sel-menu");
   $("summary", sm).classList.toggle("disabled", !daysOk);
   $("summary", sm).title = daysOk
-    ? "Tự chọn đủ số video cho 1 tuần, 2 tuần hoặc 1 tháng, tính theo số bài mỗi ngày của Fanpage đang làm việc"
+    ? "Tự chọn đủ số video cho 1 tuần, 2 tuần hoặc 1 tháng, tính theo số bài mỗi ngày của Fanpage đang chọn"
     : (libPageId() ? "Chỉ dùng ở tab Tất cả hoặc Chưa lên lịch (chọn video để lên lịch)" : "Chọn một Page ở ô Page trước");
   if (!daysOk) sm.open = false;
   const rb = $("#lib-reels");
@@ -1219,7 +1268,7 @@ async function rebookRetime(when) {
       schedRunning = false;
       refreshSchedButtons();
       $("#rt-save").disabled = false;
-      rtMsg(j.status === "done" ? "Đã hẹn lại với giờ mới." : "Hẹn lại chưa xong: xem nhật ký bên dưới. Video đã về \"Chưa lên lịch\", bạn có thể hẹn lại ở Thư viện.", j.status === "done");
+      rtMsg(j.status === "done" ? "Đã hẹn lại với giờ mới." : "Hẹn lại chưa xong: xem nhật ký bên dưới. Video đã về \"Chưa lên lịch\", bạn có thể hẹn lại ở mục Video.", j.status === "done");
       reloadSchedViews();
     });
   } catch (e) {
@@ -1757,7 +1806,7 @@ $("#ve-tr-undo").addEventListener("click", async () => {
 });
 $("#ve-tr-auto").addEventListener("click", async () => {
   const tr = ve.st.translate;
-  if (!tr.ok) { toast(tr.problem + " Vào Cài đặt chung > Dịch phụ đề, hoặc dịch tay.", 8000); return; }
+  if (!tr.ok) { toast(tr.problem + " Vào Cài đặt > Dịch phụ đề, hoặc dịch tay.", 8000); return; }
   if (ve.cues.some((c) => c.src) && !confirm("Dịch lại sẽ thay các câu đã dịch (kể cả phần bạn đã sửa). Tiếp tục?")) return;
   try {
     await veSaveCues();
@@ -1869,7 +1918,7 @@ async function loadFbStatus() {
     const p = curPage();
     $("#sc-tz").value = pageTz();
     $("#fb-status").textContent = p
-      ? `Lên lịch đăng cho Fanpage "${p.name}"${p.has_token ? "" : " (chưa có token, vào Kết nối Fanpage để lấy lại)"}. Mỗi video chỉ gắn với một Fanpage.`
+      ? `Lên lịch đăng cho Fanpage "${p.name}"${p.has_token ? "" : " (chưa có token, vào Cài đặt > Fanpage để lấy lại)"}. Mỗi video chỉ gắn với một Fanpage.`
       : "";
     if (!scIntervalSet) { $("#sc-interval").value = s.values.SCHEDULE_INTERVAL_HOURS; scIntervalSet = true; }
     if (!scStartTouched) initSchedForm();   // giờ mặc định phải tính theo múi giờ của Page
@@ -1895,7 +1944,7 @@ function syncSchedMode() {
   const r = p && p.schedule;
   if (!r || !r.slots.length) {
     hint.className = "hint bad";
-    hint.textContent = "Page này chưa có khung giờ đăng. Đóng cửa sổ này, vào tab Cài đặt Page > Quy tắc đăng để thêm khung giờ.";
+    hint.textContent = "Page này chưa có khung giờ đăng. Đóng cửa sổ này, vào Cài đặt > Cài đặt Page > Quy tắc đăng để thêm khung giờ.";
     return;
   }
   const off = (r.days_off || []).map((i) => DAY_SHORT[i]).join(", ");
@@ -2238,7 +2287,7 @@ function renderFanpage() {
       <div class="top"><strong>${esc(p.name)}</strong> <span class="sub">Fanpage ID ${esc(p.id)}</span></div>
       <div class="badges">${pageBadges(p)}</div>
       <div class="actions">
-        <button class="primary pg-open" type="button">Mở Page</button>
+        <button class="primary pg-open" type="button">Xem video</button>
         <button class="ghost pg-check" type="button">Kiểm tra token</button>
         <button class="ghost pg-del" type="button">Xóa khỏi app</button>
       </div>
@@ -2340,7 +2389,7 @@ async function onPageCardClick(e) {
   const enc = encodeURIComponent(id);
   try {
     if (e.target.classList.contains("pg-open")) {
-      showPageTab(id, "library");
+      showVideosFor(id);
     } else if (e.target.classList.contains("pg-rename")) {
       await api(`/api/pages/${enc}`, "PUT", { name: $(".pname", card).value });
       toast("Đã lưu tên.");
@@ -2507,7 +2556,12 @@ async function loadJobs() {
   clearTimeout(jobsTimer);
   try {
     const all = await api("/api/jobs");
-    const jobs = app.page ? all.filter((j) => j.page_id === app.page) : all;   // trong Page chỉ thấy tác vụ của Page đó
+    const sel = $("#jobs-page");
+    const want = app.jobsPage != null && app.jobsPage !== "" ? app.jobsPage : sel.value;
+    app.jobsPage = "";
+    sel.innerHTML = '<option value="">Tất cả</option>' + pageOptions(want);
+    sel.value = pg.list.some((p) => p.id === want) ? want : "";
+    const jobs = sel.value ? all.filter((j) => j.page_id === sel.value) : all;
     $("#jobs-list").innerHTML = jobs.length
       ? jobs.map((j) => `
         <div class="job" data-id="${j.id}">
@@ -2515,10 +2569,11 @@ async function loadJobs() {
           <span class="s">${esc(j.created)}</span>
           <span class="s ${j.status}">${esc(STATUS_LABEL[j.status] || j.status)}${j.progress.total ? ` ${j.progress.done}/${j.progress.total}` : ""}</span>
         </div>`).join("")
-      : `<p class="hint">${app.page ? "Fanpage này chưa có tác vụ nào." : "Chưa có tác vụ nào."}</p>`;
+      : `<p class="hint">${sel.value ? "Fanpage này chưa có tác vụ nào." : "Chưa có tác vụ nào."}</p>`;
   } catch (e) { /* bỏ qua */ }
   if ($("#tab-jobs").classList.contains("active")) jobsTimer = setTimeout(loadJobs, 3000);
 }
+$("#jobs-page").addEventListener("change", loadJobs);
 $("#jobs-list").addEventListener("click", (e) => {
   const row = e.target.closest(".job");
   if (row) follow(row.dataset.id, $("#jobs-log"), null, null);
@@ -2546,7 +2601,7 @@ function renderStats(d) {
   if (!d.per_day) notes.push("Page này chưa có khung giờ đăng (thêm ở Cài đặt Page > Quy tắc đăng) nên chưa so được với mục tiêu mỗi ngày.");
   if (bad) {
     const parts = [pr.error && `${pr.error} bài lỗi`, pr.missing && `${pr.missing} bài không thấy trên Facebook`, pr.unconfirmed && `${pr.unconfirmed} bài đã tới giờ mà chưa xác nhận đã đăng`].filter(Boolean);
-    notes.push(`Có ${parts.join(", ")}. Nên bấm "Kiểm tra trạng thái" ở Thư viện và xử lý trước khi hẹn thêm, vì tỷ lệ đăng thành công bên dưới tính cả các bài này.`);
+    notes.push(`Có ${parts.join(", ")}. Nên bấm "Kiểm tra trạng thái" ở mục Video (chọn Page) và xử lý trước khi hẹn thêm, vì tỷ lệ đăng thành công bên dưới tính cả các bài này.`);
   }
   const until = q.until ? `${q.until.slice(8, 10)}/${q.until.slice(5, 7)}` : "";
   const runway = q.runway_days == null ? "Chưa tính được số ngày còn bài (Page chưa có khung giờ đăng)." :
@@ -2629,7 +2684,7 @@ function ovNext(p) {
 }
 function stockLine(p) {
   const s = p.stock;
-  if (!s || s.level === "unknown") return "Chưa có khung giờ đăng nên chưa tính được kho video (thêm ở tab Cài đặt Page).";
+  if (!s || s.level === "unknown") return "Chưa có khung giờ đăng nên chưa tính được kho video (thêm ở Cài đặt > Cài đặt Page).";
   const until = s.queue_until ? `Lịch đã hẹn đến ${s.queue_until.slice(8, 10)}/${s.queue_until.slice(5, 7)}` : "Chưa hẹn bài nào";
   const bad = s.unusable ? ` (${s.unusable} video không đạt Reels không tính)` : "";
   return `Kho: ${s.new} video chưa lên lịch${bad}, đủ khoảng ${s.stock_days} ngày (${s.per_day} bài/ngày). ${until}. Tổng cộng Page còn đủ bài cho khoảng ${s.runway_days} ngày.`;
@@ -2687,7 +2742,7 @@ function renderOverview() {
       <p class="sub${p.stock && p.stock.level === "low" ? " bad" : ""}">${esc(stockLine(p))}</p>
       <p class="sub">${esc(ovNext(p))}. Đã hẹn ${p.used_24h}${p.cap ? "/" + p.cap : ""} video trong 24 giờ qua. ${p.folders} thư mục, ${p.videos} video. Múi giờ ${esc(pageTz(p))}.</p>
       <div class="actions">
-        <button class="primary ov-open" type="button">Mở Page</button>
+        <button class="primary ov-open" type="button">Xem video</button>
         <button class="ghost ov-dl" type="button">Tải video</button>
         <button class="ghost ov-cal" type="button">Lịch</button>
       </div>
@@ -2698,8 +2753,8 @@ $("#ov-grid").addEventListener("click", (e) => {
   const card = e.target.closest(".ov-card");
   if (!card) return;
   const t = e.target.classList;
-  if (t.contains("ov-open")) showPageTab(card.dataset.id, "library");
-  else if (t.contains("ov-dl")) showPageTab(card.dataset.id, "download");
+  if (t.contains("ov-open")) showVideosFor(card.dataset.id);
+  else if (t.contains("ov-dl")) showDownloadFor(card.dataset.id);
   else if (t.contains("ov-cal")) showPageTab(card.dataset.id, "calendar");
 });
 $("#ov-unassigned").addEventListener("click", async (e) => {

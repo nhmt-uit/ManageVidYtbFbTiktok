@@ -255,7 +255,7 @@ class Gate:
             why = f"Việc chạy nền đã dùng {bg_used}/{lim['bg']} lượt gọi Facebook được phép trong 60 phút qua (chừa chỗ cho thao tác của bạn)"
         return RateLimited(
             f"{why} nên app tự dừng để không chạm giới hạn của Facebook. Thử lại sau khoảng {math.ceil(wait)} phút. "
-            "Đổi mức này ở Cài đặt chung (Số lượt gọi Facebook tối đa mỗi giờ).", wait, local=True)
+            "Đổi mức này ở Cài đặt > Chung (Số lượt gọi Facebook tối đa mỗi giờ).", wait, local=True)
 
     def why_not(self, weight: int = 1, cls: str = "user", reserve: int = 0) -> str:
         """Lý do chưa gọi được `weight` lượt lúc này (chuỗi rỗng nếu gọi được). Không ghi nhận lượt nào."""
