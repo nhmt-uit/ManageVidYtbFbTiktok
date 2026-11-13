@@ -2928,7 +2928,8 @@ function renderFolders() {
   }).join("") : '<div class="empty">Chưa có thư mục nào. Tạo thư mục mới ở trên, hoặc tải video về.</div>';
 }
 function fdMsg(row, text, ok) { const m = $(".fd-msg", row); m.textContent = text; m.className = "msg fd-msg " + (ok ? "ok" : "bad"); }
-function waitJob(jobId, row) {
+// Chờ tác vụ huỷ lịch của một thư mục, hiện nhật ký ngay trong dòng thư mục (đừng đặt tên waitJob: trùng hàm chung ở trên sẽ đè mất nó)
+function fdWaitJob(jobId, row) {
   return new Promise((resolve) => follow(jobId, $(".fd-log", row), null, resolve));
 }
 async function fdSetFacebook(row, sel) {
@@ -2952,7 +2953,7 @@ async function fdSetFacebook(row, sel) {
         if (!confirm(`${err.message}\n\nHuỷ lịch ${p.rels.length} video này ngay (xoá bài hẹn trên Facebook) rồi ${what}?`)) throw err;
         fdMsg(row, `Đang huỷ lịch ${p.rels.length} video...`, true);
         const r = await api("/api/sched/cancel-many", "POST", { page_id: p.page_id, rels: p.rels });
-        await waitJob(r.job, row);   // huỷ xong (hết hay chưa) thì thử đổi lại: server kiểm tra còn video chờ đăng không
+        await fdWaitJob(r.job, row);   // huỷ xong (hết hay chưa) thì thử đổi lại: server kiểm tra còn video chờ đăng không
       }
     }
   } catch (err) {
