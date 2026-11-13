@@ -13,7 +13,7 @@ from datetime import datetime
 from flask import Flask, abort, jsonify, request, send_from_directory
 
 from core import affiliate, commenter, editor, series, translate, config, downloader, fbgate, library, manage, notify, pages, planner, publish, reelcheck, scheduler, stats, stock, tokens, ytdlp_update
-from core import videofile
+from core import linkfile, removed, videofile
 from core.jobs import manager
 
 config.load_env()
@@ -846,7 +846,82 @@ def api_capacity():
     })
 
 
+# ---------- Xoá video (cả thư mục, vào Thùng rác) và sổ video đã xoá ----------
+@app.post("/api/videos/delete")
+def api_videos_delete():
+    d = body()
+    rels = d.get("rels")
+    if not d.get("confirm"):
+        return err("Cần xác nhận trước khi xoá.")
+    if not isinstance(rels, list) or not rels or not all(isinstance(r, str) for r in rels):
+        return err("Chưa chọn video nào.")
+    if len(rels) > removed.MAX_BATCH:
+        return err(f"Nhiều quá: tối đa {removed.MAX_BATCH} video mỗi lần.")
+    if editor._busy.locked() or manager.has_running("edit"):
+        return err("Đang có tác vụ chỉnh sửa video chạy. Đợi xong rồi hãy xoá.")
+    if manager.has_running("schedule") or manager.has_running("cancel"):
+        return err("Đang hẹn lịch hoặc huỷ lịch. Đợi xong rồi hãy xoá.")
+    done, errors = [], []
+    for rel in dict.fromkeys(rels):
+        try:
+            rec = removed.delete_video(rel)
+            done.append({"rel": rel, "id": rec["id"]})
+        except (ValueError, removed.DeleteError, OSError) as e:
+            errors.append({"rel": rel, "error": str(e)})
+    return jsonify({"deleted": done, "errors": errors})
+
+
+@app.post("/api/channels/auto-delete")
+def api_channel_auto_delete():
+    """Bật/tắt tự xoá video sau khi đăng cho một thư mục kênh của Page."""
+    d = body()
+    name, page_id = str(d.get("name") or ""), str(d.get("page_id") or "")
+    root = config.output_dir().resolve()
+    ch = (root / name).resolve() if name and "/" not in name and "\\" not in name else None
+    if ch is None or ch.parent != root or not ch.is_dir():
+        return err("Không tìm thấy thư mục này.")
+    if not page_id or library.owner_of(ch) != page_id:
+        return err("Thư mục này không thuộc Page đang chọn.")
+    try:
+        days = int(d.get("days", library.AUTO_DELETE_DEFAULT_DAYS))
+        return jsonify({"ok": True, "auto_delete": library.set_auto_delete(ch, bool(d.get("enabled")), days)})
+    except (TypeError, ValueError) as e:
+        return err(str(e) if "ngày" in str(e) else "Số ngày không hợp lệ.")
+    except OSError as e:
+        return err(f"Không lưu được cài đặt: {e}")
+
+
+@app.get("/api/removed")
+def api_removed():
+    return jsonify({"items": removed.listing()})
+
+
+@app.post("/api/removed/forget")
+def api_removed_forget():
+    vid = str(body().get("id") or "")
+    if not vid or not removed.forget(vid):
+        return err("Không thấy video này trong danh sách đã xoá.")
+    return jsonify({"ok": True})
+
+
 # ---------- Tải video ----------
+@app.post("/api/download/pick-txt")
+def api_download_pick_txt():
+    """Mở hộp thoại chọn file .txt của macOS để server biết đường dẫn thật (xoá dần link đã xong khỏi file)."""
+    try:
+        p = linkfile.pick()
+    except linkfile.PickError as e:
+        return err(str(e))
+    if p is None:
+        return jsonify({"cancelled": True})
+    links: list[str] = []
+    for line in linkfile.read_text(p).splitlines():
+        for u in linkfile.line_urls(line):
+            if u not in links and downloader.platform_of(u):
+                links.append(u)
+    return jsonify({"path": str(p), "name": p.name, "links": links})
+
+
 @app.post("/api/download")
 def api_download():
     d = body()
@@ -865,13 +940,19 @@ def api_download():
     note = (d.get("note") or "").strip()[:500]
     fmt = "audio" if d.get("format") == "audio" else "video"
     content = d.get("content") if d.get("content") in downloader.CONTENT_CHOICES else "all"   # Rednote: all | video | images
+    again = bool(d.get("redownload_removed"))   # tải lại cả video đã tải và xoá trước đây
     page_id = str(d.get("page_id") or "")   # trống = tải không gắn Fanpage, lưu vào thư mục chưa thuộc Page nào
     page = pages.get(page_id) if page_id else None
     if page_id and page is None:
         return err("Không tìm thấy Fanpage này. Chọn lại Fanpage rồi tải video.")
+    txt_paths = d.get("txt_paths") or []
+    if not isinstance(txt_paths, list) or len(txt_paths) > 20 or not all(isinstance(t, str) for t in txt_paths):
+        return err("Danh sách file .txt không hợp lệ.")
+    if not all(linkfile.is_picked(t) for t in txt_paths):   # chỉ sửa file người dùng đã chọn qua hộp thoại
+        return err("File .txt chưa được chọn qua nút Mở file .txt (app vừa khởi động lại?). Mở lại file rồi tải.")
     if manager.has_running("download"):
         return err("Đang có một tác vụ tải chạy. Đợi nó xong hoặc dừng lại.")
-    job = manager.start("download", f"Tải {'MP3' if fmt == 'audio' else 'video'} {('cho ' + pages.label(page)) if page else '(không gắn Fanpage)'}: {url.splitlines()[0]}" + (f" (+{len(url.splitlines()) - 1} link)" if "\n" in url else ""), downloader.run, url, folder, kind, limit, note, page_id, fmt, content, page_id=page_id)
+    job = manager.start("download", f"Tải {'MP3' if fmt == 'audio' else 'video'} {('cho ' + pages.label(page)) if page else '(không gắn Fanpage)'}: {url.splitlines()[0]}" + (f" (+{len(url.splitlines()) - 1} link)" if "\n" in url else ""), downloader.run, url, folder, kind, limit, note, page_id, fmt, content, txt_paths, again, page_id=page_id)
     return jsonify({"job": job.id})
 
 

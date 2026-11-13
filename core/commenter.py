@@ -566,6 +566,12 @@ def _worker(job, manager) -> None:
                 stock.alerts(job)
             except Exception as exc:  # noqa: BLE001
                 job.log(f"Lỗi kiểm tra kho video: {exc}")
+        try:   # tự xoá video đã đăng ở các thư mục bật "Xoá video sau khi đăng" (tự giãn 30 phút một lần)
+            from . import editor, removed
+            if not (editor._busy.locked() or manager.has_running("schedule") or manager.has_running("cancel")):
+                removed.sweep(job.log)
+        except Exception as exc:  # noqa: BLE001
+            job.log(f"Lỗi tự xoá video sau khi đăng: {exc}")
         names = sorted(pages.label(p) for p in pages.all_pages() if p.get("auto_comment") and p.get("token"))
         any_auto = bool(names)
         if names != announced:

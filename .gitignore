@@ -10,3 +10,4 @@ notify_state.json
 logs/
 ytdlp_state.json
 fbgate_state.json
+removed_videos.json

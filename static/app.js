@@ -268,6 +268,24 @@ async function loadDlFolders() {
 let dlJob = null;
 let dlRunning = false;
 let dlFor = "";   // Page đang được tải video ("" = tải không gắn Fanpage, không cản việc chuyển Page)
+let dlTxts = [];  // các file .txt đã chọn qua hộp thoại macOS [{path, name, links}]: link xong sẽ được xoá khỏi các file này
+function dlTxtPaths() {   // chỉ gửi file nào mà ô link vẫn còn link lấy từ file đó
+  const box = $("#dl-url").value;
+  if (!box.trim()) dlTxts = [];   // ô trống: quên các file đã nạp trước đó
+  return dlTxts.filter((t) => t.links.some((u) => box.includes(u))).map((t) => t.path);
+}
+function showDlErrors(list) {
+  const el = $("#dl-errors");
+  if (!list || !list.length) { el.hidden = true; el.innerHTML = ""; return; }
+  el.innerHTML = `<b>${list.length} link lỗi, mở từng link để tự kiểm tra:</b><ol>` +
+    list.map((x) => `<li><a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.url)}</a><span class="hint"> ${esc(x.reason)}</span></li>`).join("") +
+    `</ol><button class="ghost" type="button" id="dl-errors-copy">Chép danh sách link lỗi</button>`;
+  el.hidden = false;
+  $("#dl-errors-copy").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(list.map((x) => x.url).join("\n")); toast("Đã chép link lỗi."); }
+    catch (e) { toast("Không chép được: " + e.message); }
+  });
+}
 function busyMsg() {
   if (schedRunning) return "Đang hẹn lịch cho Page hiện tại, đợi xong rồi hãy chuyển Page.";
   if (dlRunning && dlFor) return "Đang tải video cho Page hiện tại, đợi xong (hoặc bấm Dừng) rồi hãy chuyển Page.";
@@ -279,8 +297,11 @@ $("#dl-form").addEventListener("submit", async (e) => {
   btn.disabled = true;
   dlRunning = true;
   dlFor = app.page;
+  showDlErrors([]);
   try {
     const r = await api("/api/download", "POST", {
+      txt_paths: dlTxtPaths(),
+      redownload_removed: $("#dl-again").checked,
       url: $("#dl-url").value,
       folder: $("#dl-folder").value,
       kind: $("#dl-kind").value,
@@ -297,6 +318,8 @@ $("#dl-form").addEventListener("submit", async (e) => {
       dlRunning = false;
       btn.disabled = false;
       $("#dl-cancel").hidden = true;
+      showDlErrors(j.data && j.data.link_errors);
+      if (j.data && j.data.links_removed) $("#dl-file-info").textContent = `Đã xoá ${j.data.links_removed} dòng link đã xong khỏi file .txt.`;
       if (j.status === "done") toast($("#dl-format").value === "audio" ? "Tải xong MP3. File audio.mp3 nằm trong thư mục từng video." : (dlFor ? "Tải xong. Xem trong tab Thư viện." : "Tải xong. Thư mục chưa thuộc Page nào: về Tổng quan để gán Page khi muốn đăng."));
     });
   } catch (err) {
@@ -305,7 +328,30 @@ $("#dl-form").addEventListener("submit", async (e) => {
     toast(err.message);
   }
 });
-$("#dl-file-btn").addEventListener("click", () => $("#dl-file").click());
+function addDlLinks(uniq, name, canEdit) {
+  const box = $("#dl-url");
+  box.value = (box.value.trim() ? box.value.trim() + "\n" : "") + uniq.join("\n");
+  $("#dl-file-info").textContent = `Đã nạp ${uniq.length} link từ ${name}` + (uniq.length > 1000 ? ". Nhiều hơn 1000: hãy chia file ra tải từng đợt." :
+    canEdit ? ". Link tải xong (hoặc bài không có gì để tải) sẽ được xoá khỏi file; link lỗi giữ lại và báo cuối lượt tải." : ". Link đã tải rồi sẽ được bỏ qua (file mở bằng trình duyệt nên không tự xoá link được).");
+  toast(`Đã nạp ${uniq.length} link từ ${name}`);
+}
+$("#dl-file-btn").addEventListener("click", async () => {
+  const btn = $("#dl-file-btn");
+  btn.disabled = true;
+  try {
+    const r = await api("/api/download/pick-txt", "POST", {});   // hộp thoại chọn file của macOS (server biết đường dẫn để xoá link đã xong)
+    if (r.cancelled) return;
+    if (!r.links.length) { toast("Không thấy link YouTube/TikTok/Rednote nào trong file này."); return; }
+    if (!$("#dl-url").value.trim()) dlTxts = [];
+    dlTxts = dlTxts.filter((t) => t.path !== r.path).concat([r]);
+    addDlLinks(r.links, r.name, true);
+  } catch (err) {
+    toast(err.message + " Chuyển sang mở file bằng trình duyệt.", 5000);
+    $("#dl-file").click();
+  } finally {
+    btn.disabled = false;
+  }
+});
 $("#dl-file").addEventListener("change", async (e) => {
   const f = e.target.files && e.target.files[0];
   e.target.value = "";   // cho phép chọn lại cùng một file
@@ -315,10 +361,7 @@ $("#dl-file").addEventListener("change", async (e) => {
     const links = ((await f.text()).match(/https?:\/\/[^\s<>"']+/gi) || []).map((u) => u.replace(/[.,;:!?)\]}>]+$/, ""));
     const uniq = [...new Set(links)];
     if (!uniq.length) { toast("Không thấy link nào trong file này."); return; }
-    const box = $("#dl-url");
-    box.value = (box.value.trim() ? box.value.trim() + "\n" : "") + uniq.join("\n");
-    $("#dl-file-info").textContent = `Đã nạp ${uniq.length} link từ ${f.name}` + (uniq.length > 1000 ? ". Nhiều hơn 1000: hãy chia file ra tải từng đợt." : ". Link đã tải rồi sẽ được bỏ qua, và dừng khi đủ số video mới.");
-    toast(`Đã nạp ${uniq.length} link từ ${f.name}`);
+    addDlLinks(uniq, f.name, false);
   } catch (err) {
     toast("Không đọc được file: " + err.message);
   }
@@ -722,7 +765,56 @@ function renderLibrary() {
 }
 
 /* ---------- Chỉnh sửa video ngoài Fanpage: mọi video trong thư mục video ---------- */
-const edl = { videos: [], status: "all", channel: "__all", q: "", root: "", observer: null };
+const edl = { videos: [], status: "all", channel: "__all", q: "", root: "", observer: null, selected: new Set() };
+const ED_COMMENT_FINISHED = ["done", "expired", "none", "error", "skipped"];
+// Xoá được: chưa lên lịch, hoặc đã đăng và không còn chờ tự comment (giống kiểm tra ở server, removed.blocked_reason)
+const ED_COMMENT_WINDOW_MS = (3 * 24 + 1) * 3600e3;   // commenter.MAX_AGE_DAYS (+1 giờ): quá hạn này app không tự comment nữa
+function edDeletable(v) {
+  if (!v.scheduled) return true;
+  if (v.publish_status !== "published") return false;
+  const posted = Date.parse(v.scheduled);
+  return ED_COMMENT_FINISHED.includes(v.comment_status) || (!isNaN(posted) && posted < Date.now() - ED_COMMENT_WINDOW_MS);
+}
+function edUpdateSel() {
+  const live = new Set(edl.videos.filter(edDeletable).map((v) => v.rel));
+  edl.selected.forEach((r) => { if (!live.has(r)) edl.selected.delete(r); });   // video đã mất / đã lên lịch thì bỏ chọn
+  const n = edl.selected.size;
+  $("#ed-delete").disabled = n === 0;
+  $("#ed-delete").textContent = n ? `Xoá ${n} video đã chọn` : "Xoá video đã chọn";
+  $("#ed-selnone").hidden = n === 0;
+}
+async function edDelete(rels) {
+  const byRel = new Map(edl.videos.map((v) => [v.rel, v]));
+  const names = rels.slice(0, 5).map((r) => "• " + ((byRel.get(r) || {}).title || r).slice(0, 70)).join("\n") + (rels.length > 5 ? `\n… và ${rels.length - 5} video khác` : "");
+  if (!confirm(`Xoá ${rels.length} video?\n\n${names}\n\nCả thư mục của từng video (video, phụ đề, bản nháp…) sẽ được chuyển vào Thùng rác của macOS (lấy lại được từ Thùng rác). Link video được ghi lại để lần sau tải sẽ bỏ qua.`)) return;
+  const btn = $("#ed-delete");
+  btn.disabled = true;
+  try {
+    const r = await api("/api/videos/delete", "POST", { rels, confirm: true });
+    r.deleted.forEach((x) => edl.selected.delete(x.rel));
+    if (r.errors.length) {
+      toast(`Đã xoá ${r.deleted.length} video. ${r.errors.length} video không xoá được: ` + r.errors.slice(0, 3).map((x) => x.error).join(" | "), 9000);
+    } else {
+      toast(`Đã chuyển ${r.deleted.length} video vào Thùng rác.`);
+    }
+  } catch (e) {
+    toast(e.message);
+  }
+  await loadEditorList();
+}
+async function loadRemoved() {
+  try {
+    const d = await api("/api/removed");
+    $("#ed-removed-n").textContent = d.items.length ? `(${d.items.length})` : "";
+    $("#ed-removed-list").innerHTML = d.items.length ? `<ol class="removed-list">` + d.items.map((x) => `
+      <li data-id="${esc(x.id)}">
+        <span>${esc(x.title || x.folder || x.id)}</span>
+        <span class="hint">${esc((x.removed_at || "").replace("T", " ").slice(0, 16))}${x.folder ? " · " + esc(x.folder) : ""}</span>
+        ${x.url ? `<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.url)}</a>` : `<span class="hint">ID ${esc(x.id)}</span>`}
+        <button class="ghost ed-forget" type="button">Cho tải lại</button>
+      </li>`).join("") + "</ol>" : '<p class="hint">Chưa xoá video nào.</p>';
+  } catch (e) { /* không chặn danh sách video */ }
+}
 function edGroup(v) { return v.has_draft ? "draft" : v.edited ? "done" : "todo"; }
 async function loadEditorList() {
   try {
@@ -740,6 +832,7 @@ async function loadEditorList() {
     sel.hidden = d.channels.length + (hasRoot ? 1 : 0) < 2;
     await loadPages();
     renderEditorList();
+    loadRemoved();
   } catch (e) { toast(e.message); }
 }
 function edFiltered() {
@@ -755,8 +848,10 @@ function renderEditorList() {
   $("#ed-root").textContent = (edl.root ? "Thư mục video: " + edl.root + ". " : "") + `Hiển thị ${list.length} video.`;
   $("#ed-empty").hidden = edl.videos.length > 0;
   const pageName = (v) => { const p = pg.list.find((x) => x.id === v.owner); return p ? p.name || p.label || p.id : ""; };
+  edUpdateSel();
   $("#ed-grid").innerHTML = list.map((v) => `
     <article class="card" data-rel="${esc(v.rel)}">
+      ${edDeletable(v) ? `<label class="pick" title="Chọn để xoá"><input type="checkbox" class="ed-pick" ${edl.selected.has(v.rel) ? "checked" : ""}></label>` : ""}
       <video data-src="${esc(mediaUrl(v.rel) + ("?e=" + v.size_mb))}" controls playsinline muted preload="none"></video>
       <div class="meta">
         <h4 title="${esc(v.title)}">${esc(v.title)}</h4>
@@ -765,10 +860,15 @@ function renderEditorList() {
           ${v.has_draft ? '<span class="badge warn" title="Có bản chỉnh sửa nháp chưa duyệt">Chờ duyệt bản chỉnh</span>' : ""}
           ${v.edited ? '<span class="badge ok" title="Đã chỉnh sửa và duyệt (đã thay video gốc)">Đã chỉnh sửa video</span>' : ""}
           ${v.has_subs ? '<span class="badge">Có phụ đề</span>' : ""}
-          ${v.scheduled ? '<span class="badge warn" title="Đã hẹn lên lịch: huỷ lịch trong Fanpage trước khi chỉnh sửa">Đã lên lịch</span>' : ""}
+          ${v.scheduled ? (v.publish_status === "published"
+            ? '<span class="badge ok" title="Đã đăng lên Fanpage">Đã đăng</span>'
+            : '<span class="badge warn" title="Đã hẹn lên lịch: huỷ lịch trong Fanpage trước khi chỉnh sửa hoặc xoá">Đã lên lịch</span>') : ""}
           ${pageName(v) ? `<span class="badge">${esc(pageName(v))}</span>` : ""}
         </div>
-        ${v.scheduled ? "" : '<button class="primary vedit" type="button">Chỉnh sửa video</button>'}
+        <div class="actions">
+          ${v.scheduled ? "" : '<button class="primary vedit" type="button">Chỉnh sửa video</button>'}
+          ${edDeletable(v) ? '<button class="ghost vdel" type="button" title="Chuyển cả thư mục video vào Thùng rác">Xoá</button>' : ""}
+        </div>
       </div>
     </article>`).join("");
   if (edl.observer) edl.observer.disconnect();
@@ -789,7 +889,26 @@ $("#ed-channel").addEventListener("change", (e) => { edl.channel = e.target.valu
 $("#ed-q").addEventListener("input", (e) => { edl.q = e.target.value; renderEditorList(); });
 $("#ed-refresh").addEventListener("click", loadEditorList);
 $("#ed-grid").addEventListener("click", (e) => {
-  if (e.target.classList.contains("vedit")) openVideoEdit(e.target.closest(".card").dataset.rel);
+  const card = e.target.closest(".card");
+  if (!card) return;
+  if (e.target.classList.contains("vedit")) openVideoEdit(card.dataset.rel);
+  if (e.target.classList.contains("vdel")) edDelete([card.dataset.rel]);
+});
+$("#ed-grid").addEventListener("change", (e) => {
+  if (!e.target.classList.contains("ed-pick")) return;
+  const rel = e.target.closest(".card").dataset.rel;
+  if (e.target.checked) edl.selected.add(rel); else edl.selected.delete(rel);
+  edUpdateSel();
+});
+$("#ed-selall").addEventListener("click", () => { edFiltered().filter(edDeletable).forEach((v) => edl.selected.add(v.rel)); renderEditorList(); });
+$("#ed-selnone").addEventListener("click", () => { edl.selected.clear(); renderEditorList(); });
+$("#ed-delete").addEventListener("click", () => { if (edl.selected.size) edDelete([...edl.selected]); });
+$("#ed-removed-list").addEventListener("click", async (e) => {
+  if (!e.target.classList.contains("ed-forget")) return;
+  const li = e.target.closest("li");
+  if (!confirm("Bỏ video này khỏi danh sách đã xoá? Lần tải sau link của nó sẽ được tải lại như video mới.")) return;
+  try { await api("/api/removed/forget", "POST", { id: li.dataset.id }); loadRemoved(); }
+  catch (err) { toast(err.message); }
 });
 
 // Fanpage đang làm việc (chọn ở thanh trên cùng, trước khi vào Thư viện)
@@ -2153,9 +2272,42 @@ function renderFanpage() {
 }
 
 const TZ_CHOICES = ["Asia/Ho_Chi_Minh", "Asia/Tokyo", "Asia/Bangkok", "Asia/Seoul", "Asia/Singapore", "UTC"];
+async function loadPsFolders() {
+  const box = $("#ps-folder-list");
+  const pageId = app.page;
+  if (!pageId) { box.innerHTML = ""; return; }
+  try {
+    const d = await api("/api/library?page_id=" + encodeURIComponent(pageId));
+    if (pageId !== app.page) return;
+    const infos = d.channel_info || [];
+    box.innerHTML = infos.length ? infos.map((i) => {
+      const ad = i.auto_delete || { enabled: false, days: 3 };
+      return `<div class="ps-folder" data-name="${esc(i.name)}">
+        <b class="ps-folder-name">${esc(i.name)}</b> <small class="hint">${i.videos} video, ${i.scheduled} đã hẹn/đã đăng</small>
+        <label class="check"><input type="checkbox" class="psf-on" ${ad.enabled ? "checked" : ""}> <span>Xoá video sau khi đăng</span></label>
+        <label class="psf-days">sau <input type="number" class="psf-n" min="2" max="365" value="${ad.days}"> ngày</label>
+        <button class="ghost psf-save" type="button">Lưu</button>
+        <span class="msg psf-msg"></span>
+      </div>`;
+    }).join("") : '<p class="hint">Page này chưa có thư mục video nào.</p>';
+  } catch (e) { box.innerHTML = `<p class="hint">${esc(e.message)}</p>`; }
+}
+$("#ps-folder-list").addEventListener("click", async (e) => {
+  if (!e.target.classList.contains("psf-save")) return;
+  const row = e.target.closest(".ps-folder");
+  const on = $(".psf-on", row).checked, days = Number($(".psf-n", row).value);
+  const msg = $(".psf-msg", row);
+  if (on && !confirm(`Bật tự xoá cho thư mục "${row.dataset.name}"?\n\nVideo đã đăng (và đã comment xong) sẽ tự được chuyển cả thư mục vào Thùng rác sau ${days} ngày kể từ giờ đăng.`)) return;
+  try {
+    const r = await api("/api/channels/auto-delete", "POST", { name: row.dataset.name, page_id: app.page, enabled: on, days });
+    $(".psf-n", row).value = r.auto_delete.days;
+    msg.textContent = r.auto_delete.enabled ? `Đã bật: xoá sau ${r.auto_delete.days} ngày.` : "Đã tắt tự xoá.";
+  } catch (err) { msg.textContent = err.message; }
+});
 function renderPageSettings() {
   const p = curPage();
   const root = $("#ps-root");
+  loadPsFolders();
   if (!p) { root.innerHTML = ""; return; }
   const own = p.settings || {}, eff = p.effective || {};
   const num = (cls, key, label) => `

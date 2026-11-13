@@ -31,9 +31,48 @@ def owner_of(channel_dir) -> str:
     return str(d.get("page_id") or "") if isinstance(d, dict) else ""
 
 
+def _read_owner_file(channel_dir) -> dict:
+    try:
+        d = json.loads((Path(channel_dir) / OWNER_FILE).read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return {}
+    return d if isinstance(d, dict) else {}
+
+
+def _write_owner_file(channel_dir, data: dict) -> None:
+    (Path(channel_dir) / OWNER_FILE).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def set_owner(channel_dir, page_id: str) -> None:
-    (Path(channel_dir) / OWNER_FILE).write_text(
-        json.dumps({"page_id": page_id}, ensure_ascii=False, indent=2), encoding="utf-8")
+    data = _read_owner_file(channel_dir)   # giữ các cài đặt khác của thư mục (ví dụ tự xoá sau khi đăng)
+    data["page_id"] = page_id
+    _write_owner_file(channel_dir, data)
+
+
+# Tự xoá video sau khi đăng (cài theo từng thư mục kênh). Ít nhất 2 ngày: giới hạn 24 giờ và số bài mỗi ngày của Page
+# được tính từ scheduled.json của các video, xoá sớm quá thì app đếm thiếu và có thể hẹn vượt giới hạn.
+AUTO_DELETE_MIN_DAYS = 2
+AUTO_DELETE_MAX_DAYS = 365
+AUTO_DELETE_DEFAULT_DAYS = 3
+
+
+def auto_delete_of(channel_dir) -> dict:
+    ad = _read_owner_file(channel_dir).get("auto_delete")
+    ad = ad if isinstance(ad, dict) else {}
+    try:
+        days = int(ad.get("days", AUTO_DELETE_DEFAULT_DAYS))
+    except (TypeError, ValueError):
+        days = AUTO_DELETE_DEFAULT_DAYS
+    return {"enabled": ad.get("enabled") is True, "days": min(AUTO_DELETE_MAX_DAYS, max(AUTO_DELETE_MIN_DAYS, days))}
+
+
+def set_auto_delete(channel_dir, enabled: bool, days: int) -> dict:
+    if not (AUTO_DELETE_MIN_DAYS <= days <= AUTO_DELETE_MAX_DAYS):
+        raise ValueError(f"Số ngày phải từ {AUTO_DELETE_MIN_DAYS} đến {AUTO_DELETE_MAX_DAYS}.")
+    data = _read_owner_file(channel_dir)
+    data["auto_delete"] = {"enabled": bool(enabled), "days": int(days)}
+    _write_owner_file(channel_dir, data)
+    return auto_delete_of(channel_dir)
 
 
 def yt_id(folder: Path) -> str:
@@ -239,7 +278,7 @@ def scan(page_id: str | None = None) -> dict:
             v["owner"] = owner
         videos.extend(group)
         infos.append({
-            "name": p.name, "owner": owner, "videos": len(group),
+            "name": p.name, "owner": owner, "videos": len(group), "auto_delete": auto_delete_of(p),
             "scheduled": sum(1 for v in group if v["scheduled"]),
             "pages": sorted({v["page_id"] for v in group if v["scheduled"] and v["page_id"]}),
         })

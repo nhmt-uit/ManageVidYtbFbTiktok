@@ -78,7 +78,7 @@
           <div class="file-row">
             <button class="ghost" id="dl-file-btn" type="button">Mở file .txt chứa link</button>
             <input id="dl-file" type="file" accept=".txt,text/plain" hidden>
-            <span class="hint" id="dl-file-info">Mỗi dòng một link (tối đa 1000). Link đã tải rồi sẽ được bỏ qua, và dừng khi đủ số video mới ở ô bên dưới.</span>
+            <span class="hint" id="dl-file-info">Mỗi dòng một link (tối đa 1000). Link tải xong sẽ được xoá khỏi file; link lỗi giữ lại và được báo cuối lượt tải. Dừng khi đủ số video mới ở ô bên dưới.</span>
           </div>
           <details class="rn-tool">
             <summary>Rednote: lấy link cả trang cá nhân</summary>
@@ -120,6 +120,10 @@
           <label>Ghi chú sự đồng ý của chủ kênh
             <input id="dl-note" placeholder="Ví dụ: Chủ kênh đồng ý qua tin nhắn ngày 27/10/2026">
           </label>
+          <label class="check" title="Mặc định app bỏ qua video đã tải rồi xoá (danh sách ở mục Chỉnh sửa video > Video đã xoá)">
+            <input id="dl-again" type="checkbox">
+            <span>Tải lại cả video đã xoá trước đây</span>
+          </label>
           <label class="check">
             <input id="dl-confirm" type="checkbox">
             <span>Tôi xác nhận đã được chủ kênh đồng ý cho tải và đăng lại nội dung này.</span>
@@ -131,6 +135,7 @@
         </form>
         <progress id="dl-bar" value="0" max="1" hidden></progress>
         <pre id="dl-log" class="log" hidden></pre>
+        <div id="dl-errors" class="dl-errors" hidden></div>
       </div>
     </section>
 
@@ -150,9 +155,22 @@
         <input type="search" id="ed-q" placeholder="Tìm theo tên video..." style="width:auto;min-width:180px">
         <button class="ghost" id="ed-refresh" type="button">Làm mới</button>
       </div>
+      <div class="lib-bar ed-selbar">
+        <span class="hint" id="ed-selinfo">Tick ô ở góc video để chọn. Xoá video = chuyển cả thư mục video vào Thùng rác của macOS; link được ghi lại để lần sau không tải nhầm.</span>
+        <span>
+          <button class="ghost" id="ed-selall" type="button">Chọn tất cả đang hiện</button>
+          <button class="ghost" id="ed-selnone" type="button" hidden>Bỏ chọn</button>
+          <button class="primary danger" id="ed-delete" type="button" disabled>Xoá video đã chọn</button>
+        </span>
+      </div>
       <p class="hint" id="ed-root"></p>
       <div class="grid" id="ed-grid"></div>
       <div class="empty" id="ed-empty" hidden>Chưa có video nào trong thư mục video. Tải video ở mục "Tải video" trước.</div>
+      <details class="rn-tool" id="ed-removed">
+        <summary>Video đã xoá <b id="ed-removed-n"></b></summary>
+        <p class="hint">Video đã tải rồi xoá. Khi tải video, link của các video này được bỏ qua (trừ khi tick "Tải lại cả video đã xoá trước đây"). Bấm "Cho tải lại" để bỏ một video khỏi danh sách.</p>
+        <div id="ed-removed-list"></div>
+      </details>
     </section>
 
     <section id="tab-library" class="tab">
@@ -256,6 +274,11 @@
     <!-- CÀI ĐẶT PAGE -->
     <section id="tab-pagesettings" class="tab">
       <div id="ps-root" class="panel"></div>
+      <div class="panel" id="ps-folders">
+        <h2>Thư mục video của Page</h2>
+        <p class="hint">Bật <b>Xoá video sau khi đăng</b> cho từng thư mục: video đã đăng thành công và đã comment xong (hoặc không cần comment) sẽ được tự chuyển cả thư mục vào Thùng rác sau số ngày bạn chọn, tính từ giờ đăng. Link được ghi vào danh sách "Video đã xoá" để không tải lại. Tối thiểu 2 ngày vì app đếm giới hạn 24 giờ và số bài mỗi ngày dựa trên video còn trong thư mục. Thống kê bài đăng chỉ tính video còn trong thư mục.</p>
+        <div id="ps-folder-list"></div>
+      </div>
       <div class="panel" id="ps-pool">
         <h2>Kho comment của Fanpage</h2>
         <p class="hint">Lưu sẵn nhiều comment. Mỗi video, đến lúc đăng app chọn ngẫu nhiên một câu trong kho của Page này (cố gắng không trùng câu vừa dùng ngay trước đó). Câu đã chọn được giữ nguyên nếu phải thử lại. Video có comment riêng (nút "Sửa nội dung") thì dùng comment riêng.</p>
