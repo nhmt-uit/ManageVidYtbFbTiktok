@@ -121,10 +121,10 @@ function follow(jobId, pre, bar, onDone) {
 // app.page = Fanpage đang làm việc ("" = các màn hình chung: Tổng quan, Kết nối Fanpage, Cài đặt chung, Nhật ký)
 const app = { page: "", tab: "", last: "", view: "" };   // last = Page làm việc gần nhất (giữ lựa chọn khi qua Tổng quan rồi quay lại)
 const PAGE_TABS = ["download", "library", "calendar", "stats", "pagesettings", "jobs"];
-const GLOBAL_VIEWS = ["overview", "download", "editor", "folders", "fanpages", "settings", "jobs"];
+const GLOBAL_VIEWS = ["overview", "download", "videos", "folders", "fanpages", "settings", "jobs"];
 const DEFAULT_TZ = "Asia/Ho_Chi_Minh";
 
-function curPage() { return pg.list.find((p) => p.id === app.page); }
+function curPage() { return pg.list.find((p) => p.id === libPageId()); }
 function pageTz(p = curPage()) { return (p && p.effective && p.effective.tz) || DEFAULT_TZ; }
 function setHash(h) { history.replaceState(null, "", "#" + h); }
 
@@ -141,7 +141,7 @@ $("#subtabs").addEventListener("click", (e) => {
 });
 
 function activateSection(name) {
-  const id = name === "fanpages" ? "fanpage" : name;   // màn hình "Kết nối Fanpage" nằm trong #tab-fanpage
+  const id = { fanpages: "fanpage", videos: "library" }[name] || name;   // "Kết nối Fanpage" là #tab-fanpage; màn hình Video dùng chung #tab-library
   $$(".tab").forEach((s) => s.classList.toggle("active", s.id === "tab-" + id));
 }
 function applyMode() {
@@ -154,6 +154,8 @@ function applyMode() {
 // Màn hình chung (không thuộc Fanpage nào)
 async function showView(name, sub) {
   if (name === "comment" || name === "token") { sub = name; name = "settings"; }   // đường dẫn cũ
+  if (name === "editor") name = "videos";   // màn hình "Chỉnh sửa video" cũ đã gộp vào Video
+  const wasVideos = app.view === "videos";
   if (!GLOBAL_VIEWS.includes(name)) name = "overview";
   app.page = "";
   app.tab = "";
@@ -164,7 +166,10 @@ async function showView(name, sub) {
   setHash(name);
   if (name === "overview") loadOverview();
   if (name === "download") renderDlHeader();   // tải video không gắn Fanpage
-  if (name === "editor") loadEditorList();     // chỉnh sửa video không gắn Fanpage
+  if (name === "videos") {   // mọi video, lọc theo Page / thư mục / trạng thái
+    if (!wasVideos) { lib.selected.clear(); lib.videos = []; selMsg("", true); }
+    loadLibrary();
+  }
   if (name === "folders") loadFolders();
   if (name === "fanpages") loadPages().then(renderFanpage);
   if (name === "settings") { loadSettings(); showSub(sub || ($("#subtabs .active") || {}).dataset?.sub); }
@@ -185,10 +190,11 @@ async function showPageTab(id, tab) {
     const busy = busyMsg();
     if (busy) { toast(busy, 6000); renderCtx(); return; }
   }
+  const fromVideos = app.view === "videos";
   app.page = id;
   app.tab = tab;
   app.view = "";
-  if (app.last !== id) resetForPage();
+  if (app.last !== id || fromVideos) resetForPage();
   app.last = id;
   applyMode();
   renderCtx();
@@ -409,23 +415,26 @@ function rememberPage(key, id) { try { localStorage.setItem(key, id); } catch (e
 function recalledPage(key) { try { return localStorage.getItem(key) || ""; } catch (e) { return ""; } }
 
 /* ---------- Thư viện ---------- */
-const lib = { videos: [], channels: [], selected: new Set(), root: "", status: "all", group: recalledPage("lib-group") === "1", reelcheck: { available: true, enabled: true } };
+const lib = { videos: [], selected: new Set(), root: "", status: "all", group: recalledPage("lib-group") === "1", reelcheck: { available: true, enabled: true },
+  scope: recalledPage("lib-scope") || "__all" };   // scope: ô Page của màn hình Video (__all, __none hoặc ID Page)
 // Video đã kiểm tra mà không đạt yêu cầu Reels: không chọn được, app cũng bỏ qua khi hẹn giờ
 function isBadReel(v) { return !v.scheduled && !!v.reel_check && v.reel_check.state === "error"; }
 // Loại thao tác hàng loạt áp dụng được cho video: new = lên lịch, cancel = huỷ lịch (đã hẹn, chưa đăng), rebook = hẹn lại (lỗi / không thấy), "" = không chọn được
 function selKind(v) {
-  if (!v.scheduled) return isBadReel(v) ? "" : "new";
-  if (v.scheduled === "?" || v.publish_status === "published") return "";
+  if (!v.scheduled) return isBadReel(v) ? "bad" : "new";   // bad: không đạt Reels, chỉ để xoá (không hẹn giờ được)
+  if (v.scheduled === "?") return "";
+  if (v.publish_status === "published") return edDeletable(v) ? "done" : "";   // done: đã đăng, chọn để xoá
+  if (!libPageId()) return "";   // huỷ / hẹn lại hàng loạt cần biết Page
   return ["error", "missing"].includes(v.publish_status) ? "rebook" : "cancel";
 }
 // Nút "Chọn tất cả" của từng tab chọn loại nào (tab Tất cả chỉ chọn video chưa lên lịch để không lỡ huỷ lịch hàng loạt)
-const SELALL_KINDS = { all: ["new"], new: ["new"], pending: ["cancel"], problem: ["cancel", "rebook"], published: [] };
+const SELALL_KINDS = { all: ["new"], new: ["new"], pending: ["cancel"], problem: ["cancel", "rebook"], published: ["done"] };
 const SELALL_TIP = {
   all: "Chọn mọi video chưa lên lịch đang hiển thị. Muốn chọn video đã hẹn hoặc bị lỗi, mở tab Chờ đăng hoặc Lỗi / quá giờ.",
   new: "Chọn mọi video chưa lên lịch đang hiển thị",
   pending: "Chọn mọi video đang chờ đăng đang hiển thị (để huỷ lịch)",
   problem: "Chọn mọi video lỗi / quá giờ đang hiển thị (để hẹn lại hoặc huỷ lịch)",
-  published: "Video đã đăng không có thao tác hàng loạt",
+  published: "Chọn mọi video đã đăng đang hiển thị (để xoá)",
 };
 // Nút công cụ nào có nghĩa ở tab nào: Kiểm tra Reels soát file video CHƯA hẹn giờ; Kiểm tra trạng thái hỏi Facebook về bài ĐÃ hẹn (bỏ qua bài đã đăng)
 const TAB_TOOLS = {
@@ -440,7 +449,7 @@ const TAB_HINT = {
   new: "Video chưa hẹn giờ: chọn rồi bấm Lên lịch. Kiểm tra Reels soát video có đạt yêu cầu Reels (dọc 9:16, 3 đến 90 giây) trước khi hẹn.",
   pending: "Bài đã hẹn, đang chờ đến giờ đăng. Kiểm tra trạng thái hỏi Facebook xem bài còn trên lịch không (phát hiện bài bạn đã xóa). Chọn bài rồi bấm Huỷ lịch để xóa hẹn.",
   problem: "Bài báo lỗi, quá giờ mà chưa đăng, hoặc không còn trên Facebook. Kiểm tra trạng thái để cập nhật lại; chọn bài rồi bấm Hẹn lại (hoặc Huỷ lịch với bài quá giờ).",
-  published: "Bài đã đăng thành công. Tab này không có thao tác hàng loạt và không cần kiểm tra thêm.",
+  published: "Bài đã đăng thành công. Chọn để xoá video (chuyển cả thư mục vào Thùng rác) khi không cần giữ nữa.",
 };
 function selectedBy(kind) {
   const byRel = new Map(lib.videos.map((v) => [v.rel, v]));
@@ -460,41 +469,62 @@ function mediaUrl(rel) {
   return "/media/" + rel.split("/").map(encodeURIComponent).join("/");
 }
 
+// Màn hình Video (không ở trong Page): xem mọi video, lọc theo Page ở ô #lib-scope
+function libGlobal() { return !app.page && app.view === "videos"; }
 async function loadLibrary() {
-  if (!app.page) return;
+  const global = libGlobal();
+  if (!app.page && !global) return;
+  const key = app.page || "__videos";
   try {
-    const pageId = app.page;
-    const d = await api("/api/library?page_id=" + encodeURIComponent(pageId));
-    if (pageId !== app.page) return;   // đã chuyển sang Page khác trong lúc chờ
+    const d = await api("/api/library" + (app.page ? "?page_id=" + encodeURIComponent(app.page) : ""));
+    if (key !== (app.page || (libGlobal() ? "__videos" : ""))) return;   // đã chuyển màn hình / Page trong lúc chờ
     lib.videos = d.videos;
-    lib.channels = d.channels;
     lib.root = d.root;
     lib.reelcheck = d.reelcheck || lib.reelcheck;
-    const valid = new Set(d.videos.filter((v) => selKind(v)).map((v) => v.rel));  // video không còn thao tác được (đã đăng...) thì tự bỏ chọn
+    await loadPages();
+    renderScopeSelect();
+    const valid = new Set(scopeVideos().filter((v) => selKind(v)).map((v) => v.rel));  // video không còn thao tác được thì tự bỏ chọn
     lib.selected = new Set([...lib.selected].filter((r) => valid.has(r)));
-    const sel = $("#lib-channel");
-    const cur = sel.value;
-    const hasRoot = d.videos.some((v) => !v.channel);
-    sel.innerHTML =
-      '<option value="__all">Tất cả thư mục</option>' +
-      (hasRoot ? '<option value="__root">(thư mục gốc)</option>' : "") +
-      d.channels.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
-    if ([...sel.options].some((o) => o.value === cur)) sel.value = cur;
-    // Bộ lọc thư mục chỉ có ích khi Page có từ 2 thư mục trở lên
-    const many = d.channels.length + (hasRoot ? 1 : 0) > 1;
-    sel.hidden = !many;
-    if (!many) sel.value = "__all";
+    renderChannelSelect();
     $("#lib-root").textContent = "Thư mục video: " + d.root;
     const un = $("#lib-unassigned");
-    un.hidden = !d.unassigned.length;
-    if (d.unassigned.length) un.textContent = `Có ${d.unassigned.length} thư mục chưa thuộc Page nào (${d.unassigned.map((i) => i.name).join(", ")}). Vào mục Thư mục để gán Page cho chúng.`;
-    await loadPages();
-    renderCtx();
+    un.hidden = global || !d.unassigned.length;   // màn hình Video đã có lựa chọn "Chưa gán Page"
+    if (!un.hidden) un.textContent = `Có ${d.unassigned.length} thư mục chưa thuộc Page nào (${d.unassigned.map((i) => i.name).join(", ")}). Vào mục Thư mục để gán Page cho chúng.`;
+    if (app.page) renderCtx();
     renderLibrary();
     loadFbStatus();
+    loadRemoved();
   } catch (e) {
     toast(e.message);
   }
+}
+// Ô Page (chỉ ở màn hình Video): Tất cả / Chưa gán / từng Page
+function renderScopeSelect() {
+  const sel = $("#lib-scope");
+  sel.hidden = !libGlobal();
+  if (sel.hidden) return;
+  if (lib.scope !== "__all" && lib.scope !== "__none" && !pg.list.some((p) => p.id === lib.scope)) lib.scope = "__all";
+  const n = (f) => lib.videos.filter(f).length;
+  sel.innerHTML = `<option value="__all">Tất cả Page (${lib.videos.length})</option>` +
+    `<option value="__none">Chưa gán Page (${n((v) => !v.owner)})</option>` +
+    pg.list.map((p) => `<option value="${esc(p.id)}">${esc(p.name)} (${n((v) => v.owner === p.id)})</option>`).join("");
+  sel.value = lib.scope;
+}
+function renderChannelSelect() {
+  const sel = $("#lib-channel");
+  const cur = sel.value;
+  const vs = scopeVideos();
+  const names = [...new Set(vs.filter((v) => v.channel).map((v) => v.channel))].sort((a, b) => a.localeCompare(b, "vi"));
+  const hasRoot = vs.some((v) => !v.channel);
+  sel.innerHTML = '<option value="__all">Tất cả thư mục</option>' + (hasRoot ? '<option value="__root">(thư mục gốc)</option>' : "") +
+    names.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+  sel.value = [...sel.options].some((o) => o.value === cur) ? cur : "__all";
+  sel.hidden = names.length + (hasRoot ? 1 : 0) < 2;   // chỉ có ích khi có từ 2 thư mục trở lên
+}
+function scopeVideos() {
+  if (!libGlobal() || lib.scope === "__all") return lib.videos;
+  if (lib.scope === "__none") return lib.videos.filter((v) => !v.owner);
+  return lib.videos.filter((v) => v.owner === lib.scope);
 }
 
 // Mỗi video thuộc đúng một nhóm: new (chưa lên lịch), published (đã đăng), problem (lỗi hoặc quá giờ chưa đăng), pending (đã hẹn, đang chờ đăng)
@@ -505,11 +535,15 @@ function videoGroup(v) {
   return "pending";
 }
 
+function editGroup(v) { return v.has_draft ? "draft" : v.edited ? "done" : "todo"; }
 function channelVideos() {
   const ch = $("#lib-channel").value || "__all";
-  return lib.videos.filter((v) => {
-    if (ch === "__root") return !v.channel;
-    return ch === "__all" || v.channel === ch;
+  const ed = $("#lib-edit").value || "all";
+  const q = ($("#lib-q").value || "").trim().toLowerCase();
+  return scopeVideos().filter((v) => {
+    if (ch === "__root" ? v.channel : (ch !== "__all" && v.channel !== ch)) return false;
+    if (ed !== "all" && editGroup(v) !== ed) return false;
+    return !q || (v.title + " " + v.folder).toLowerCase().includes(q);
   });
 }
 
@@ -534,13 +568,13 @@ function fmtShort(iso, tz) {
   const d = new Date(iso);
   if (isNaN(d)) return "";
   const o = { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" };
-  try { return d.toLocaleString("vi-VN", { ...o, timeZone: tz || (app.page ? pageTz() : undefined) }); }
+  try { return d.toLocaleString("vi-VN", { ...o, timeZone: tz || (libPageId() ? pageTz() : undefined) }); }
   catch (e) { return d.toLocaleString("vi-VN", o); }
 }
 
-function fmtSched(iso) {
+function fmtSched(iso, tz) {
   if (!iso || iso === "?") return "Đã lên lịch";
-  const s = fmtShort(iso);
+  const s = fmtShort(iso, tz);
   return s ? "Hẹn " + s : "Đã lên lịch";
 }
 
@@ -548,9 +582,11 @@ function safeLink(u) {
   return /^https:\/\/(www\.)?facebook\.com\//i.test(u || "") ? u : "";
 }
 
+// Múi giờ của Page đã hẹn video (màn hình Video có thể trộn nhiều Page)
+function videoTz(v) { return pageTz(pg.list.find((p) => p.id === v.page_id) || curPage()); }
 function publishBadge(v) {
   if (!v.scheduled) return '<span class="badge">Chưa lên lịch</span>';
-  const when = fmtSched(v.scheduled);
+  const when = fmtSched(v.scheduled, videoTz(v));
   switch (v.publish_status) {
     case "published": return `<span class="badge ok">Đã đăng · ${esc(when.replace(/^Hẹn /, ""))}</span>`;
     case "error": return `<span class="badge warn" title="${esc(v.publish_detail)}">Lỗi đăng</span>`;
@@ -704,7 +740,8 @@ function renderLibrary() {
         <div class="badges">
           ${publishBadge(v)}
           ${reelBadge(v)}
-          ${v.scheduled && v.page_name ? `<span class="badge">${esc(v.page_name)}</span>` : ""}
+          ${libGlobal() ? ownerBadge(v) : ""}
+          ${v.scheduled && v.page_name && (!libGlobal() || v.page_id !== v.owner) ? `<span class="badge" title="Page đã hẹn video này">${esc(v.page_name)}</span>` : ""}
           ${epLabel(v) ? `<span class="badge ep" title="${esc(v.series_name || "")}${v.series_manual ? " (đã sửa tay)" : ""}">${esc(epLabel(v))}</span>` : ""}
           ${v.affiliate ? '<span class="badge">Có link affiliate</span>' : ""}
           ${v.has_audio ? '<span class="badge" title="Đã tải kèm file audio.mp3 trong thư mục video này">Có MP3</span>' : ""}
@@ -721,6 +758,7 @@ function renderLibrary() {
         ${["error", "missing"].includes(v.publish_status) ? '<button class="link resched" type="button">Hẹn lại</button>' : ""}
         ${canManage(v) ? '<button class="link retime" type="button">Đổi giờ</button> <button class="link cancelsch" type="button">Huỷ lịch</button>' : ""}
         ${["pending", "retry", "error", "expired"].includes(v.comment_status) ? '<button class="link cnow" type="button">Comment ngay</button>' : ""}
+        ${edDeletable(v) ? '<button class="link vdel" type="button" title="Chuyển cả thư mục video vào Thùng rác của macOS">Xoá</button>' : ""}
       </div>
     </article>`;
   grid.innerHTML = lib.group ? groupedHtml(list, cardHtml) : list.map(cardHtml).join("");
@@ -732,12 +770,12 @@ function renderLibrary() {
   sa.disabled = !list.some((v) => kinds.includes(selKind(v)));
   sa.title = SELALL_TIP[lib.status] || "";
   // "Chọn đủ cho..." chỉ có nghĩa với video chưa lên lịch
-  const daysOk = ["all", "new"].includes(lib.status);
+  const daysOk = ["all", "new"].includes(lib.status) && !!libPageId();
   const sm = $("#sel-menu");
   $("summary", sm).classList.toggle("disabled", !daysOk);
   $("summary", sm).title = daysOk
     ? "Tự chọn đủ số video cho 1 tuần, 2 tuần hoặc 1 tháng, tính theo số bài mỗi ngày của Fanpage đang làm việc"
-    : "Chỉ dùng ở tab Tất cả hoặc Chưa lên lịch (chọn video để lên lịch)";
+    : (libPageId() ? "Chỉ dùng ở tab Tất cả hoặc Chưa lên lịch (chọn video để lên lịch)" : "Chọn một Page ở ô Page trước");
   if (!daysOk) sm.open = false;
   const rb = $("#lib-reels");
   rb.disabled = !lib.reelcheck.available;
@@ -746,9 +784,11 @@ function renderLibrary() {
     : "Chưa cài ffprobe (đi kèm ffmpeg) nên không kiểm tra được.";
   // Mỗi nút công cụ chỉ hiện ở tab có việc cho nó làm; Làm mới dùng được ở mọi tab
   const tools = TAB_TOOLS[lib.status] || TAB_TOOLS.all;
-  rb.hidden = !tools.reels;
-  $("#lib-check").hidden = !tools.check;
-  $("#lib-tabhint").textContent = (TAB_HINT[lib.status] || "") + " Làm mới: đọc lại thư mục video trên máy, không hỏi Facebook.";
+  const onePage = !!libPageId();   // kiểm tra Reels / trạng thái chạy theo một Page
+  rb.hidden = !tools.reels || !onePage;
+  $("#lib-check").hidden = !tools.check || !onePage;
+  $("#lib-scopehint").hidden = onePage;
+  $("#lib-tabhint").textContent = (onePage ? (TAB_HINT[lib.status] || "") + " " : "") + "Làm mới: đọc lại thư mục video trên máy, không hỏi Facebook.";
   updateSchedCount();
 
   if (observer) observer.disconnect();
@@ -765,8 +805,7 @@ function renderLibrary() {
   $$("video", grid).forEach((v) => observer.observe(v));
 }
 
-/* ---------- Chỉnh sửa video ngoài Fanpage: mọi video trong thư mục video ---------- */
-const edl = { videos: [], status: "all", channel: "__all", q: "", root: "", observer: null, selected: new Set() };
+/* ---------- Xoá video (cả thư mục, vào Thùng rác) và danh sách video đã xoá ---------- */
 const ED_COMMENT_FINISHED = ["done", "expired", "none", "error", "skipped"];
 // Xoá được: chưa lên lịch, hoặc đã đăng và không còn chờ tự comment (giống kiểm tra ở server, removed.blocked_reason)
 const ED_COMMENT_WINDOW_MS = (3 * 24 + 1) * 3600e3;   // commenter.MAX_AGE_DAYS (+1 giờ): quá hạn này app không tự comment nữa
@@ -776,23 +815,25 @@ function edDeletable(v) {
   const posted = Date.parse(v.scheduled);
   return ED_COMMENT_FINISHED.includes(v.comment_status) || (!isNaN(posted) && posted < Date.now() - ED_COMMENT_WINDOW_MS);
 }
-function edUpdateSel() {
-  const live = new Set(edl.videos.filter(edDeletable).map((v) => v.rel));
-  edl.selected.forEach((r) => { if (!live.has(r)) edl.selected.delete(r); });   // video đã mất / đã lên lịch thì bỏ chọn
-  const n = edl.selected.size;
-  $("#ed-delete").disabled = n === 0;
-  $("#ed-delete").textContent = n ? `Xoá ${n} video đã chọn` : "Xoá video đã chọn";
-  $("#ed-selnone").hidden = n === 0;
+function ownerBadge(v) {
+  if (!v.owner) return '<span class="badge warn" title="Thư mục của video chưa chọn Page Facebook (gán ở mục Thư mục)">Chưa gán Page</span>';
+  const p = pg.list.find((x) => x.id === v.owner);
+  return `<span class="badge" title="Page Facebook của thư mục">${esc(p ? p.name : v.owner)}</span>`;
 }
-async function edDelete(rels) {
-  const byRel = new Map(edl.videos.map((v) => [v.rel, v]));
+function deletableSelected() {
+  const byRel = new Map(lib.videos.map((v) => [v.rel, v]));
+  return [...lib.selected].filter((r) => byRel.has(r) && edDeletable(byRel.get(r)));
+}
+async function libDelete(rels) {
+  if (!rels.length) return;
+  const byRel = new Map(lib.videos.map((v) => [v.rel, v]));
   const names = rels.slice(0, 5).map((r) => "• " + ((byRel.get(r) || {}).title || r).slice(0, 70)).join("\n") + (rels.length > 5 ? `\n… và ${rels.length - 5} video khác` : "");
   if (!confirm(`Xoá ${rels.length} video?\n\n${names}\n\nCả thư mục của từng video (video, phụ đề, bản nháp…) sẽ được chuyển vào Thùng rác của macOS (lấy lại được từ Thùng rác). Link video được ghi lại để lần sau tải sẽ bỏ qua.`)) return;
-  const btn = $("#ed-delete");
+  const btn = $("#selbar-del");
   btn.disabled = true;
   try {
     const r = await api("/api/videos/delete", "POST", { rels, confirm: true });
-    r.deleted.forEach((x) => edl.selected.delete(x.rel));
+    r.deleted.forEach((x) => lib.selected.delete(x.rel));
     if (r.errors.length) {
       toast(`Đã xoá ${r.deleted.length} video. ${r.errors.length} video không xoá được: ` + r.errors.slice(0, 3).map((x) => x.error).join(" | "), 9000);
     } else {
@@ -800,8 +841,10 @@ async function edDelete(rels) {
     }
   } catch (e) {
     toast(e.message);
+  } finally {
+    btn.disabled = false;
   }
-  await loadEditorList();
+  await loadLibrary();
 }
 async function loadRemoved() {
   try {
@@ -816,94 +859,6 @@ async function loadRemoved() {
       </li>`).join("") + "</ol>" : '<p class="hint">Chưa xoá video nào.</p>';
   } catch (e) { /* không chặn danh sách video */ }
 }
-function edGroup(v) { return v.has_draft ? "draft" : v.edited ? "done" : "todo"; }
-async function loadEditorList() {
-  try {
-    const d = await api("/api/library");
-    if (app.view !== "editor") return;
-    edl.videos = d.videos;
-    edl.root = d.root;
-    const sel = $("#ed-channel");
-    const cur = sel.value || edl.channel;
-    const hasRoot = d.videos.some((v) => !v.channel);
-    sel.innerHTML = '<option value="__all">Tất cả thư mục</option>' + (hasRoot ? '<option value="__root">(thư mục gốc)</option>' : "")
-      + d.channels.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
-    sel.value = [...sel.options].some((o) => o.value === cur) ? cur : "__all";
-    edl.channel = sel.value;
-    sel.hidden = d.channels.length + (hasRoot ? 1 : 0) < 2;
-    await loadPages();
-    renderEditorList();
-    loadRemoved();
-  } catch (e) { toast(e.message); }
-}
-function edFiltered() {
-  const q = edl.q.trim().toLowerCase();
-  return edl.videos.filter((v) => (edl.status === "all" || edGroup(v) === edl.status)
-    && (edl.channel === "__all" || (edl.channel === "__root" ? !v.channel : v.channel === edl.channel))
-    && (!q || (v.title + " " + v.folder).toLowerCase().includes(q)));
-}
-function renderEditorList() {
-  const list = edFiltered();
-  const count = (st) => edl.videos.filter((v) => st === "all" || edGroup(v) === st).length;
-  $$("#ed-status button").forEach((b) => { b.classList.toggle("active", b.dataset.st === edl.status); $("b", b).textContent = count(b.dataset.st); });
-  $("#ed-root").textContent = (edl.root ? "Thư mục video: " + edl.root + ". " : "") + `Hiển thị ${list.length} video.`;
-  $("#ed-empty").hidden = edl.videos.length > 0;
-  const pageName = (v) => { const p = pg.list.find((x) => x.id === v.owner); return p ? p.name || p.label || p.id : ""; };
-  edUpdateSel();
-  $("#ed-grid").innerHTML = list.map((v) => `
-    <article class="card" data-rel="${esc(v.rel)}">
-      ${edDeletable(v) ? `<label class="pick" title="Chọn để xoá"><input type="checkbox" class="ed-pick" ${edl.selected.has(v.rel) ? "checked" : ""}></label>` : ""}
-      <video data-src="${esc(mediaUrl(v.rel) + ("?e=" + v.size_mb))}" controls playsinline muted preload="none"></video>
-      <div class="meta">
-        <h4 title="${esc(v.title)}">${esc(v.title)}</h4>
-        <p class="sub">${esc(v.date)} · ${v.size_mb} MB${v.channel ? " · " + esc(v.channel) : ""}</p>
-        <div class="badges">
-          ${v.has_draft ? '<span class="badge warn" title="Có bản chỉnh sửa nháp chưa duyệt">Chờ duyệt bản chỉnh</span>' : ""}
-          ${v.edited ? '<span class="badge ok" title="Đã chỉnh sửa và duyệt (đã thay video gốc)">Đã chỉnh sửa video</span>' : ""}
-          ${v.has_subs ? '<span class="badge">Có phụ đề</span>' : ""}
-          ${v.scheduled ? (v.publish_status === "published"
-            ? '<span class="badge ok" title="Đã đăng lên Fanpage">Đã đăng</span>'
-            : '<span class="badge warn" title="Đã hẹn lên lịch: huỷ lịch trong Fanpage trước khi chỉnh sửa hoặc xoá">Đã lên lịch</span>') : ""}
-          ${pageName(v) ? `<span class="badge">${esc(pageName(v))}</span>` : ""}
-        </div>
-        <div class="actions">
-          ${v.scheduled ? "" : '<button class="primary vedit" type="button">Chỉnh sửa video</button>'}
-          ${edDeletable(v) ? '<button class="ghost vdel" type="button" title="Chuyển cả thư mục video vào Thùng rác">Xoá</button>' : ""}
-        </div>
-      </div>
-    </article>`).join("");
-  if (edl.observer) edl.observer.disconnect();
-  edl.observer = new IntersectionObserver((entries) => {
-    entries.forEach((en) => {
-      if (en.isIntersecting) {
-        const vid = en.target;
-        vid.preload = "metadata";
-        vid.src = vid.dataset.src + "#t=0.5";
-        edl.observer.unobserve(vid);
-      }
-    });
-  }, { rootMargin: "200px" });
-  $$("video", $("#ed-grid")).forEach((v) => edl.observer.observe(v));
-}
-$("#ed-status").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { edl.status = b.dataset.st; renderEditorList(); } });
-$("#ed-channel").addEventListener("change", (e) => { edl.channel = e.target.value; renderEditorList(); });
-$("#ed-q").addEventListener("input", (e) => { edl.q = e.target.value; renderEditorList(); });
-$("#ed-refresh").addEventListener("click", loadEditorList);
-$("#ed-grid").addEventListener("click", (e) => {
-  const card = e.target.closest(".card");
-  if (!card) return;
-  if (e.target.classList.contains("vedit")) openVideoEdit(card.dataset.rel);
-  if (e.target.classList.contains("vdel")) edDelete([card.dataset.rel]);
-});
-$("#ed-grid").addEventListener("change", (e) => {
-  if (!e.target.classList.contains("ed-pick")) return;
-  const rel = e.target.closest(".card").dataset.rel;
-  if (e.target.checked) edl.selected.add(rel); else edl.selected.delete(rel);
-  edUpdateSel();
-});
-$("#ed-selall").addEventListener("click", () => { edFiltered().filter(edDeletable).forEach((v) => edl.selected.add(v.rel)); renderEditorList(); });
-$("#ed-selnone").addEventListener("click", () => { edl.selected.clear(); renderEditorList(); });
-$("#ed-delete").addEventListener("click", () => { if (edl.selected.size) edDelete([...edl.selected]); });
 $("#ed-removed-list").addEventListener("click", async (e) => {
   if (!e.target.classList.contains("ed-forget")) return;
   const li = e.target.closest("li");
@@ -911,10 +866,25 @@ $("#ed-removed-list").addEventListener("click", async (e) => {
   try { await api("/api/removed/forget", "POST", { id: li.dataset.id }); loadRemoved(); }
   catch (err) { toast(err.message); }
 });
+$("#selbar-del").addEventListener("click", () => libDelete(deletableSelected()));
+$("#lib-scope").addEventListener("change", (e) => {
+  lib.scope = e.target.value;
+  rememberPage("lib-scope", lib.scope);
+  lib.selected.clear();
+  selMsg("", true);
+  renderChannelSelect();
+  loadFbStatus();
+  renderLibrary();
+});
+$("#lib-edit").addEventListener("change", renderLibrary);
+$("#lib-q").addEventListener("input", renderLibrary);
 
 // Fanpage đang làm việc (chọn ở thanh trên cùng, trước khi vào Thư viện)
+// Page đang dùng cho các thao tác theo Page (hẹn lịch, huỷ hàng loạt, kiểm tra): Page đang làm việc,
+// hoặc Page chọn ở ô Page của màn hình Video ("" = đang xem nhiều Page / chưa gán)
 function libPageId() {
-  return app.page;
+  if (app.page) return app.page;
+  return app.view === "videos" && pg.list.some((p) => p.id === lib.scope) ? lib.scope : "";
 }
 
 function updateSchedCount() {
@@ -927,14 +897,17 @@ function updateSchedCount() {
   if (nRebook) parts.push(`${nRebook} lỗi`);
   $("#selbar-count").textContent = `Đã chọn ${n} video` + (parts.length > 1 ? ` (${parts.join(", ")})` : "");
   $("#selbar").hidden = n === 0;
-  $("#selbar-go").hidden = nNew === 0;
+  $("#selbar-go").hidden = nNew === 0 || !libPageId();
   $("#selbar-go").textContent = `Lên lịch (${nNew})...`;
   $("#selbar-cancel").hidden = nCancel === 0;
   $("#selbar-cancel").textContent = `Huỷ lịch (${nCancel})`;
   $("#selbar-rebook").hidden = nRebook === 0;
   $("#selbar-rebook").textContent = `Hẹn lại (${nRebook})`;
+  const nDel = deletableSelected().length;
+  $("#selbar-del").hidden = nDel === 0;
+  $("#selbar-del").textContent = `Xoá (${nDel})`;
   // Nút Lên lịch ở thanh trên chỉ hiện ở tab có video chưa lên lịch (hoặc khi đang chọn video loại đó)
-  $("#lib-sched").hidden = !(["all", "new"].includes(lib.status) || nNew > 0);
+  $("#lib-sched").hidden = !libPageId() || !(["all", "new"].includes(lib.status) || nNew > 0);
   $("#lib-sched").textContent = nNew ? `Lên lịch (${nNew})...` : "Lên lịch...";
   refreshSchedButtons();
 }
@@ -970,6 +943,7 @@ $("#lib-grid").addEventListener("change", (e) => {
 $("#lib-grid").addEventListener("click", (e) => {
   if (e.target.classList.contains("edit")) openEdit(e.target.closest(".card").dataset.rel);
   if (e.target.classList.contains("vedit")) openVideoEdit(e.target.closest(".card").dataset.rel);
+  if (e.target.classList.contains("vdel")) libDelete([e.target.closest(".card").dataset.rel]);
   if (e.target.classList.contains("sedit")) editSeries(e.target.closest(".card").dataset.rel);
   const grp = e.target.closest(".grp");
   if (grp && e.target.classList.contains("gsel")) selectGroup(grp.dataset.gk);
@@ -980,7 +954,7 @@ $("#lib-grid").addEventListener("click", (e) => {
   if (card && e.target.classList.contains("cancelsch")) cancelSched(card.dataset.rel);
   if (card && e.target.classList.contains("retime")) {
     const v = lib.videos.find((x) => x.rel === card.dataset.rel);
-    if (v) openRetime(v.rel, v.title, v.scheduled);
+    if (v) openRetime(v.rel, v.title, v.scheduled, videoTz(v));
   }
 });
 $("#lib-channel").addEventListener("change", renderLibrary);
@@ -1121,7 +1095,7 @@ async function cancelMany(rels) {
     "Nếu Facebook từ chối xóa hoặc đang giới hạn lượt gọi, bài đó giữ nguyên trong app (vẫn nằm trong Chờ đăng) để hai bên không bị lệch.")) return;
   bulkRunning = true;
   $("#selbar-cancel").disabled = true;
-  const pageId = app.page;
+  const pageId = libPageId();
   try {
     const r = await api("/api/sched/cancel-many", "POST", { page_id: pageId, rels });
     toast(`Đang huỷ lịch ${n} bài...`, 600000);
@@ -1135,7 +1109,7 @@ async function cancelMany(rels) {
     rels.filter((x) => !kept.has(x)).forEach((x) => lib.selected.delete(x));   // bài đã xử lý xong thì bỏ chọn
     bulkRunning = false;
     $("#selbar-cancel").disabled = false;
-    if (pageId === app.page) await reloadSchedViews();
+    if (pageId === libPageId()) await reloadSchedViews();
     // Bài không huỷ được VẪN còn trên Facebook và sẽ được đăng: nói rõ, không để lướt qua
     const notes = [];
     if (data.rate_limited) {
@@ -1171,7 +1145,7 @@ async function rebookMany(rels) {
     "Hãy chắc chắn các bài này không còn nằm trong Meta Business Suite (mục Nội dung đã lên lịch) để tránh đăng trùng.")) return;
   bulkRunning = true;
   try {
-    const r = await api("/api/reschedule-many", "POST", { page_id: app.page, rels });
+    const r = await api("/api/reschedule-many", "POST", { page_id: libPageId(), rels });
     rels.forEach((x) => lib.selected.delete(x));
     toast(`Đã gỡ lịch cũ của ${r.done} video, chúng đã về "Chưa lên lịch".` + (r.failed.length ? ` ${r.failed.length} video không gỡ được: ${r.failed[0].error}` : ""), 8000);
     await loadLibrary();
@@ -1196,10 +1170,10 @@ function inputInTz(iso, tz) {
   return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
 }
 const rt = { rel: "", busy: false };
-function openRetime(rel, title, whenIso) {
+function openRetime(rel, title, whenIso, tzOverride) {
   rt.rel = rel;
-  const tz = pageTz();
-  $("#rt-info").textContent = `${title || ""}. Giờ hiện tại: ${fmtShort(whenIso)}.`;
+  const tz = tzOverride || pageTz();
+  $("#rt-info").textContent = `${title || ""}. Giờ hiện tại: ${fmtShort(whenIso, tz)}.`;
   $("#rt-tz").textContent = `(múi giờ ${tz})`;
   $("#rt-when").value = inputInTz(whenIso, tz);
   $("#rt-msg").textContent = "";
@@ -1280,13 +1254,13 @@ async function waitJob(id, onTick) {
 $("#lib-reels").addEventListener("click", async (e) => {
   const btn = $("#lib-reels");
   btn.disabled = true;
-  const pageId = app.page;
+  const pageId = libPageId();
   try {
     const r = await api("/api/reelcheck", "POST", { page_id: pageId, force: e.shiftKey });
     toast("Đang kiểm tra video...", 120000);
     const j = await waitJob(r.job, (s) => { if (s.progress.total) toast(`Đang kiểm tra video ${s.progress.done}/${s.progress.total}...`, 120000); });
     toast(j.status === "done" ? j.result : "Kiểm tra chưa xong: " + j.result, 8000);
-    if (pageId === app.page) loadLibrary();
+    if (pageId === libPageId()) loadLibrary();
   } catch (err) {
     toast(err.message, 7000);
   } finally {
@@ -1296,14 +1270,14 @@ $("#lib-reels").addEventListener("click", async (e) => {
 $("#lib-check").addEventListener("click", async () => {
   const btn = $("#lib-check");
   btn.disabled = true;
-  const pageId = app.page;
+  const pageId = libPageId();
   toast("Đang hỏi Facebook...", 600000);
   try {
     const r = await api("/api/status/check", "POST", { page_id: pageId });
     if (!r.job) { toast(r.result, 7000); return; }
     const j = await waitJob(r.job, (s) => { if (s.progress.total) toast(`Đang kiểm tra trạng thái ${s.progress.done}/${s.progress.total}...`, 600000); });
     toast(j.status === "error" ? "Kiểm tra chưa xong: " + j.result : j.result, 15000);
-    if (pageId === app.page) await loadLibrary();
+    if (pageId === libPageId()) await loadLibrary();
   } catch (e) {
     toast(e.message, 7000);
   } finally {
@@ -1706,7 +1680,7 @@ async function veLoad(keepView) {
 }
 async function openVideoEdit(rel) {
   ve.rel = rel;
-  const v = lib.videos.find((x) => x.rel === rel) || edl.videos.find((x) => x.rel === rel);
+  const v = lib.videos.find((x) => x.rel === rel);
   $("#ve-name").textContent = v ? v.title : rel;
   try {
     await veLoad();
@@ -1735,7 +1709,7 @@ async function veSaveCues() {
   return r.cues;
 }
 $("#ve-close").addEventListener("click", () => $("#ve-dlg").close());
-$("#ve-dlg").addEventListener("close", () => { $("#ve-video").pause(); loadLibrary(); if (!app.page && app.view === "editor") loadEditorList(); });
+$("#ve-dlg").addEventListener("close", () => { $("#ve-video").pause(); loadLibrary(); });
 $("#ve-dlg").addEventListener("click", (e) => { if (e.target === $("#ve-dlg") && !ve.busy) $("#ve-dlg").close(); });
 document.querySelectorAll("input[name=ve-view]").forEach((r) => r.addEventListener("change", (e) => veSetView(e.target.value)));
 $("#ve-video").addEventListener("timeupdate", () => { veCap(); veCover(); });
@@ -1906,7 +1880,7 @@ let scIntervalSet = false;
 
 // Kiểu hẹn: "Cách nhau cố định" dùng khoảng giờ; "Tự xếp" dùng khung giờ trong quy tắc của Page
 function syncSchedMode() {
-  const cur = pg.list.find((x) => x.id === app.page);
+  const cur = pg.list.find((x) => x.id === libPageId());
   const bn = $("#sc-block-note");
   bn.hidden = !(cur && cur.blocked_until);
   if (!bn.hidden) bn.textContent = `Facebook đang giới hạn tần suất đăng của Page này đến khoảng ${fmtShort(cur.blocked_until, pageTz(cur))}. Chưa nên hẹn thêm lúc này (vẫn xem trước được).`;
@@ -1917,7 +1891,7 @@ function syncSchedMode() {
   hint.hidden = !auto;
   $("#sc-partial-wrap").hidden = !auto;
   if (!auto) return;
-  const p = pg.list.find((x) => x.id === app.page);
+  const p = pg.list.find((x) => x.id === libPageId());
   const r = p && p.schedule;
   if (!r || !r.slots.length) {
     hint.className = "hint bad";
@@ -1950,7 +1924,7 @@ async function startSchedule(dry) {
   refreshSchedButtons();
   try {
     const r = await api("/api/schedule", "POST", {
-      page_id: app.page,
+      page_id: libPageId(),
       rels: newRels,
       start,
       interval_hours: $("#sc-interval").value,

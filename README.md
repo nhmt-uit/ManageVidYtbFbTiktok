@@ -65,6 +65,14 @@ Nếu bạn đã dùng bản một Page: Page cũ, token, kho comment và công 
    - Ô **Tải về** cho chọn **Chỉ âm thanh (MP3 320 kbps)**: mỗi video lưu thành `audio.mp3` trong thư mục con của video. Nếu video đó đã được tải rồi (kể cả khi tiêu đề trên YouTube đã đổi), MP3 vào đúng thư mục của video, không ghi đè tiêu đề hay mô tả. MP3 chống trùng riêng theo file `audio.mp3` trong các thư mục của Page. Thư mục chỉ có MP3 không hiện ở Thư viện và không dùng để hẹn đăng. Video có kèm MP3 hiện nhãn "Có MP3". Cần ffmpeg (đã cần sẵn để ghép video). Tải xong mà không thấy file (ví dụ thiếu ffmpeg) thì tính là lỗi và app dọn thư mục vừa tạo.
 4. Tab **Thư viện & Lên lịch**: tích chọn video rồi bấm **Lên lịch...** (nút ở thanh trên hoặc ở thanh nổi phía dưới). Cửa sổ **Lên lịch đăng lên Fanpage** hiện ra, Fanpage và múi giờ lấy theo Page đang làm việc (muốn đổi Page, đóng cửa sổ rồi chuyển Page ở thanh phía trên): chọn kiểu hẹn giờ (cách nhau cố định hoặc tự xếp theo khung giờ của Page), bấm **Xem trước kế hoạch** rồi **Lên lịch đăng**. Cửa sổ này đóng được bất cứ lúc nào (nút Đóng, phím Esc hoặc bấm ra ngoài); tác vụ đang chạy vẫn tiếp tục. Nên thử với 1 video trước. Facebook chỉ cho hẹn giờ trong khoảng từ 10 phút đến 29 ngày kể từ bây giờ; app kiểm tra trước và báo nếu video cuối cùng vượt giới hạn này.
 
+## Màn hình Video
+
+Mục **Video** trên thanh trên cùng hiện mọi video, không cần vào Page. Lọc bằng ô **Page** (Tất cả Page / Chưa gán Page / từng Page, có số video), ô thư mục, ô **Chỉnh sửa** (chưa sửa / chờ duyệt / đã sửa), ô tìm theo tên và các tab trạng thái (Chưa lên lịch, Chờ đăng, Đã đăng, Lỗi / quá giờ). Mỗi thẻ ghi Page của thư mục (hoặc "Chưa gán Page").
+
+- Làm được ở mọi phạm vi: chỉnh sửa video, sửa nội dung, sửa phim / tập, xoá (từng video hoặc chọn nhiều), đổi giờ / huỷ lịch / hẹn lại từng bài, comment ngay. Giờ hẹn hiện theo múi giờ của Page đã hẹn bài.
+- Cần chọn một Page ở ô Page: Lên lịch, Chọn đủ cho..., huỷ lịch / hẹn lại hàng loạt, Kiểm tra Reels, Kiểm tra trạng thái.
+- Thư viện trong từng Fanpage vẫn dùng như cũ (cùng một màn hình, chỉ cố định Page).
+
 ## Thư mục video và nơi đăng
 
 Mục **Thư mục** (thanh trên cùng) liệt kê mọi thư mục video, kể cả thư mục trống, với số video chưa hẹn / chờ đăng / đã đăng.
@@ -149,7 +157,7 @@ Tab **Thống kê** của từng Page giúp cân nhắc trước khi hẹn thêm
 
 ## Chỉnh sửa video (phụ đề, giọng đọc, khung 9:16)
 
-**Mở ở đâu:** mục **Chỉnh sửa video** trên thanh trên cùng (cạnh Tải video) liệt kê mọi video trong thư mục video, không cần chọn Fanpage; lọc theo tình trạng (chưa chỉnh sửa, chờ duyệt, đã chỉnh sửa), theo thư mục kênh hoặc tìm theo tên. Trong một Fanpage, thẻ video ở Thư viện vẫn có nút **Chỉnh sửa video** như cũ. Cả hai cùng mở một hộp thoại chỉnh sửa.
+**Mở ở đâu:** nút **Chỉnh sửa video** trên thẻ video (chỉ hiện với video chưa lên lịch), ở mục **Video** trên thanh trên cùng hoặc ở Thư viện trong một Fanpage. Lọc video theo tình trạng chỉnh sửa (chưa chỉnh sửa, chờ duyệt bản sửa, đã chỉnh sửa) bằng ô "Chỉnh sửa" của mục Video.
 
 Facebook giảm phân phối video đăng lại nguyên bản. Nút **Chỉnh sửa video** trên mỗi thẻ ở Thư viện (chỉ hiện với video chưa lên lịch) giúp thêm giá trị thật vào video trước khi đăng:
 
@@ -192,10 +200,10 @@ Cài công cụ một lần: `bash tools/install_editor_tools.sh` (FFmpeg, whisp
 
 ### Xoá video
 
-Ở mục **Chỉnh sửa video**, tick ô ở góc video (hoặc **Chọn tất cả đang hiện**) rồi bấm **Xoá video đã chọn**, hoặc bấm **Xoá** trên từng video. Cả thư mục của video (video, phụ đề, bản nháp...) được chuyển vào **Thùng rác của macOS**, lấy lại được từ Thùng rác. Nếu macOS hỏi cho app điều khiển Finder (khi thư mục nằm ở ổ khác), hãy cho phép.
+Ở mục **Video** (hoặc Thư viện của một Page), tick ô ở góc video rồi bấm **Xoá (N)** trên thanh chọn, hoặc bấm **Xoá** trên từng video. Tab **Đã đăng** có **Chọn tất cả** để dọn các video đã đăng. Cả thư mục của video (video, phụ đề, bản nháp...) được chuyển vào **Thùng rác của macOS**, lấy lại được từ Thùng rác. Nếu macOS hỏi cho app điều khiển Finder (khi thư mục nằm ở ổ khác), hãy cho phép.
 
 - Không xoá được video đã hẹn lịch (huỷ lịch trong Fanpage trước), video đã đăng mà app còn chờ tự comment, hoặc khi đang có tác vụ chỉnh sửa / hẹn lịch / huỷ lịch chạy.
-- **Ghi nhớ video đã xoá:** ID, link, tiêu đề, thư mục và ngày xoá được ghi vào `removed_videos.json` (đã gitignore). Khi tải video, link của video đã xoá được bỏ qua (nhật ký ghi "đã tải và xoá ngày ...") và được xoá khỏi file .txt như link đã tải. Muốn tải lại: tick **Tải lại cả video đã xoá trước đây** ở tab Tải video, hoặc bấm **Cho tải lại** trong mục **Video đã xoá** (cuối trang Chỉnh sửa video). Tải lại xong thì video tự ra khỏi danh sách đã xoá.
+- **Ghi nhớ video đã xoá:** ID, link, tiêu đề, thư mục và ngày xoá được ghi vào `removed_videos.json` (đã gitignore). Khi tải video, link của video đã xoá được bỏ qua (nhật ký ghi "đã tải và xoá ngày ...") và được xoá khỏi file .txt như link đã tải. Muốn tải lại: tick **Tải lại cả video đã xoá trước đây** ở tab Tải video, hoặc bấm **Cho tải lại** trong mục **Video đã xoá** (cuối trang Video). Tải lại xong thì video tự ra khỏi danh sách đã xoá.
 - Chỉ ghi nhớ video có ID (video tải bằng app). Sổ áp dụng chung cho mọi Page. Video đã xoá trước khi có tính năng này thì app không biết.
 - **Tự xoá sau khi đăng (theo từng thư mục):** mục **Thư mục**, ở thư mục muốn dọn tick **Xoá video sau khi đăng**, chọn số ngày (2 đến 365, mặc định 3) rồi bấm **Lưu tự xoá**. Cài đặt lưu trong `channel.json` của thư mục. Tiến trình nền kiểm tra 30 phút một lần và chuyển vào Thùng rác những video: đã đăng thành công; đã comment xong, không cần comment, hoặc đã quá hạn tự comment (3 ngày sau giờ đăng); giờ đăng cũ hơn số ngày đã chọn; lần hẹn giờ cũ hơn 25 giờ. Video được ghi vào danh sách Video đã xoá như khi xoá tay. Xoá lỗi thì ghi nhật ký (Nhật ký > Tự động comment) và 6 giờ sau mới thử lại. Tối thiểu 2 ngày vì giới hạn 24 giờ và số bài mỗi ngày của Page được đếm từ các video còn trong thư mục. **Thống kê bài đăng chỉ tính video còn trong thư mục**, nên đặt số ngày lớn hơn nếu muốn xem thống kê đủ 14 ngày.
 - Video đã đăng nhưng Page đang tắt tự comment: sau 3 ngày (hạn tự comment) app coi như không comment nữa, xoá tay hay tự xoá đều được.
@@ -346,7 +354,7 @@ Cách Facebook trả trạng thái Reel có thể thay đổi. Nếu bạn thấ
 
 Video đã có ở một thư mục của chính Page đang làm việc (nhận theo ID YouTube) sẽ không bị tải lại. Trong một Page, một video YouTube cũng chỉ được hẹn giờ một lần, kể cả khi nó nằm ở nhiều thư mục hoặc bị chọn trùng. Page khác có kho video riêng nên có thể dùng lại cùng video nếu bạn muốn.
 
-Video đã tải rồi **xoá** (ở mục Chỉnh sửa video) cũng không bị tải lại, ở mọi Page, vì app ghi nhớ trong `removed_videos.json`; tick **Tải lại cả video đã xoá trước đây** khi muốn tải lại (xem phần Xoá video).
+Video đã tải rồi **xoá** (ở mục Video) cũng không bị tải lại, ở mọi Page, vì app ghi nhớ trong `removed_videos.json`; tick **Tải lại cả video đã xoá trước đây** khi muốn tải lại (xem phần Xoá video).
 
 ## Tự động comment (link affiliate...)
 

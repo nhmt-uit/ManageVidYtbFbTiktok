@@ -12,7 +12,7 @@
     <nav class="tabs" id="gtabs" aria-label="Chung">
       <button data-view="overview" class="active">Tổng quan</button>
       <button data-view="download">Tải video</button>
-      <button data-view="editor">Chỉnh sửa video</button>
+      <button data-view="videos">Video</button>
       <button data-view="folders">Thư mục</button>
       <button data-view="fanpages">Kết nối Fanpage</button>
       <button data-view="settings">Cài đặt chung</button>
@@ -121,7 +121,7 @@
           <label>Ghi chú sự đồng ý của chủ kênh
             <input id="dl-note" placeholder="Ví dụ: Chủ kênh đồng ý qua tin nhắn ngày 27/10/2026">
           </label>
-          <label class="check" title="Mặc định app bỏ qua video đã tải rồi xoá (danh sách ở mục Chỉnh sửa video > Video đã xoá)">
+          <label class="check" title="Mặc định app bỏ qua video đã tải rồi xoá (danh sách ở mục Video > Video đã xoá)">
             <input id="dl-again" type="checkbox">
             <span>Tải lại cả video đã xoá trước đây</span>
           </label>
@@ -141,38 +141,6 @@
     </section>
 
     <!-- THƯ VIỆN & LÊN LỊCH -->
-    <!-- CHỈNH SỬA VIDEO (không thuộc Fanpage nào) -->
-    <section id="tab-editor" class="tab">
-      <h2 class="ov-title">Chỉnh sửa video</h2>
-      <p class="hint">Chỉnh sửa mọi video trong thư mục video mà không cần chọn Fanpage: phiên âm, phụ đề, che sub gốc, làm sạch âm thanh, hook 3 giây đầu, khung 9:16. Video đã hẹn lên lịch thì phải huỷ lịch (trong Fanpage) trước khi chỉnh.</p>
-      <div class="lib-bar">
-        <div class="seg" id="ed-status" role="group" aria-label="Lọc theo tình trạng chỉnh sửa">
-          <button type="button" data-st="all" class="active">Tất cả <b></b></button>
-          <button type="button" data-st="todo" title="Chưa chỉnh sửa lần nào">Chưa chỉnh sửa <b></b></button>
-          <button type="button" data-st="draft" title="Có bản nháp chưa duyệt">Chờ duyệt <b></b></button>
-          <button type="button" data-st="done" title="Đã chỉnh sửa và duyệt">Đã chỉnh sửa <b></b></button>
-        </div>
-        <select id="ed-channel" aria-label="Lọc theo thư mục"></select>
-        <input type="search" id="ed-q" placeholder="Tìm theo tên video..." style="width:auto;min-width:180px">
-        <button class="ghost" id="ed-refresh" type="button">Làm mới</button>
-      </div>
-      <div class="lib-bar ed-selbar">
-        <span class="hint" id="ed-selinfo">Tick ô ở góc video để chọn. Xoá video = chuyển cả thư mục video vào Thùng rác của macOS; link được ghi lại để lần sau không tải nhầm.</span>
-        <span>
-          <button class="ghost" id="ed-selall" type="button">Chọn tất cả đang hiện</button>
-          <button class="ghost" id="ed-selnone" type="button" hidden>Bỏ chọn</button>
-          <button class="primary danger" id="ed-delete" type="button" disabled>Xoá video đã chọn</button>
-        </span>
-      </div>
-      <p class="hint" id="ed-root"></p>
-      <div class="grid" id="ed-grid"></div>
-      <div class="empty" id="ed-empty" hidden>Chưa có video nào trong thư mục video. Tải video ở mục "Tải video" trước.</div>
-      <details class="rn-tool" id="ed-removed">
-        <summary>Video đã xoá <b id="ed-removed-n"></b></summary>
-        <p class="hint">Video đã tải rồi xoá. Khi tải video, link của các video này được bỏ qua (trừ khi tick "Tải lại cả video đã xoá trước đây"). Bấm "Cho tải lại" để bỏ một video khỏi danh sách.</p>
-        <div id="ed-removed-list"></div>
-      </details>
-    </section>
 
     <section id="tab-library" class="tab">
       <div class="lib-bar">
@@ -183,7 +151,15 @@
           <button type="button" data-st="published">Đã đăng <b></b></button>
           <button type="button" data-st="problem" title="Facebook báo lỗi, hoặc đã quá giờ hẹn mà chưa đăng">Lỗi / quá giờ <b></b></button>
         </div>
+        <select id="lib-scope" aria-label="Lọc theo Page" hidden></select>
         <select id="lib-channel" aria-label="Lọc theo thư mục"></select>
+        <select id="lib-edit" aria-label="Lọc theo chỉnh sửa video">
+          <option value="all">Chỉnh sửa: tất cả</option>
+          <option value="todo">Chưa chỉnh sửa</option>
+          <option value="draft">Chờ duyệt bản sửa</option>
+          <option value="done">Đã chỉnh sửa</option>
+        </select>
+        <input type="search" id="lib-q" placeholder="Tìm theo tên video..." aria-label="Tìm video">
         <label class="check lib-group" title="Gom các tập của cùng một phim lại (nhận từ tiêu đề: Tập 5, Ep 5, (5/30)...), xếp theo thứ tự tập"><input id="lib-group" type="checkbox"> <span>Nhóm theo phim</span></label>
       </div>
       <div class="lib-actions">
@@ -212,12 +188,14 @@
         <input type="file" id="aff-file" accept=".csv,text/csv,text/plain" hidden>
       </div>
       <p class="hint" id="lib-tabhint"></p>
+      <p class="msg" id="lib-scopehint" hidden>Đang xem nhiều Page: chọn một Page ở ô Page để lên lịch, huỷ lịch hàng loạt, kiểm tra Reels hay kiểm tra trạng thái. Xoá, chỉnh sửa video, đổi giờ / huỷ lịch từng bài vẫn làm được ở đây.</p>
       <p class="msg" id="sel-msg" role="status"></p>
       <div class="selbar" id="selbar" hidden>
         <span id="selbar-count"></span>
         <button class="ghost" id="selbar-none" type="button">Bỏ chọn</button>
         <button class="ghost btn-bad" id="selbar-rebook" type="button" hidden title="Gỡ lịch cũ của các bài lỗi / không thấy trên Facebook trong app để hẹn lại (không xóa gì trên Facebook)">Hẹn lại</button>
         <button class="ghost btn-bad" id="selbar-cancel" type="button" hidden title="Xóa các bài hẹn trên Facebook và đưa video về Chưa lên lịch">Huỷ lịch</button>
+        <button class="ghost btn-bad" id="selbar-del" type="button" hidden title="Chuyển cả thư mục của các video đã chọn vào Thùng rác của macOS">Xoá</button>
         <button class="primary" id="selbar-go" type="button">Lên lịch...</button>
       </div>
       <p class="hint" id="lib-root"></p>
@@ -225,6 +203,11 @@
       <div id="aff-report" class="panel" hidden></div>
       <div id="lib-grid" class="grid"></div>
       <div id="lib-empty" class="empty" hidden>Chưa có video nào. Vào tab "Tải video" để tải về.</div>
+      <details class="rn-tool" id="ed-removed">
+        <summary>Video đã xoá <b id="ed-removed-n"></b></summary>
+        <p class="hint">Video đã tải rồi xoá. Khi tải video, link của các video này được bỏ qua (trừ khi tick "Tải lại cả video đã xoá trước đây"). Bấm "Cho tải lại" để bỏ một video khỏi danh sách.</p>
+        <div id="ed-removed-list"></div>
+      </details>
 
     </section>
 

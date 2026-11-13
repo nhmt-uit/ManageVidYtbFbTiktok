@@ -476,3 +476,6 @@ details.rn-tool ol { margin: 6px 0 8px 18px; padding: 0; }
 label.fd-field, label.fd-days { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; margin: 0; }
 .fd-field select { width: auto; min-width: 220px; }
 .fd-days input { width: 70px; margin: 0; }
+
+#lib-q { width: auto; min-width: 180px; }
+#lib-scope, #lib-edit { width: auto; }
