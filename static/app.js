@@ -1436,6 +1436,8 @@ function veSettings() {
     color: $("#ve-color").value, box: $("#ve-box").checked, loudnorm: $("#ve-loud").checked, hide_orig: $("#ve-hide").checked, trim_bars: $("#ve-trim").checked,
     audio_clean: $("#ve-aclean").value, quality: $("#ve-quality").value, hook: $("#ve-hook-use").checked, cut: $("#ve-cut-use").checked,
     orig_volume: Number($("#ve-ov").value), voice_volume: 100,
+    fade: $("#ve-fade").checked, transition: $("#ve-xfade").value, zoom: $("#ve-zoom").value, grade: $("#ve-grade").value,
+    mirror: $("#ve-mirror").checked, speed: Number($("#ve-speed").value),
   };
 }
 function veBusy(on, msg) {
@@ -1612,6 +1614,8 @@ function veRender() {
   $("#ve-framing").value = set.framing; $("#ve-position").value = set.position; $("#ve-size").value = set.size; $("#ve-color").value = set.color;
   $("#ve-subs").checked = set.subs; $("#ve-box").checked = set.box; $("#ve-loud").checked = set.loudnorm;
   $("#ve-trim").checked = set.trim_bars; $("#ve-aclean").value = set.audio_clean; $("#ve-quality").value = set.quality;
+  $("#ve-fade").checked = !!set.fade; $("#ve-xfade").value = set.transition || "none"; $("#ve-zoom").value = set.zoom || "off";
+  $("#ve-grade").value = set.grade || "off"; $("#ve-mirror").checked = !!set.mirror; $("#ve-speed").value = String(set.speed || 100);
   veAcRender();
   veHookRender();
   $("#ve-ov").value = set.orig_volume; $("#ve-ov-n").textContent = set.orig_volume + "%";

@@ -634,6 +634,15 @@
               <p class="hint" id="ve-ac-info">Đo độ ồn nền, tiếng ù, tiếng xì rồi gợi ý chế độ làm sạch phù hợp (chạy trên máy bạn, vài giây).</p>
               <label id="ve-ov-wrap">Âm gốc khi có giọng đọc <input type="range" id="ve-ov" min="0" max="100" step="5" value="25"> <span id="ve-ov-n">25%</span></label>
             </div>
+            <p class="ve-fx-head"><b>Hiệu ứng</b> <span class="hint">(mặc định tắt; video xuất ra vẫn theo chuẩn Reels/Shorts)</span></p>
+            <div class="ve-opts" id="ve-fx">
+              <label class="ve-chk"><input type="checkbox" id="ve-fade"> Mờ dần đầu và cuối video</label>
+              <label title="Chỉ dùng khi bật Cắt ngắn và có từ 2 đoạn trở lên. Không làm đổi độ dài video, phụ đề vẫn khớp.">Chuyển cảnh giữa các đoạn cắt <select id="ve-xfade"><option value="none">Nối thẳng</option><option value="fade">Mờ chéo</option><option value="slide">Trượt sang trái</option><option value="flash">Lóe trắng</option><option value="black">Chớp đen</option></select></label>
+              <label>Zoom chậm <select id="ve-zoom"><option value="off">Tắt</option><option value="in">Zoom vào dần (100% → 108%)</option><option value="out">Zoom ra dần (108% → 100%)</option></select></label>
+              <label>Màu <select id="ve-grade"><option value="off">Giữ nguyên</option><option value="bright">Sáng hơn</option><option value="vivid">Rực màu</option><option value="warm">Tông ấm</option><option value="cool">Tông lạnh</option><option value="contrast">Tương phản cao</option></select></label>
+              <label>Tốc độ <select id="ve-speed"><option value="100">Bình thường</option><option value="105">105%</option><option value="110">110%</option><option value="115">115%</option><option value="120">120%</option><option value="125">125%</option></select></label>
+              <label class="ve-chk" title="Phụ đề và hook vẫn đúng chiều; chữ có sẵn trong hình sẽ bị ngược"><input type="checkbox" id="ve-mirror"> Lật ngang hình</label>
+            </div>
             <p class="msg" id="ve-check" hidden></p>
             <div class="actions">
               <button class="ghost" id="ve-discard" type="button" hidden>Bỏ bản nháp</button>

@@ -208,6 +208,18 @@ Xuất xong chỉ ra **bản nháp** `video.draft.mp4`; chưa duyệt thì video
 - **Chất lượng xuất**: *Nhẹ* (CRF 23, âm thanh 128k), *Chuẩn* (CRF 20, 160k, mặc định), *Cao* (CRF 17, 192k, file lớn hơn).
 - Video dài hơn 90 giây vẫn xuất được nhưng app ghi cảnh báo trong nhật ký và trong thông báo kết quả.
 
+**Hiệu ứng (bước 7, mặc định tắt):** chọn xong bấm Xuất video. Bản nháp vẫn phải đạt chuẩn Reels/Shorts mới duyệt được.
+- **Mờ dần đầu và cuối video:** hình và tiếng mờ vào 0,4 giây ở đầu, mờ ra 0,6 giây ở cuối.
+- **Chuyển cảnh giữa các đoạn cắt:** *Mờ chéo*, *Trượt sang trái*, *Lóe trắng*, *Chớp đen*, mỗi lần 0,4 giây. Chỉ dùng khi bật Cắt ngắn và có từ 2 đoạn trở lên.
+  - Độ dài video không đổi: đoạn trước lấy thêm 0,4 giây ngay sau nó trong video gốc để chồng lên đầu đoạn sau, nên phụ đề vẫn khớp.
+  - Tiếng vẫn nối thẳng.
+  - FFmpeg cũ không có bộ lọc `xfade` thì app nối thẳng và ghi vào nhật ký.
+- **Zoom chậm:** *vào dần* (100% → 108%) hoặc *ra dần* (108% → 100%) suốt video. Phụ đề và hook không zoom theo. Nếu dùng che sub gốc kèm phụ đề "Đúng chỗ sub gốc", vùng che phóng theo hình nên về cuối có thể lệch vài chục điểm ảnh so với phụ đề.
+- **Màu:** *Sáng hơn*, *Rực màu*, *Tông ấm*, *Tông lạnh*, *Tương phản cao*.
+- **Tốc độ:** 105–125%. Giọng giữ cao độ; phụ đề, giọng đọc và đoạn cắt được dời giờ theo. Video 100 giây ở 115% còn khoảng 87 giây.
+- **Lật ngang hình:** phụ đề và hook vẫn đúng chiều, nhưng chữ có sẵn trong hình sẽ bị ngược.
+- Thứ tự áp dụng: che sub, cắt viền, cắt đoạn và chuyển cảnh, khung 9:16, lật, màu, zoom, tốc độ, phụ đề và hook, mờ đầu/cuối.
+
 **Hook 3 giây đầu (bước 5, nhờ Claude đề xuất):** bấm **Nhờ Claude đề xuất hook**, app chạy `claude -p` (Claude Code) trên máy bạn, gửi tên video và phụ đề đã phiên âm, rồi nhận về 5 hook (kèm kiểu và lý do), vài câu trend và câu kêu gọi cuối video.
 - Chọn **Dùng** ở một hook (hoặc tự viết), sửa chữ rồi bấm **Duyệt hook**. Chỉ hook đã duyệt mới được in; tick **In hook ở 3 giây đầu khi xuất**. Chữ vàng viền đen hiện ở phần trên của khung hình trong 3 giây đầu và có xem trước trên video.
 - Cần Claude Code đã cài và đăng nhập trên máy (chạy `claude` trong Terminal một lần). Nếu lệnh nằm chỗ lạ, đặt `CLAUDE_BIN=/đường/dẫn/claude` trong `.env`; đặt `HOOK_MODEL` nếu muốn chỉ định model. Lệnh chạy trong thư mục tạm và không cho dùng công cụ nào.

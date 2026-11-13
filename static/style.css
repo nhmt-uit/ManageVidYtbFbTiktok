@@ -412,6 +412,7 @@ dialog#ve-dlg.modal { width: min(1320px, 97vw); }
 .ve-opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 8px; }
 .ve-opts label { display: grid; gap: 4px; font-size: 14px; }
 .ve-opts .ve-chk { display: flex; gap: 8px; align-items: center; }
+.ve-fx-head { margin: 10px 0 6px; font-size: 14px; }
 #ve-bar { width: 100%; }
 @media (max-width: 760px) {
   .ve-grid { grid-template-columns: 1fr; }

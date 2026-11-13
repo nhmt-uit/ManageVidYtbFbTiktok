@@ -52,10 +52,32 @@ DEFAULT_SETTINGS = {
     "hook": True,            # in chữ hook đã duyệt ở 3 giây đầu (xem hooks.py; chưa duyệt hook thì bỏ qua)
     "quality": "standard",   # fast | standard | high: chất lượng hình và âm thanh khi xuất
     "cut": True,             # chỉ giữ các đoạn trong cuts.json khi xuất (cắt ngắn video dài, xem cutplan.py; chưa có đoạn thì xuất nguyên)
+    # hiệu ứng (mặc định tắt)
+    "fade": False,           # mờ dần hình + tiếng ở đầu và cuối video
+    "transition": "none",    # chuyển cảnh giữa các đoạn cắt (cần bật Cắt ngắn và có từ 2 đoạn)
+    "zoom": "off",           # off | in | out: zoom chậm suốt video
+    "grade": "off",          # chỉnh màu, xem GRADES
+    "mirror": False,         # lật ngang hình (phụ đề, hook vẫn đúng chiều)
+    "speed": 100,            # % tốc độ phát (giữ cao độ giọng)
 }
 CHOICES = {"framing": ("auto", "scale", "fit", "crop"), "position": ("bottom", "middle", "top", "orig"),   # orig = đúng chỗ sub gốc
            "size": ("small", "medium", "large"), "color": ("white", "yellow", "cyan"),
-           "audio_clean": ("off", "light", "voice"), "quality": ("fast", "standard", "high")}
+           "audio_clean": ("off", "light", "voice"), "quality": ("fast", "standard", "high"),
+           "transition": ("none", "fade", "slide", "flash", "black"), "zoom": ("off", "in", "out"),
+           "grade": ("off", "bright", "vivid", "warm", "cool", "contrast")}
+SPEEDS = (100, 105, 110, 115, 120, 125)
+# chuyển cảnh: tên hiệu ứng của bộ lọc xfade. Chuyển cảnh không làm đổi độ dài: đoạn trước được kéo dài thêm TRANSITION_SEC
+# (lấy phần ngay sau nó trong video gốc) để chồng lên đầu đoạn sau, nên phụ đề vẫn khớp giờ.
+TRANSITIONS = {"fade": "fade", "slide": "slideleft", "flash": "fadewhite", "black": "fadeblack"}
+TRANSITION_SEC = 0.4
+GRADES = {"off": "",
+          "bright": "eq=brightness=0.04:contrast=1.05:saturation=1.1",
+          "vivid": "eq=contrast=1.08:saturation=1.35",
+          "warm": "colorchannelmixer=rr=1.08:gg=1.02:bb=0.9,eq=saturation=1.08",
+          "cool": "colorchannelmixer=rr=0.92:bb=1.08",
+          "contrast": "eq=contrast=1.2:brightness=-0.02:saturation=1.05"}
+ZOOM_AMOUNT = 0.08       # zoom chậm: 100% -> 108% (hoặc ngược lại) suốt video
+FADE_IN, FADE_OUT = 0.4, 0.6
 # audio_clean: light = cắt tiếng ù thấp + giảm ồn nền; voice = thêm làm rõ giọng nói (tăng dải 3 kHz, nén nhẹ cho đều tiếng)
 AUDIO_CLEAN = {"off": "",
                "light": "highpass=f=80,afftdn=nf=-28",
@@ -183,20 +205,31 @@ def voice_file(folder: Path) -> Path | None:
     return None
 
 
+def _rate(v) -> float:
+    """"30000/1001" -> 29.97; 0 nếu không đọc được."""
+    try:
+        a, _, b = str(v or "").partition("/")
+        f = float(a) / float(b or 1)
+    except (ValueError, ZeroDivisionError):
+        return 0.0
+    return f if 0 < f < 1000 else 0.0
+
+
 def probe_media(path: Path) -> dict:
     """{"width", "height", "duration", "has_audio"} (0/False nếu không đọc được)."""
-    out = {"width": 0, "height": 0, "duration": 0.0, "has_audio": False}
+    out = {"width": 0, "height": 0, "duration": 0.0, "has_audio": False, "fps": 0.0}
     exe = tools()["ffprobe"]
     if not exe or not path.exists():
         return out
     try:
-        r = _run([exe, "-v", "error", "-show_entries", "stream=codec_type,width,height,duration:format=duration", "-of", "json", str(path)], 30)
+        r = _run([exe, "-v", "error", "-show_entries", "stream=codec_type,width,height,duration,avg_frame_rate,r_frame_rate:format=duration", "-of", "json", str(path)], 30)
         data = json.loads(r.stdout or "{}")
     except (OSError, subprocess.SubprocessError, ValueError):
         return out
     for s in data.get("streams", []):
         if s.get("codec_type") == "video" and not out["width"]:
             out["width"], out["height"] = int(s.get("width") or 0), int(s.get("height") or 0)
+            out["fps"] = _rate(s.get("avg_frame_rate")) or _rate(s.get("r_frame_rate"))
         elif s.get("codec_type") == "audio":
             out["has_audio"] = True
     try:
@@ -212,9 +245,14 @@ def clean_settings(raw: dict | None) -> dict:
     for k, allowed in CHOICES.items():
         if raw.get(k) in allowed:
             s[k] = raw[k]
-    for k in ("subs", "box", "loudnorm", "hide_orig", "hook", "trim_bars", "cut"):
+    for k in ("subs", "box", "loudnorm", "hide_orig", "hook", "trim_bars", "cut", "fade", "mirror"):
         if isinstance(raw.get(k), bool):
             s[k] = raw[k]
+    try:
+        sp = int(raw.get("speed", s["speed"]))
+        s["speed"] = sp if sp in SPEEDS else s["speed"]
+    except (TypeError, ValueError):
+        pass
     for k, lo, hi in (("orig_volume", 0, 200), ("voice_volume", 0, 300)):
         try:
             s[k] = max(lo, min(hi, int(raw.get(k, s[k]))))
@@ -775,26 +813,59 @@ def build_ass(cues: list[dict], s: dict, center_y: float | None = None, hook: st
     return head + "\n".join(lines) + "\n"
 
 
-def _cut_chain(inp: str, out: str, segs: list[dict], audio: bool) -> str:
-    """Giữ các đoạn `segs` (giây, theo video gốc) của luồng [inp] rồi nối lại thành [out]."""
+def transition_len(segs: list[dict], duration: float) -> float:
+    """Độ dài chuyển cảnh dùng được cho các đoạn này (0 = không làm được). Đoạn trước kéo dài thêm chừng ấy giây
+    nên cần còn hình phía sau nó trong video gốc, và không dài hơn đoạn ngắn nhất."""
+    if len(segs) < 2:
+        return 0.0
+    d = min([TRANSITION_SEC] + [s["end"] - s["start"] for s in segs]
+            + ([duration - s["end"] for s in segs[:-1]] if duration else []))
+    return round(d, 3) if d >= 0.15 else 0.0
+
+
+def _cut_chain(inp: str, out: str, segs: list[dict], audio: bool, xfade: str = "", xlen: float = 0.0) -> str:
+    """Giữ các đoạn `segs` (giây, theo video gốc) của luồng [inp] rồi nối lại thành [out].
+    xfade (chỉ cho hình): tên hiệu ứng chuyển cảnh; mỗi đoạn trừ đoạn cuối lấy dư `xlen` giây để chồng lên đầu đoạn sau,
+    nên tổng độ dài và mốc giờ từng đoạn vẫn như khi nối thẳng."""
     trim, setpts, split, kind = ("atrim", "asetpts", "asplit", "v=0:a=1") if audio else ("trim", "setpts", "split", "v=1:a=0")
     n = len(segs)
     tag = "ca" if audio else "cv"
     tag += out
+    fx = bool(xfade and xlen > 0 and n > 1 and not audio)
     parts = [f"[{inp}]{split}={n}" + "".join(f"[{tag}i{i}]" for i in range(n))] if n > 1 else []
     for i, sg in enumerate(segs):
         src = f"{tag}i{i}" if n > 1 else inp
-        parts.append(f"[{src}]{trim}=start={sg['start']:.3f}:end={sg['end']:.3f},{setpts}=PTS-STARTPTS[{tag}o{i}]")
+        end = sg["end"] + (xlen if fx and i < n - 1 else 0)
+        parts.append(f"[{src}]{trim}=start={sg['start']:.3f}:end={end:.3f},{setpts}=PTS-STARTPTS[{tag}o{i}]")
+    if fx:
+        acc, prev = 0.0, f"{tag}o0"
+        for i in range(1, n):
+            acc += segs[i - 1]["end"] - segs[i - 1]["start"]
+            lab = out if i == n - 1 else f"{tag}x{i}"
+            parts.append(f"[{prev}][{tag}o{i}]xfade=transition={xfade}:duration={xlen:.3f}:offset={acc:.3f}[{lab}]")
+            prev = lab
+        return ";".join(parts)
     parts.append("".join(f"[{tag}o{i}]" for i in range(n)) + f"concat=n={n}:{kind}[{out}]")
     return ";".join(parts)
 
 
+def out_fps(src: dict) -> int:
+    """Số khung hình/giây của bản xuất khi phải đặt lại (đổi tốc độ): theo video gốc, trong khoảng 24-60."""
+    f = src.get("fps") or 30
+    return int(max(24, min(60, round(f))))
+
+
 def build_filter(src: dict, s: dict, voice: bool, ass: bool, cover: str = "", crop: dict | None = None,
-                 segs: list[dict] | None = None) -> tuple[str, list[str]]:
+                 segs: list[dict] | None = None, dur: float = 0.0, xlen: float = 0.0) -> tuple[str, list[str]]:
     """Trả về (filter_complex, các tham số -map). src là kết quả probe_media của video gốc.
     cover: đoạn filter che sub gốc (origsubs.cover_chain, đầu ra là [src]); rỗng = không che.
     crop: vùng hình cần giữ (bars.detect) để cắt viền đen có sẵn; src phải là kích thước SAU khi cắt.
-    segs: các đoạn giữ lại (cắt ngắn video). Che sub gốc làm TRƯỚC khi cắt vì khoảng che tính theo giờ của video gốc."""
+    segs: các đoạn giữ lại (cắt ngắn video). Che sub gốc làm TRƯỚC khi cắt vì khoảng che tính theo giờ của video gốc.
+    dur: độ dài video sau khi cắt, TRƯỚC khi đổi tốc độ (cho zoom, mờ dần). xlen: độ dài chuyển cảnh (transition_len).
+    Thứ tự hình: che sub -> cắt viền -> cắt đoạn (+chuyển cảnh) -> khung 9:16 -> lật -> màu -> zoom -> tốc độ -> phụ đề -> mờ đầu/cuối.
+    Phụ đề (subs.ass) phải tính theo giờ SAU khi đổi tốc độ."""
+    speed = s.get("speed", 100) / 100
+    dur_out = dur / speed if dur else 0.0
     vin = "src" if cover else "0:v"
     pre = [cover] if cover else []
     if crop:
@@ -802,7 +873,8 @@ def build_filter(src: dict, s: dict, voice: bool, ass: bool, cover: str = "", cr
         vin = "cb"
     ain, voin = "0:a", "1:a"
     if segs:
-        pre.append(_cut_chain(vin, "vcut", segs, audio=False))
+        xf = TRANSITIONS.get(s.get("transition", "none"), "")
+        pre.append(_cut_chain(vin, "vcut", segs, audio=False, xfade=xf, xlen=xlen))
         vin = "vcut"
         if src["has_audio"]:
             pre.append(_cut_chain("0:a", "acut", segs, audio=True))
@@ -824,8 +896,34 @@ def build_filter(src: dict, s: dict, voice: bool, ass: bool, cover: str = "", cr
               "[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[vf]")
     if pre:
         vf = ";".join(pre) + ";" + vf
-    vf += ";[vf]subtitles=subs.ass[v]" if ass else ";[vf]null[v]"
+    look = []
+    if s.get("mirror"):
+        look.append("hflip")
+    if GRADES.get(s.get("grade", "off")):
+        look.append(GRADES[s["grade"]])
+    if s.get("zoom") in ("in", "out") and dur > 0:
+        p = f"min(t/{dur:.3f},1)" if s["zoom"] == "in" else f"(1-min(t/{dur:.3f},1))"
+        z = f"(1+{ZOOM_AMOUNT}*{p})"
+        # phóng to từng khung (kích thước chẵn) rồi cắt giữa về 1080x1920
+        look.append(f"scale=w='trunc({OUT_W}*{z}/2)*2':h='trunc({OUT_H}*{z}/2)*2':eval=frame,crop={OUT_W}:{OUT_H},setsar=1")
+    if speed != 1:
+        look.append(f"setpts=PTS/{speed:.2f},fps={out_fps(src)}")
+    if look:
+        vf += ";[vf]" + ",".join(look) + "[vl]"
+        vlast = "vl"
+    else:
+        vlast = "vf"
+    fade_ok = s.get("fade") and dur_out > FADE_IN + FADE_OUT + 1
+    vfade = f"fade=t=in:st=0:d={FADE_IN},fade=t=out:st={dur_out - FADE_OUT:.3f}:d={FADE_OUT}" if fade_ok else ""
+    if ass:
+        vf += f";[{vlast}]subtitles=subs.ass" + ("," + vfade if vfade else "") + "[v]"
+    else:
+        vf += f";[{vlast}]" + (vfade or "null") + "[v]"
     norm = ",loudnorm=I=-16:TP=-1.5:LRA=11" if s["loudnorm"] else ""
+    if speed != 1:
+        norm = f",atempo={speed:.2f}" + norm   # đổi tốc độ tiếng, giữ cao độ
+    if fade_ok:
+        norm += f",afade=t=in:st=0:d={FADE_IN},afade=t=out:st={dur_out - FADE_OUT:.3f}:d={FADE_OUT}"
     clean = AUDIO_CLEAN[s["audio_clean"]]
     clean = clean + "," if clean else ""   # nối trước volume/anull của âm thanh video gốc
     maps = ["-map", "[v]"]
@@ -894,9 +992,29 @@ def render_job(job, rel: str, settings: dict | None = None) -> str:
         out_dur = cutplan.total(segs) if segs else src["duration"]
         if segs:
             job.log(f"Cắt ngắn: giữ {len(segs)} đoạn, tổng {out_dur:.1f} giây (video gốc {src['duration']:.0f} giây).")
+        xlen = 0.0
+        if s["transition"] != "none":
+            if len(segs) < 2:
+                s["transition"] = "none"
+                job.log("Chuyển cảnh chỉ dùng khi bật Cắt ngắn và có từ 2 đoạn trở lên nên bỏ qua.")
+            elif not _has_filter(t["ffmpeg"]["path"], "xfade"):
+                s["transition"] = "none"
+                job.log("FFmpeg này không có bộ lọc chuyển cảnh (xfade, cần FFmpeg 4.3 trở lên) nên nối thẳng các đoạn.")
+            else:
+                xlen = transition_len(segs, src["duration"])
+                if not xlen:
+                    s["transition"] = "none"
+                    job.log("Các đoạn cắt quá ngắn để làm chuyển cảnh nên nối thẳng.")
+        speed = s["speed"] / 100
+        cut_dur = out_dur          # độ dài sau khi cắt, trước khi đổi tốc độ
+        out_dur = out_dur / speed if out_dur else out_dur
+        if speed != 1:
+            job.log(f"Tốc độ {s['speed']}%: video còn {out_dur:.1f} giây.")
         cues = clean_cues(load_subs(folder)["cues"], src["duration"]) if s["subs"] else []
         if segs and cues:
             cues = cutplan.retime_cues(cues, segs)
+        if cues and speed != 1:
+            cues = [{**c, "start": round(c["start"] / speed, 3), "end": round(c["end"] / speed, 3)} for c in cues]
         if s["subs"] and not cues:
             s["subs"] = False
             job.log("Chưa có phụ đề nên xuất không kèm phụ đề.")
@@ -934,7 +1052,24 @@ def render_job(job, rel: str, settings: dict | None = None) -> str:
             long_note = (f" Lưu ý: bản xuất dài {out_dur:.0f} giây, vượt mức {MAX_SECONDS} giây nên KHÔNG duyệt được (không đăng được Reels)."
                          " Dùng bước Cắt ngắn để giữ các đoạn dưới 90 giây rồi xuất lại.")
             job.log(long_note.strip())
-        fc, maps = build_filter(eff, s, voice is not None, bool(cues) or bool(hook_text), cover, bar, segs or None)
+        if s["zoom"] != "off" and not cut_dur:
+            s["zoom"] = "off"
+            job.log("Không đọc được độ dài video nên bỏ qua zoom chậm.")
+        if s["fade"] and out_dur <= FADE_IN + FADE_OUT + 1:
+            s["fade"] = False
+            job.log("Video quá ngắn nên bỏ qua mờ dần đầu/cuối.")
+        fx = [x for x in (
+            "mờ dần đầu/cuối" if s["fade"] else "",
+            f"chuyển cảnh {s['transition']} {xlen:g} giây" if s["transition"] != "none" else "",
+            {"in": "zoom chậm vào", "out": "zoom chậm ra"}.get(s["zoom"], ""),
+            f"màu {s['grade']}" if s["grade"] != "off" else "",
+            "lật ngang" if s["mirror"] else "",
+            f"tốc độ {s['speed']}%" if speed != 1 else "") if x]
+        if fx:
+            job.log("Hiệu ứng: " + ", ".join(fx) + ".")
+        if s["zoom"] != "off" and s["hide_orig"] and s["subs"] and s["position"] == "orig":
+            job.log("Lưu ý: zoom chậm phóng cả vùng che sub gốc (tối đa 8%) còn phụ đề mới đứng yên, nên về cuối có thể lệch vài chục điểm ảnh so với vùng che.")
+        fc, maps = build_filter(eff, s, voice is not None, bool(cues) or bool(hook_text), cover, bar, segs or None, cut_dur, xlen)
         job.log(f"Xuất video {OUT_W}x{OUT_H}" + (f", {len(cues)} dòng phụ đề" if cues else "") + (", kèm hook 3 giây đầu" if hook_text else "") + (f", kèm giọng đọc {voice.name}" if voice else "") + "...")
         with tempfile.TemporaryDirectory(prefix="mvt-render-") as tmp:
             tmpd = Path(tmp)
