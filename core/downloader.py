@@ -262,7 +262,7 @@ def fail_limit(platform: str) -> int:
 
 
 # ---------- Bài Rednote chỉ có ảnh (không có video): lưu ảnh vào thư mục ----------
-IMAGE_HOSTS = ("xhscdn.com", "xhscdn.net", "xiaohongshu.com")   # chỉ tải ảnh từ CDN của Rednote
+IMAGE_HOSTS = ("xhscdn.com", "xhscdn.net", "xiaohongshu.com", "rednotecdn.com", "rednote.com")   # chỉ tải ảnh từ CDN của Rednote (tên miền cũ và mới)
 MAX_IMAGES = 60
 MAX_IMAGE_BYTES = 40 * 1024 * 1024
 RN_ID_RE = re.compile(r"/(?:explore|discovery/item)/([0-9a-f]{16,32})", re.I)
@@ -319,6 +319,8 @@ def save_rednote_images(job, opts: dict, url: str, note_id: str, channel_dir: Pa
             raise _WrongType("bài video")
         urls = rednote_image_urls(note)
         if not urls:
+            if note.get("imageList"):   # có ảnh mà không lấy được đường dẫn: lỗi của app (ví dụ Rednote đổi máy chủ ảnh), giữ link để thử lại
+                raise RuntimeError(f"Bài có {len(note['imageList'])} ảnh nhưng app không lấy được đường dẫn ảnh (có thể Rednote vừa đổi máy chủ ảnh). Link được giữ lại để thử lại.")
             raise _NoMedia("Bài này không có video và cũng không có ảnh tải được.")
         ts = note.get("time")
         date = datetime.fromtimestamp(ts / 1000).strftime("%Y%m%d") if isinstance(ts, (int, float)) and ts > 0 else datetime.now().strftime("%Y%m%d")
@@ -377,9 +379,12 @@ def _explain(platform: str, msg: str) -> str:
     low = msg.lower()
     if platform == "tiktok" and "requested format is not available" in low:
         return "TikTok chỉ trả bản có logo cho video này (không có bản gốc không logo). Đã bỏ qua để không lẫn logo vào video."
-    if platform == "rednote" and (rednote_needs_login(msg) or any(k in low for k in ("initial state", "403", "unable to extract"))):
+    if platform == "rednote" and rednote_needs_login(msg):
         return ("Rednote đòi đăng nhập hoặc xác minh. Đăng nhập Rednote trên trình duyệt đã đặt ở Cài đặt > Chung (ô Rednote: cookie), "
                 "mở thử bài đó trong trình duyệt rồi tải lại. Chi tiết: " + msg[:160])
+    if platform == "rednote" and any(k in low for k in ("initial state", "403", "unable to extract")):
+        return ("Rednote không trả nội dung bài (thường do mở quá nhiều bài liên tiếp, nhất là khi chưa đặt cookie đăng nhập; "
+                "cũng có thể bài cần đăng nhập hoặc đã bị xoá). Đợi một lúc rồi tải lại, nên đặt cookie Rednote ở Cài đặt > Chung. Chi tiết: " + msg[:160])
     return msg
 
 
@@ -685,8 +690,14 @@ def _run(job, url: str, folder_name: str, kind: str, limit: int, note: str, page
                 if ok < target:
                     time.sleep(random.uniform(sleep_min, sleep_max))
                 continue
-            with YoutubeDL(_opts({"skip_download": True}, platform)) as ydl:
-                info = ydl.extract_info(video_url, download=False)
+            # Rednote: lúc lấy danh sách yt-dlp đã đọc đủ thông tin bài (kèm định dạng video): dùng lại, khỏi mở trang thêm 2 lần
+            # (mở dồn dập dễ bị Rednote chặn tạm). Nền tảng khác giữ cách cũ.
+            known = entry if platform == "rednote" and entry.get("formats") and entry.get("id") == vid else None
+            if known:
+                info = known
+            else:
+                with YoutubeDL(_opts({"skip_download": True}, platform)) as ydl:
+                    info = ydl.extract_info(video_url, download=False)
 
             date = info.get("upload_date") or ("00000000" if platform == "youtube" else datetime.now().strftime("%Y%m%d"))   # Rednote không trả ngày đăng: dùng ngày tải
             existing = video_dirs.get(info["id"]) if audio else None
@@ -727,7 +738,16 @@ def _run(job, url: str, folder_name: str, kind: str, limit: int, note: str, page
                     platform,
                 )
             with YoutubeDL(dl_opts) as ydl:
-                ydl.download([video_url])
+                if known:
+                    try:
+                        ydl.process_ie_result(YoutubeDL.sanitize_info(dict(known), remove_private_keys=True), download=True)
+                    except Exception as exc:  # noqa: BLE001  đường dẫn video cũ có thể đã hết hạn: mở lại trang một lần như cách cũ
+                        if job.cancelled:
+                            raise
+                        job.log(f"    Tải bằng thông tin đã có không được ({str(exc)[:120]}), mở lại trang bài để tải...")
+                        ydl.download([video_url])
+                else:
+                    ydl.download([video_url])
             if not out_file.exists():
                 raise RuntimeError(f"Không thấy file {out_file.name} sau khi tải (thiếu ffmpeg hoặc {source} trả về định dạng lạ).")
 
