@@ -176,7 +176,7 @@ Facebook giảm phân phối video đăng lại nguyên bản. Nút **Chỉnh s�
 
 Xuất xong chỉ ra **bản nháp** `video.draft.mp4`; chưa duyệt thì video thật (`video.mp4`), kiểm tra Reels và hẹn giờ đăng vẫn dùng video hiện tại. Xem thử bản nháp trong hộp thoại rồi chọn: **Bỏ bản nháp** (không đổi gì, phụ đề và giọng đọc vẫn giữ để xuất lại) hoặc **Duyệt & thay video gốc**. **Duyệt là không hoàn tác được**: bản nháp ghi đè `video.mp4`, video gốc bị xoá hẳn, phụ đề/giọng đọc đã dùng được dọn đi, và thẻ có nhãn "Đã chỉnh sửa video" (file `edit_approved.json`). Video đã lên lịch thì không xuất/duyệt được (Facebook đã nhận bản cũ): huỷ lịch, chỉnh, rồi hẹn lại. Mỗi lúc chỉ chạy một tác vụ chỉnh sửa.
 
-**Mặc định bật:** Che sub gốc khi xuất, In hook ở 3 giây đầu, Cắt theo các đoạn đã lưu, Nền mờ sau chữ. Video chưa dò sub gốc / chưa duyệt hook / chưa lưu đoạn cắt thì bước đó được bỏ qua khi xuất (nhật ký ghi rõ), không báo lỗi. `edit.json` lưu riêng lựa chọn của bạn (`settings`, mở lại hộp thoại vẫn thấy đúng) và cái thực sự đã dùng (`applied`). Video đã từng xuất trước đây giữ lựa chọn cũ của nó.
+**Mặc định bật:** Che sub gốc khi xuất, In hook ở 3 giây đầu, Cắt theo các đoạn đã lưu, In chữ lớn, chữ nhảy (trắng viền đen, chữ đang đọc vàng), hook trắng viền đen, tiếng hiệu ứng mức Vừa kèm tiếng vút ở chỗ đổi cảnh. Nền mờ sau chữ vẫn mặc định bật nhưng chỉ áp dụng khi tắt chữ nhảy hoặc dùng kiểu Tô màu dần. Video chưa dò sub gốc / chưa duyệt hook / chưa lưu đoạn cắt thì bước đó được bỏ qua khi xuất (nhật ký ghi rõ), không báo lỗi. `edit.json` lưu riêng lựa chọn của bạn (`settings`, mở lại hộp thoại vẫn thấy đúng) và cái thực sự đã dùng (`applied`). Video đã từng xuất trước đây giữ lựa chọn cũ của nó.
 
 **Vùng che sub gốc mặc định:** dò xong, vùng che được đặt cao 10% và rộng 90% khung hình, căn giữa chỗ sub gốc dò được (sub dò ra to hơn, ví dụ 2 dòng, thì giữ kích thước dò được để không che hụt). Khoanh tay khi chưa dò cũng bắt đầu từ 90% x 10%. Video đã dò từ trước giữ vùng cũ; bấm Dò sub gốc lại để dùng mặc định mới.
 
@@ -192,23 +192,23 @@ Xuất xong chỉ ra **bản nháp** `video.draft.mp4`; chưa duyệt thì video
 *Trả về bản gốc* hoàn tác bản dịch. Hình xuất ra chỉ in bản dịch. AI có thể dịch sai tên riêng hay thuật ngữ nên luôn đọc lại.
 
 **Che sub gốc (video đã có sub in cứng, ví dụ video Rednote/Douyin):** trong hộp thoại Chỉnh sửa video, bước **4. Che sub gốc**:
-1. Bấm **Dò sub gốc** (vài giây, chạy trên máy). Nếu tìm thấy sub, app tự tick *Che sub gốc khi xuất* và đặt vị trí phụ đề *Đúng chỗ sub gốc* (đổi lại ở bước 6 nếu muốn); phần xem trước trên video cũng làm mờ vùng sub cũ và đặt phụ đề mới chính giữa vùng đó. App tìm chữ trắng viền đen lặp lại ở một dải ngang trong hình, rồi lưu vùng đó và các khoảng thời gian có sub vào `origsubs.json` của video. Khung cam đứt nét trên video xem trước là vùng sẽ được che.
+1. Bấm **Dò sub gốc** (vài giây, chạy trên máy). Nếu tìm thấy sub, app tự tick *Che sub gốc khi xuất* và đặt vị trí phụ đề *Đúng chỗ sub gốc* (đổi lại ở bước 8 nếu muốn); phần xem trước trên video cũng làm mờ vùng sub cũ và đặt phụ đề mới chính giữa vùng đó. App tìm chữ trắng viền đen lặp lại ở một dải ngang trong hình, rồi lưu vùng đó và các khoảng thời gian có sub vào `origsubs.json` của video. Khung cam đứt nét trên video xem trước là vùng sẽ được che.
 2. Nếu khung lệch, hoặc video có sub nhưng không dò ra, chỉnh 4 số (cách mép trên/trái, cao, rộng, theo % khung hình) rồi bấm **Lưu vùng che**. Ô **Che** chọn *Chỉ lúc có sub* (mặc định) hoặc *Suốt video*.
-3. Tick **Che sub gốc khi xuất**. Vùng đó được làm mờ và tối đi trong các khoảng có sub; sub mới do bạn viết/dịch in lên trên. Ở bước 6 nên chọn vị trí phụ đề **Đúng chỗ sub gốc** để sub mới nằm đúng chỗ cũ.
+3. Tick **Che sub gốc khi xuất**. Vùng đó được làm mờ và tối đi trong các khoảng có sub; sub mới do bạn viết/dịch in lên trên. Ở bước 8 nên chọn vị trí phụ đề **Đúng chỗ sub gốc** để sub mới nằm đúng chỗ cũ.
 - Việc che được làm trước khi đổi khung 9:16, nên đúng với cả kiểu *Nền mờ*, *Cắt giữa* và *Viền đen*. Che bằng làm mờ chứ không "xoá" được chữ: nền phía sau không thể dựng lại.
 - Cần thư viện `numpy` (đã thêm vào `requirements.txt`). Máy đã cài trước đó: `.venv/bin/pip install numpy` rồi `./service.sh restart`.
 - Sub nằm sát mép khung hoặc quá mờ/nhỏ có thể không dò ra: dùng nhập tay như bước 2. `origsubs.json` bị xoá khi bạn Duyệt (video mới đã che xong, dữ liệu cũ không còn đúng).
 
-**Cắt viền đen có sẵn (bước 6):** nhiều video tải về (Rednote, Douyin...) đã bị đóng khung đen quanh hình, nên dù app phóng 720x1280 lên 1080x1920 thì viền đen vẫn còn. Ô **Cắt viền đen có sẵn trong video** (mặc định bật) cho app dò viền ở 8 thời điểm trong video rồi cắt bỏ trước khi phóng to, nên hình đầy khung. Chỉ cắt khi viền đủ rõ (từ 1,2% mỗi cạnh trở lên) và vùng giữ lại còn ít nhất 60%; cảnh tối đơn lẻ không bị cắt nhầm vì lấy vùng chung của các thời điểm. Nếu video của bạn có cảnh tối kéo dài cả video mà bị cắt thiếu, bỏ tick ô này. Khung *Tự chọn* với video gần 9:16 giờ phóng cho đầy khung thay vì để lại viền mỏng.
+**Cắt viền đen có sẵn (bước 8):** nhiều video tải về (Rednote, Douyin...) đã bị đóng khung đen quanh hình, nên dù app phóng 720x1280 lên 1080x1920 thì viền đen vẫn còn. Ô **Cắt viền đen có sẵn trong video** (mặc định bật) cho app dò viền ở 8 thời điểm trong video rồi cắt bỏ trước khi phóng to, nên hình đầy khung. Chỉ cắt khi viền đủ rõ (từ 1,2% mỗi cạnh trở lên) và vùng giữ lại còn ít nhất 60%; cảnh tối đơn lẻ không bị cắt nhầm vì lấy vùng chung của các thời điểm. Nếu video của bạn có cảnh tối kéo dài cả video mà bị cắt thiếu, bỏ tick ô này. Khung *Tự chọn* với video gần 9:16 giờ phóng cho đầy khung thay vì để lại viền mỏng.
 
-**Làm sạch âm thanh và chất lượng xuất (bước 6):**
+**Làm sạch âm thanh và chất lượng xuất (bước 8):**
 - **Làm sạch âm thanh** chỉ áp cho tiếng của video gốc, không đụng giọng đọc bạn thêm vào. *Nhẹ*: cắt tiếng ù thấp và giảm ồn nền. *Rõ giọng nói*: thêm tăng dải giọng (3 kHz) và nén nhẹ cho tiếng đều hơn. Mặc định *Tắt*. Video có nhạc nền thì nên dùng *Nhẹ*, vì giảm ồn mạnh có thể làm nhạc nghe méo.
 - **Phân tích âm thanh** (nút ngay dưới ô chọn): ffmpeg và numpy đo mức ồn nền, độ chênh giữa tiếng nói và nền, tiếng ù trầm, tiếng xì dải cao, độ lớn (LUFS) và âm thanh bị vỡ, rồi gợi ý chế độ làm sạch kèm lý do. Bấm **Dùng gợi ý** để điền vào ô chọn. Đây chỉ là số đo và ngưỡng kinh nghiệm (chưa hiệu chỉnh trên nhiều video thật), không phải tai nghe: luôn nghe lại bản nháp trước khi Duyệt. Kết quả lưu ở `audioscan.json` của video và bị xoá khi Duyệt.
 - Sau khi xuất có làm sạch (và không trộn giọng đọc), app đo lại 60 giây đầu và ghi độ chênh tiếng nói so với nền trước/sau vào nhật ký tác vụ và `edit.json` (`audio_report`). Video có nhạc nền liên tục thường chỉ cải thiện rất ít.
 - **Chất lượng xuất**: *Nhẹ* (CRF 23, âm thanh 128k), *Chuẩn* (CRF 20, 160k, mặc định), *Cao* (CRF 17, 192k, file lớn hơn).
 - Video dài hơn 90 giây vẫn xuất được nhưng app ghi cảnh báo trong nhật ký và trong thông báo kết quả.
 
-**Hiệu ứng (bước 7, mặc định tắt):** chọn xong bấm Xuất video. Bản nháp vẫn phải đạt chuẩn Reels/Shorts mới duyệt được.
+**Hiệu ứng hình (bước 8, mặc định tắt):** chọn xong bấm Xuất video. Bản nháp vẫn phải đạt chuẩn Reels/Shorts mới duyệt được.
 - **Mờ dần đầu và cuối video:** hình và tiếng mờ vào 0,4 giây ở đầu, mờ ra 0,6 giây ở cuối.
 - **Chuyển cảnh giữa các đoạn cắt:** *Mờ chéo*, *Trượt sang trái*, *Lóe trắng*, *Chớp đen*, mỗi lần 0,4 giây. Chỉ dùng khi bật Cắt ngắn và có từ 2 đoạn trở lên.
   - Độ dài video không đổi: đoạn trước lấy thêm 0,4 giây ngay sau nó trong video gốc để chồng lên đầu đoạn sau, nên phụ đề vẫn khớp.
@@ -220,7 +220,22 @@ Xuất xong chỉ ra **bản nháp** `video.draft.mp4`; chưa duyệt thì video
 - **Lật ngang hình:** phụ đề và hook vẫn đúng chiều, nhưng chữ có sẵn trong hình sẽ bị ngược.
 - Thứ tự áp dụng: che sub, cắt viền, cắt đoạn và chuyển cảnh, khung 9:16, lật, màu, zoom, tốc độ, phụ đề và hook, mờ đầu/cuối.
 
-**Chữ động (cùng mục Hiệu ứng):** khung xem trước trên video cũng chạy hiệu ứng, nhưng chỉ gần giống bản xuất.
+**Chữ lớn ở đoạn quan trọng (bước 7):** chữ to bật lên giữa-dưới khung hình ở khoảnh khắc đáng chú ý (ví dụ "CHE BẮP TAY", "LINK Ở BÌNH LUẬN").
+- Bấm **Nhờ Claude gợi ý chữ lớn**: `claude -p` nhận tên video, phụ đề có mốc thời gian và các chỗ đổi cảnh (ffmpeg dò, lưu tạm ở `scenes.json`), rồi gợi ý 2 đến 8 chữ, mỗi chữ 2 đến 4 từ viết hoa. Có hook thì chữ lớn bắt đầu từ giây thứ 3. Ghi chú cho Claude (ví dụ "đi chơi Tết") giúp chữ đúng chủ đề hơn. Claude không xem được hình: video chỉ có nhạc thì gợi ý chỉ dựa vào tên và chỗ đổi cảnh, nên luôn bấm ▶ xem lại.
+- Mỗi chữ chỉnh được: giây xuất hiện (theo video gốc), chữ (tối đa 24 ký tự, dài hơn 12 ký tự thì tự tách 2 dòng), **kiểu bật** (*Phóng to* hơi nghiêng, *Lướt vào* từ trái, *Đập xuống* từ rất to, *Đóng dấu*, *Lắc*), **màu** (*Trắng*, *Vàng* viền đen, hoặc *Ô đỏ* chữ trắng) và **tiếng** (theo kiểu, hoặc chọn riêng, hoặc không tiếng). Mỗi chữ hiện 1,4 giây; hai chữ sát nhau thì chữ trước được rút ngắn. **+ Thêm chữ ở chỗ đang xem** lấy giây đang dừng trên video.
+- Bấm **Lưu chữ lớn**, tick **In chữ lớn khi xuất** (lần đầu lưu tự tick) rồi Xuất video. Khung xem trước hiện chữ đúng giờ, đúng kiểu bật.
+- Khi cắt ngắn, chữ dời theo đoạn giữ lại; chữ rơi vào phần bị cắt thì bỏ (nhật ký ghi rõ). Đổi tốc độ thì giờ chữ chia theo tốc độ. Chữ lớn tự đưa lên trên nếu phụ đề nằm giữa khung.
+- Lưu ở `punch.json`, bị xoá khi Duyệt. Sửa chữ lớn sau khi xuất thì hộp thoại nhắc xuất lại. Chưa kiểm chứng chất lượng gợi ý với `claude -p` thật.
+
+**Tiếng hiệu ứng (bước 8, mục Chữ và tiếng hiệu ứng):** *Tắt*, *Nhỏ*, *Vừa* (mặc định), *To*.
+- App tự tạo tiếng bằng ffmpeg nên không dính bản quyền: *bụp* trầm lúc hook hiện; mỗi kiểu chữ lớn một tiếng (Phóng to: *pốp*, Lướt vào: *xoẹt*, Đập xuống: *vút lên* rồi *trống*, Đóng dấu: *lấp lánh*, Lắc: *lò xo*); thêm *ting*, *tách*, *vút* để chọn riêng.
+- **Tiếng vút ở chỗ đổi cảnh** (mặc định bật): ffmpeg dò chỗ đổi cảnh trong video và chỗ nối các đoạn cắt, chèn tiếng vút. Hai tiếng vút cách nhau ít nhất 2,5 giây; bỏ chỗ sát tiếng khác hoặc sát cuối video.
+- Tiếng được trộn sau bước chuẩn hoá âm lượng (nhạc gốc giảm 15%, có bộ giới hạn đỉnh nên không bị rè). Video không có tiếng vẫn có tiếng hiệu ứng. Độ to từng tiếng đã chỉnh bằng số đo trên nhạc nền, chưa ai nghe thử bằng tai trên nhiều video: nghe lại bản nháp trước khi Duyệt.
+- Muốn dùng tiếng của riêng bạn: tạo thư mục `sfx/` trong thư mục app, đặt file trùng tên (`boom`, `pop`, `swish`, `hit`, `sparkle`, `boing`, `ding`, `click`, `whoosh`, `rise`) với đuôi `.wav`, `.mp3` hoặc `.m4a`, ví dụ `sfx/pop.mp3`. Tự kiểm tra quyền sử dụng của file đó.
+
+**Chữ động (bước 8):** khung xem trước trên video cũng chạy hiệu ứng, nhưng chỉ gần giống bản xuất.
+- **Kiểu chữ nhảy** (mặc định *Chữ trắng viền đen, chữ đang đọc vàng*): chữ đang đọc đổi màu và nảy cao lên (chỉ giãn chiều dọc), đọc qua thì trở lại màu thường; chữ cuối câu giữ màu tới hết câu. Các kiểu khác: *chữ đang đọc đen viền trắng*, *chữ đen viền trắng, chữ đang đọc trắng viền đen*, *hiện dần từng chữ*, *Tô màu dần* (kiểu cũ) và *Tắt*. Bốn kiểu đầu dùng chữ viền đậm, không nền mờ, nên ô Màu chữ và Nền mờ bị khoá. Video từng xuất với ô "Tô màu từng chữ" cũ được chuyển sang *Tô màu dần*.
+- **Màu hook:** *Trắng viền đen* (mặc định) hoặc *Vàng* như cũ.
 - **Kiểu hiện hook:**
   - *Phóng nhẹ*: như trước, là mặc định.
   - *Nảy*: chữ giãn cao rồi nhún về.
@@ -229,14 +244,14 @@ Xuất xong chỉ ra **bản nháp** `video.draft.mp4`; chưa duyệt thì video
   - *Trượt từ trên xuống*.
   - *Hiện thẳng*.
 - **Kiểu hiện phụ đề:** từng câu hiện ra kiểu *Mờ dần*, *Bật lên* (giãn theo chiều dọc) hoặc *Trượt lên*. Mặc định là *Hiện thẳng*.
-- **Tô màu từng chữ (ước lượng):** chữ đổi màu lần lượt trong câu. Chữ đổi sang vàng, hoặc xanh lơ nếu đang chọn màu chữ vàng.
+- **Tô màu dần (kiểu cũ, ước lượng):** chữ đổi màu lần lượt trong câu. Chữ đổi sang vàng, hoặc xanh lơ nếu đang chọn màu chữ vàng.
   - Thời gian mỗi chữ chia theo độ dài chữ, trong 90% thời gian của câu. Đây không phải mốc giọng nói thật, nên chỉ khớp tương đối.
   - Phụ đề tiếng Trung, Nhật, Hàn được tô từng ký tự.
   - Dùng được cùng nền mờ: nền cả câu vẽ riêng nên không bị vệt sẫm giữa các chữ.
 - Các hiệu ứng chữ không phóng chữ to quá 100% theo chiều ngang. Nếu phóng to hơn, libass sẽ tự xuống dòng lại giữa chừng và làm chữ nhảy.
 
 **Hook 3 giây đầu (bước 5, nhờ Claude đề xuất):** bấm **Nhờ Claude đề xuất hook**, app chạy `claude -p` (Claude Code) trên máy bạn, gửi tên video và phụ đề đã phiên âm, rồi nhận về 5 hook (kèm kiểu và lý do), vài câu trend và câu kêu gọi cuối video.
-- Chọn **Dùng** ở một hook (hoặc tự viết), sửa chữ rồi bấm **Duyệt hook**. Chỉ hook đã duyệt mới được in; tick **In hook ở 3 giây đầu khi xuất**. Chữ vàng viền đen hiện ở phần trên của khung hình trong 3 giây đầu và có xem trước trên video.
+- Chọn **Dùng** ở một hook (hoặc tự viết), sửa chữ rồi bấm **Duyệt hook**. Chỉ hook đã duyệt mới được in; tick **In hook ở 3 giây đầu khi xuất**. Chữ (mặc định trắng viền đen, đổi được sang vàng) hiện ở phần trên của khung hình trong 3 giây đầu và có xem trước trên video.
 - Cần Claude Code đã cài và đăng nhập trên máy (chạy `claude` trong Terminal một lần). Nếu lệnh nằm chỗ lạ, đặt `CLAUDE_BIN=/đường/dẫn/claude` trong `.env`; đặt `HOOK_MODEL` nếu muốn chỉ định model. Lệnh chạy trong thư mục tạm và không cho dùng công cụ nào.
 - Claude chỉ nhận chữ, không xem được hình hay nghe được tiếng, và không có dữ liệu trend hiện tại: câu trend chỉ là gợi ý, tự kiểm tra trước khi dùng. Mỗi lần đề xuất tính vào hạn mức Claude Code của bạn.
 - `hooks.json` bị xoá khi bạn Duyệt video (video mới đã có hook in sẵn).

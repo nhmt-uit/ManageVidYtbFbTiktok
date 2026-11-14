@@ -450,6 +450,34 @@ def api_edit_cuts_suggest():
     return jsonify({"job": job.id})
 
 
+@app.post("/api/edit/punch")
+def api_edit_punch_save():
+    """Lưu các chữ lớn (giây theo video gốc). items rỗng = bỏ hết."""
+    d = body()
+    try:
+        return jsonify(editor.save_punch(_edit_rel(d), d.get("items") or []))
+    except editor.EditError as e:
+        return err(str(e), 409)
+    except ValueError as e:
+        return err(str(e), 404)
+
+
+@app.post("/api/edit/punch/suggest")
+def api_edit_punch_suggest():
+    d = body()
+    try:
+        folder = library.resolve(_edit_rel(d))
+    except ValueError as e:
+        return err(str(e), 404)
+    if manager.has_running("edit"):
+        return err("Đang có một tác vụ chỉnh sửa khác chạy. Đợi nó xong rồi thử lại.", 409)
+    if not editor.hooks.find_claude():
+        return err("Chưa tìm thấy lệnh `claude` (Claude Code) trên máy. Cài Claude Code và đăng nhập, hoặc đặt CLAUDE_BIN trong .env.", 409)
+    notes = str(d.get("notes") or "")[:400]
+    job = manager.start("edit", f"Đề xuất chữ lớn: {folder.name}", editor.suggest_punch_job, _edit_rel(d), notes)
+    return jsonify({"job": job.id})
+
+
 @app.post("/api/edit/hook")
 def api_edit_hook_save():
     d = body()

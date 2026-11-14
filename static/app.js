@@ -1438,14 +1438,16 @@ function veSettings() {
     orig_volume: Number($("#ve-ov").value), voice_volume: 100,
     fade: $("#ve-fade").checked, transition: $("#ve-xfade").value, zoom: $("#ve-zoom").value, grade: $("#ve-grade").value,
     mirror: $("#ve-mirror").checked, speed: Number($("#ve-speed").value),
-    hook_anim: $("#ve-hookanim").value, sub_anim: $("#ve-subanim").value, karaoke: $("#ve-kara").checked,
+    hook_anim: $("#ve-hookanim").value, sub_anim: $("#ve-subanim").value, word_style: $("#ve-words").value,
+    hook_color: $("#ve-hookcolor").value, punch: $("#ve-punch-use").checked, sfx: $("#ve-sfx").value, sfx_scenes: $("#ve-sfx-scenes").checked,
   };
 }
 function veBusy(on, msg) {
   ve.busy = on;
   ["#ve-trans", "#ve-render", "#ve-discard", "#ve-approve", "#ve-tr-auto", "#ve-tr-to", "#ve-tr-paste", "#ve-tr-undo", "#ve-tr-apply", "#ve-savecues", "#ve-addcue", "#ve-voicefile", "#ve-voicedel", "#ve-os-detect", "#ve-os-save",
-    "#ve-cut-add", "#ve-cut-save", "#ve-cut-clear"].forEach((s) => { $(s).disabled = on || (ve.st && ve.st.scheduled); });
+    "#ve-cut-add", "#ve-cut-save", "#ve-cut-clear", "#ve-punch-add", "#ve-punch-save", "#ve-punch-clear"].forEach((s) => { $(s).disabled = on || (ve.st && ve.st.scheduled); });
   $("#ve-cut-gen").disabled = on || !ve.st || ve.st.scheduled || !ve.st.claude;
+  $("#ve-punch-gen").disabled = on || !ve.st || ve.st.scheduled || !ve.st.claude;
   if (ve.st && ve.st.draft && ve.st.draft.check && ve.st.draft.check.errors.length) $("#ve-approve").disabled = true;   // bản nháp chưa đạt chuẩn đăng
   if (!on) $("#ve-bar").hidden = true;
   if (msg !== undefined) $("#ve-msg").textContent = msg;
@@ -1487,6 +1489,7 @@ function veHookPv() {
   const ap = ve.st && ve.st.hooks && ve.st.hooks.approved;
   const show = ap && $("#ve-hook-use").checked && ve.view === "orig" && vid.currentTime < 3;
   if (show && pv.hidden) veAnimRestart(pv, "ve-a-h" + $("#ve-hookanim").value);
+  pv.classList.toggle("hc-white", $("#ve-hookcolor").value === "white");
   pv.hidden = !show;
   if (show) pv.textContent = ap.text;
 }
@@ -1536,6 +1539,32 @@ function veKaraHtml(c, now) {
     return on ? `<span style="color:${hl}">${esc(w)}</span>` : esc(w);
   }).join(ln.length > 1 && ln.every((w) => [...w].length === 1) && VE_CJK.test(ln.join("")) ? "" : " ")).join("\n");
 }
+// Xem trước "chữ nhảy": cùng cách chia thời gian với editor.word_timing; chữ đang đọc đổi màu và nảy, chữ cuối câu giữ tới hết câu
+const VE_WS = ["yellow", "black", "white", "reveal"];
+function veWordHtml(c, now, style) {
+  const lines = c.text.split("\n").map((ln) => {
+    const w = ln.split(/\s+/).filter(Boolean);
+    return w.length <= 1 && VE_CJK.test(ln) ? [...ln].filter((ch) => ch.trim()) : w;
+  });
+  const flat = lines.flat(), total = flat.reduce((a, w) => a + Math.max(1, [...w].length), 0) || 1;
+  const span = (c.end - c.start) * 0.9, el = now - c.start;
+  let acc = 0, k = 0, active = -1;
+  const html = lines.map((ln) => ln.map((w) => {
+    const a = span * acc / total;
+    acc += Math.max(1, [...w].length);
+    const b = span * acc / total, i = k++;
+    const on = el >= a && (el < b || i === flat.length - 1);
+    if (on) active = i;
+    const cls = on ? "ve-w on" : style === "reveal" && el < a ? "ve-w off" : "ve-w";
+    return `<span class="${cls}">${esc(w)}</span>`;
+  }).join(ln.length > 1 && ln.every((w) => [...w].length === 1) && VE_CJK.test(ln.join("")) ? "" : " ")).join("\n");
+  return { html, key: active };
+}
+function veWordUi() {   // kiểu chữ nhảy dùng viền đậm, không nền: Màu chữ và Nền mờ không áp dụng
+  const ws = VE_WS.includes($("#ve-words").value);
+  $("#ve-color").disabled = ws; $("#ve-box").disabled = ws;
+  $("#ve-words-hint").hidden = !ws;
+}
 function veAnimRestart(el, cls) {   // chạy lại hiệu ứng CSS mỗi lần câu/hook mới hiện
   el.classList.remove(...[...el.classList].filter((x) => x.startsWith("ve-a-")));
   if (cls) { void el.offsetWidth; el.classList.add(cls); }
@@ -1546,7 +1575,13 @@ function veCap() {
   cap.hidden = !c;
   const key = c ? c.start + "|" + c.text : "";
   if (key !== ve.capKey) { ve.capKey = key; if (c) veAnimRestart(cap, $("#ve-subanim").value !== "none" ? "ve-a-" + $("#ve-subanim").value : ""); }
-  if (c) { if ($("#ve-kara").checked) cap.innerHTML = veKaraHtml(c, vid.currentTime); else cap.textContent = c.text; }
+  const ws = $("#ve-words").value;
+  cap.classList.remove(...[...cap.classList].filter((x) => x.startsWith("ws-")));
+  if (c && VE_WS.includes(ws)) {
+    cap.classList.add("ws-" + ws);
+    const r = veWordHtml(c, vid.currentTime, ws), wk = key + "#" + r.key;
+    if (wk !== ve.wordKey) { ve.wordKey = wk; cap.innerHTML = r.html; }   // chỉ vẽ lại khi đổi chữ, để hiệu ứng nảy chạy một lần
+  } else if (c) { ve.wordKey = null; if (ws === "karaoke") cap.innerHTML = veKaraHtml(c, vid.currentTime); else cap.textContent = c.text; }
   const r = $("#ve-position").value === "orig" ? veBandRect() : null;   // "Đúng chỗ sub gốc": phụ đề mới nằm chính giữa vùng sub cũ
   cap.style.top = r ? r.top + r.height / 2 + "px" : "";
   cap.style.bottom = r ? "auto" : "";
@@ -1640,12 +1675,15 @@ function veRender() {
   $("#ve-trim").checked = set.trim_bars; $("#ve-aclean").value = set.audio_clean; $("#ve-quality").value = set.quality;
   $("#ve-fade").checked = !!set.fade; $("#ve-xfade").value = set.transition || "none"; $("#ve-zoom").value = set.zoom || "off";
   $("#ve-grade").value = set.grade || "off"; $("#ve-mirror").checked = !!set.mirror; $("#ve-speed").value = String(set.speed || 100);
-  $("#ve-hookanim").value = set.hook_anim || "pop"; $("#ve-subanim").value = set.sub_anim || "none"; $("#ve-kara").checked = !!set.karaoke;
+  $("#ve-hookanim").value = set.hook_anim || "pop"; $("#ve-subanim").value = set.sub_anim || "none"; $("#ve-words").value = set.word_style || "yellow";
+  $("#ve-hookcolor").value = set.hook_color || "white"; $("#ve-sfx").value = set.sfx || "normal"; $("#ve-sfx-scenes").checked = set.sfx_scenes !== false;
+  veWordUi();
   veAcRender();
   veHookRender();
   $("#ve-ov").value = set.orig_volume; $("#ve-ov-n").textContent = set.orig_volume + "%";
   veOsRender();
   veCutRender();
+  vePunchRender();
   $("#ve-view-ed").disabled = !st.draft.exists;
   $("#ve-discard").hidden = !st.draft.exists;
   $("#ve-approve").hidden = !st.draft.exists;
@@ -1660,7 +1698,7 @@ function veRender() {
       : `Bản nháp đạt chuẩn đăng ${st.standard} (${c.w}x${c.h}, ${fmtSec(c.duration)} giây).` + (c.warnings.length ? " Lưu ý: " + c.warnings.join(" ") : "");
   }
   $("#ve-msg").textContent = ed.exists
-    ? `Có bản nháp (${ed.size_mb} MB), chưa duyệt: hẹn giờ vẫn dùng video hiện tại.` + (ed.stale ? " Phụ đề đã đổi sau lần xuất, nên xuất lại." : " Xem thử rồi bấm Duyệt để thay video gốc.")
+    ? `Có bản nháp (${ed.size_mb} MB), chưa duyệt: hẹn giờ vẫn dùng video hiện tại.` + (ed.stale ? " Phụ đề hoặc chữ lớn đã đổi sau lần xuất, nên xuất lại." : " Xem thử rồi bấm Duyệt để thay video gốc.")
     : st.approved ? "Video này đã được chỉnh sửa và duyệt. Xuất lần nữa sẽ chồng thêm lên bản hiện tại (phụ đề cũ đã in cố định)." : "Chưa có bản nháp: hẹn giờ đăng đang dùng video gốc.";
 }
 // ---- Cắt ngắn: các đoạn giữ lại (giây, theo video gốc) ----
@@ -1762,6 +1800,114 @@ $("#ve-cut-gen").addEventListener("click", async () => {
   } catch (e) { $("#ve-msg").textContent = e.message; toast(e.message, 8000); }
 });
 
+// ---- Chữ lớn ở đoạn quan trọng (giây theo video gốc) ----
+const PN_ANIMS = { pop: "Phóng to", slide: "Lướt vào", slam: "Đập xuống", stamp: "Đóng dấu", shake: "Lắc" };
+const PN_COLORS = { white: "Trắng", yellow: "Vàng", box: "Ô đỏ" };
+const PN_SOUNDS = { auto: "Theo kiểu", none: "Không tiếng", pop: "Pốp", swish: "Xoẹt", hit: "Trống", sparkle: "Lấp lánh", boing: "Lò xo", ding: "Ting", click: "Tách", whoosh: "Vút" };
+const veOpts = (map, v) => Object.entries(map).map(([k, n]) => `<option value="${k}"${k === v ? " selected" : ""}>${esc(n)}</option>`).join("");
+function vePunchRows() {
+  return $$("#ve-punch-list .ve-pnrow").map((r) => ({ t: Number($(".p-t", r).value), dur: Number(r.dataset.dur) || 1.4, text: $(".p-text", r).value,
+    anim: $(".p-anim", r).value, color: $(".p-color", r).value, sound: $(".p-sound", r).value }));
+}
+function vePunchRowHtml(p, i) {
+  return `<div class="ve-cutrow ve-pnrow" data-dur="${p.dur || 1.4}">
+    <span class="ve-cut-n">${i + 1}</span>
+    <label>Giây <input type="number" class="p-t" min="0" step="0.1" value="${fmtSec(p.t)}"></label>
+    <input type="text" class="p-text" maxlength="24" value="${esc(p.text)}" placeholder="CHỮ LỚN">
+    <select class="p-anim" title="Kiểu bật">${veOpts(PN_ANIMS, p.anim || "pop")}</select>
+    <select class="p-color" title="Màu">${veOpts(PN_COLORS, p.color || "white")}</select>
+    <select class="p-sound" title="Tiếng hiệu ứng">${veOpts(PN_SOUNDS, p.sound || "auto")}</select>
+    <button class="ghost p-play" type="button" title="Xem chữ này trên video gốc">▶</button>
+    <button class="link p-del" type="button" title="Bỏ chữ này">✕</button>
+  </div>`;
+}
+function vePunchCount() {
+  const n = $$("#ve-punch-list .ve-pnrow").length;
+  $("#ve-punch-count").textContent = n ? `(${n} chữ)` : "";
+}
+function vePunchRender() {
+  const st = ve.st, pn = st.punch || { items: [], notes: [] };
+  $("#ve-punch-sum").textContent = !st.claude && !pn.items.length ? "Chưa tìm thấy Claude Code (lệnh `claude`) nên chỉ tự thêm chữ được."
+    : pn.items.length ? (pn.source === "claude" ? "Gợi ý của Claude" : "Chữ bạn đã lưu") + (pn.notes.length ? `. Lưu ý: ${pn.notes.join(" ")}` : ".")
+      : "Chưa có chữ lớn nào.";
+  $("#ve-punch-list").innerHTML = pn.items.map(vePunchRowHtml).join("");
+  $("#ve-punch-use").disabled = !pn.items.length;
+  $("#ve-punch-use").checked = !!(pn.items.length && st.settings.punch);
+  vePunchCount();
+  vePunchPv();
+}
+async function veSavePunch() {
+  const had = !$("#ve-punch-use").disabled, use = $("#ve-punch-use").checked;
+  const r = await api("/api/edit/punch", "POST", { rel: ve.rel, items: vePunchRows() });
+  ve.st.punch = r;
+  vePunchRender();
+  $("#ve-punch-use").checked = r.items.length > 0 && (had ? use : true);   // lần đầu có chữ: bật in luôn
+  return r;
+}
+function vePunchPv() {   // xem trước chữ lớn trên video gốc đúng giờ, đúng kiểu bật
+  const vid = $("#ve-video"), pv = $("#ve-punch-pv");
+  const now = vid.currentTime;
+  const p = ve.view === "orig" && $("#ve-punch-use").checked ? vePunchRows().find((x) => x.text.trim() && now >= x.t && now < x.t + x.dur) : null;
+  const key = p ? p.t + "|" + p.text + "|" + p.anim + "|" + p.color : "";
+  if (key !== ve.punchKey) {
+    ve.punchKey = key;
+    if (p) {
+      let txt = p.text.trim();   // như khi xuất (editor.punch_line): chữ dài tách 2 dòng ở khoảng trắng gần giữa nhất
+      if (!txt.includes("\n") && txt.length > 12 && txt.includes(" ")) {
+        const sp = [...txt].map((ch, i) => (ch === " " ? i : -1)).filter((i) => i >= 0);
+        const mid = sp.reduce((m, i) => (Math.abs(i - txt.length / 2) < Math.abs(m - txt.length / 2) ? i : m), sp[0]);
+        txt = txt.slice(0, mid) + "\n" + txt.slice(mid + 1);
+      }
+      pv.textContent = txt;
+      pv.className = "pc-" + p.color;
+      veAnimRestart(pv, "ve-a-p" + p.anim);
+    }
+  }
+  pv.hidden = !p;
+}
+$("#ve-video").addEventListener("timeupdate", vePunchPv);
+$("#ve-punch-use").addEventListener("change", () => { ve.punchKey = null; vePunchPv(); });
+$("#ve-punch-list").addEventListener("input", () => { ve.punchKey = null; vePunchCount(); });
+$("#ve-punch-list").addEventListener("change", () => { ve.punchKey = null; vePunchPv(); });
+$("#ve-punch-list").addEventListener("click", (e) => {
+  const row = e.target.closest(".ve-pnrow");
+  if (!row) return;
+  if (e.target.classList.contains("p-del")) { row.remove(); $$("#ve-punch-list .ve-cut-n").forEach((n, i) => { n.textContent = i + 1; }); vePunchCount(); return; }
+  if (e.target.classList.contains("p-play")) {
+    if (ve.view !== "orig") veSetView("orig");   // giờ tính theo video gốc
+    const vid = $("#ve-video"), t = Number($(".p-t", row).value) || 0;
+    if (!$("#ve-punch-use").checked && !$("#ve-punch-use").disabled) $("#ve-punch-use").checked = true;
+    veCut.stopAt = t + (Number(row.dataset.dur) || 1.4) + 0.3;
+    const go = () => { try { vid.currentTime = Math.max(0, t - 0.5); vid.play(); } catch (err) { /* bỏ qua */ } };
+    if (vid.readyState >= 1) go(); else vid.addEventListener("loadedmetadata", go, { once: true });
+  }
+});
+$("#ve-punch-add").addEventListener("click", () => {
+  const rows = vePunchRows(), t = Math.round(($("#ve-video").currentTime || 0) * 10) / 10;
+  $("#ve-punch-list").insertAdjacentHTML("beforeend", vePunchRowHtml({ t, dur: 1.4, text: "", anim: Object.keys(PN_ANIMS)[rows.length % 5] }, rows.length));
+  const inp = $$("#ve-punch-list .p-text"); inp[inp.length - 1].focus();
+  vePunchCount();
+});
+$("#ve-punch-save").addEventListener("click", async () => {
+  try {
+    const n = vePunchRows().filter((x) => x.text.trim()).length;
+    const r = await veSavePunch();
+    toast(r.items.length ? `Đã lưu ${r.items.length} chữ lớn` + (r.items.length < n ? ` (bỏ ${n - r.items.length} chữ trùng giờ, quá sát nhau hoặc ngoài video)` : "") + ". Tick \"In chữ lớn khi xuất\" rồi Xuất video." : "Đã bỏ hết chữ lớn.", 7000);
+  } catch (e) { toast(e.message, 8000); }
+});
+$("#ve-punch-clear").addEventListener("click", async () => {
+  if (!confirm("Bỏ toàn bộ chữ lớn của video này?")) return;
+  try { $("#ve-punch-list").innerHTML = ""; await veSavePunch(); } catch (e) { toast(e.message, 8000); }
+});
+$("#ve-punch-gen").addEventListener("click", async () => {
+  if ($$("#ve-punch-list .ve-pnrow").length && !confirm("Thay các chữ lớn đang có bằng gợi ý mới của Claude?")) return;
+  try {
+    await veRunJob("/api/edit/punch/suggest", { rel: ve.rel, notes: $("#ve-punch-notes").value }, "Claude đang chọn chữ lớn...");
+    await veLoad(ve.view);
+    $("#ve-punch-use").checked = true;
+  } catch (e) { $("#ve-msg").textContent = e.message; toast(e.message, 8000); }
+});
+
 // ---- Che sub gốc (chữ in cứng trong video) ----
 const AC_NAMES = { off: "Tắt", light: "Nhẹ", voice: "Rõ giọng nói" };
 function veAcRender() {
@@ -1834,11 +1980,11 @@ $("#ve-os-detect").addEventListener("click", async () => {
   try {
     await veRunJob("/api/edit/origsubs/detect", { rel: ve.rel }, "Đang dò sub gốc...");
     await veLoad(ve.view);
-    if (ve.st.origsubs && ve.st.origsubs.found) {   // tìm thấy sub cũ: tự bật che và đặt phụ đề mới đè đúng lên chỗ đó (vẫn đổi lại được ở bước 6)
+    if (ve.st.origsubs && ve.st.origsubs.found) {   // tìm thấy sub cũ: tự bật che và đặt phụ đề mới đè đúng lên chỗ đó (vẫn đổi lại được ở bước 8)
       $("#ve-hide").checked = true;
       $("#ve-position").value = "orig";
       veOsBox();
-      toast("Đã bật che sub gốc và đặt phụ đề mới đúng chỗ sub cũ. Đổi lại ở bước 6 nếu muốn.", 7000);
+      toast("Đã bật che sub gốc và đặt phụ đề mới đúng chỗ sub cũ. Đổi lại ở bước 8 nếu muốn.", 7000);
     }
   } catch (e) { $("#ve-msg").textContent = e.message; toast(e.message, 8000); }
 });
@@ -1903,7 +2049,8 @@ $("#ve-dlg").addEventListener("click", (e) => { if (e.target === $("#ve-dlg") &&
 document.querySelectorAll("input[name=ve-view]").forEach((r) => r.addEventListener("change", (e) => veSetView(e.target.value)));
 $("#ve-video").addEventListener("timeupdate", () => { veCap(); veCover(); });
 $("#ve-subs").addEventListener("change", veCap);
-["#ve-kara", "#ve-subanim", "#ve-color"].forEach((s) => $(s).addEventListener("change", () => { ve.capKey = null; veCap(); }));
+["#ve-words", "#ve-subanim", "#ve-color"].forEach((s) => $(s).addEventListener("change", () => { ve.capKey = null; ve.wordKey = null; veWordUi(); veCap(); }));
+$("#ve-hookcolor").addEventListener("change", veHookPv);
 $("#ve-hookanim").addEventListener("change", () => { $("#ve-hook-pv").hidden = true; veHookPv(); });
 $("#ve-ov").addEventListener("input", () => { $("#ve-ov-n").textContent = $("#ve-ov").value + "%"; });
 $("#ve-cues").addEventListener("click", (e) => {

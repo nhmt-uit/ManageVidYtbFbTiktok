@@ -11,3 +11,6 @@ logs/
 ytdlp_state.json
 fbgate_state.json
 removed_videos.json
+
+# tiếng hiệu ứng riêng của người dùng (xem core/sfx.py)
+sfx/

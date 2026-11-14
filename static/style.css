@@ -507,3 +507,30 @@ label.fd-field, label.fd-days { display: inline-flex; flex-direction: row; align
 .ve-cut-n { font-weight: 600; min-width: 1.5em; }
 .c-note { flex-basis: 100%; }
 #ve-cut-total.bad { color: var(--bad, #b91c1c); }
+/* chữ lớn: hàng chỉnh sửa + xem trước */
+.ve-pnrow .p-text { flex: 1 1 160px; min-width: 120px; margin: 0; text-transform: none; }
+.ve-pnrow select { margin: 0; }
+#ve-punch-pv { position: absolute; left: 4%; right: 4%; top: 60%; transform: translateY(-50%); text-align: center; color: #fff; font-weight: 900; font-size: 30px; line-height: 1.1; white-space: pre-line; pointer-events: none;
+  text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000, 0 3px 4px rgba(0,0,0,.6); }
+#ve-punch-pv.pc-yellow { color: #ffe600; }
+#ve-punch-pv.pc-box { left: auto; right: auto; inset-inline: 0; margin: 0 auto; width: max-content; max-width: 88%; background: #d81c1c; padding: 4px 12px; text-shadow: none; }
+.ve-a-ppop { animation: vePnPop .22s ease-out; rotate: -3deg; }
+.ve-a-pslide { animation: vePnSlide .2s ease-out; rotate: -2deg; }
+.ve-a-pslam { animation: vePnSlam .3s ease-out; }
+.ve-a-pstamp { animation: vePnStamp .14s ease-out; rotate: -4deg; }
+.ve-a-pshake { animation: veHookShake .4s linear; }
+@keyframes vePnPop { 0% { scale: .2; } 50% { scale: 1.25; } 100% { scale: 1; } }
+@keyframes vePnSlide { from { translate: -120% 0; } }
+@keyframes vePnSlam { 0% { scale: 2.6; opacity: .25; } 50% { scale: 1; opacity: 1; rotate: 2deg; } 75% { rotate: -2deg; } }
+@keyframes vePnStamp { from { scale: 1.7; rotate: 8deg; } }
+/* chữ nhảy: chữ viền đậm, chữ đang đọc đổi màu và nảy */
+#ve-cap[class*="ws-"] { text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 1px 3px #000; }
+#ve-cap .ve-w { display: inline-block; transform-origin: 50% 100%; }
+#ve-cap .ve-w.on { animation: veWordBump .16s ease-out; }
+#ve-cap.ws-yellow .ve-w.on { color: #ffe600; }
+#ve-cap.ws-black .ve-w.on { color: #000; text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff; }
+#ve-cap.ws-white { color: #000; text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff; }
+#ve-cap.ws-white .ve-w.on { color: #fff; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; }
+#ve-cap.ws-reveal .ve-w.off { visibility: hidden; }
+@keyframes veWordBump { 50% { scale: 1 1.25; } }
+#ve-hook-pv.hc-white { color: #fff; text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000, 0 2px 4px #000; }

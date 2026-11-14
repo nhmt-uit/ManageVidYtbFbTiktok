@@ -518,7 +518,7 @@
       <p class="hint bad" id="ve-locked" hidden>Video này đã lên lịch nên không chỉnh sửa được (Facebook đã nhận bản cũ). Huỷ lịch trước, chỉnh sửa xong rồi hẹn lại.</p>
       <div class="ve-grid">
         <div class="ve-side">
-          <div class="ve-vwrap"><video id="ve-video" controls playsinline preload="metadata"></video><div id="ve-os-cover" hidden></div><div id="ve-cap" hidden></div><div id="ve-os-box" hidden title="Vùng che sub gốc"></div><div id="ve-hook-pv" hidden></div></div>
+          <div class="ve-vwrap"><video id="ve-video" controls playsinline preload="metadata"></video><div id="ve-os-cover" hidden></div><div id="ve-cap" hidden></div><div id="ve-os-box" hidden title="Vùng che sub gốc"></div><div id="ve-hook-pv" hidden></div><div id="ve-punch-pv" hidden></div></div>
           <div class="ve-switch" role="radiogroup" aria-label="Bản xem trước">
             <label><input type="radio" name="ve-view" value="orig" checked> Video gốc</label>
             <label><input type="radio" name="ve-view" value="draft" id="ve-view-ed" disabled> Bản nháp (chưa duyệt)</label>
@@ -569,7 +569,7 @@
           </section>
           <section class="ve-sec" id="ve-os-sec">
             <h3>4. Che sub gốc (nếu video đã có sub in cứng)</h3>
-            <p class="hint">Dò chữ phụ đề in sẵn trong hình (chữ trắng viền đen), rồi làm mờ chỗ đó khi xuất để phụ đề mới không chồng lên chữ cũ. Nên chọn vị trí phụ đề "Đúng chỗ sub gốc" ở bước 7.</p>
+            <p class="hint">Dò chữ phụ đề in sẵn trong hình (chữ trắng viền đen), rồi làm mờ chỗ đó khi xuất để phụ đề mới không chồng lên chữ cũ. Nên chọn vị trí phụ đề "Đúng chỗ sub gốc" ở bước 8.</p>
             <div class="row">
               <button class="ghost" id="ve-os-detect" type="button">Dò sub gốc</button>
               <label class="ve-chk"><input type="checkbox" id="ve-hide" disabled> Che sub gốc khi xuất</label>
@@ -617,8 +617,24 @@
               <label class="ve-chk"><input type="checkbox" id="ve-cut-use" disabled> Cắt theo các đoạn này khi xuất</label>
             </div>
           </section>
+          <section class="ve-sec" id="ve-punch-sec">
+            <h3>7. Chữ lớn ở đoạn quan trọng <span class="count" id="ve-punch-count"></span></h3>
+            <p class="hint">Chữ to bật lên giữa màn hình ở khoảnh khắc đáng chú ý (ví dụ "CHE BẮP TAY", "LINK Ở BÌNH LUẬN"), mỗi chữ một kiểu bật và một tiếng hiệu ứng. Claude đọc tên video, phụ đề và các chỗ đổi cảnh rồi gợi ý (không xem được hình, nên xem lại từng chữ). Giờ tính theo video gốc; khi cắt ngắn, chữ tự dời theo, chữ nằm trong phần bị cắt thì bỏ.</p>
+            <div class="row">
+              <input type="text" id="ve-punch-notes" maxlength="400" placeholder="Ghi chú cho Claude (tuỳ chọn): sản phẩm, điểm muốn nhấn, chủ đề (ví dụ đi chơi Tết)..." style="flex:1 1 260px">
+              <button class="ghost" id="ve-punch-gen" type="button">Nhờ Claude gợi ý chữ lớn</button>
+            </div>
+            <p class="hint" id="ve-punch-sum"></p>
+            <div id="ve-punch-list" class="ve-cuts"></div>
+            <div class="row">
+              <button class="ghost" id="ve-punch-add" type="button">+ Thêm chữ ở chỗ đang xem</button>
+              <button class="ghost" id="ve-punch-save" type="button">Lưu chữ lớn</button>
+              <button class="link" id="ve-punch-clear" type="button">Bỏ hết</button>
+              <label class="ve-chk"><input type="checkbox" id="ve-punch-use" disabled> In chữ lớn khi xuất</label>
+            </div>
+          </section>
           <section class="ve-sec">
-            <h3>7. Kiểu hiển thị và xuất video</h3>
+            <h3>8. Kiểu hiển thị và xuất video</h3>
             <div class="ve-opts">
               <label>Khung hình <select id="ve-framing"><option value="auto">Tự chọn (khuyên dùng)</option><option value="fit">Nền mờ, video ở giữa</option><option value="crop">Cắt giữa cho đầy khung</option><option value="scale">Giữ nguyên, viền đen</option></select></label>
               <label>Vị trí phụ đề <select id="ve-position"><option value="bottom">Dưới</option><option value="middle">Giữa</option><option value="top">Trên</option><option value="orig">Đúng chỗ sub gốc (cần dò sub gốc)</option></select></label>
@@ -634,7 +650,15 @@
               <p class="hint" id="ve-ac-info">Đo độ ồn nền, tiếng ù, tiếng xì rồi gợi ý chế độ làm sạch phù hợp (chạy trên máy bạn, vài giây).</p>
               <label id="ve-ov-wrap">Âm gốc khi có giọng đọc <input type="range" id="ve-ov" min="0" max="100" step="5" value="25"> <span id="ve-ov-n">25%</span></label>
             </div>
-            <p class="ve-fx-head"><b>Hiệu ứng</b> <span class="hint">(mặc định tắt; video xuất ra vẫn theo chuẩn Reels/Shorts)</span></p>
+            <p class="ve-fx-head"><b>Chữ và tiếng hiệu ứng</b></p>
+            <div class="ve-opts" id="ve-text-fx">
+              <label title="Chữ đang đọc đổi màu và nảy lên. Thời gian từng chữ là ước lượng theo độ dài chữ (không phải mốc giọng nói thật), nên khớp tương đối.">Kiểu chữ nhảy <select id="ve-words"><option value="yellow">Chữ trắng viền đen, chữ đang đọc vàng (khuyên dùng)</option><option value="black">Chữ trắng viền đen, chữ đang đọc đen viền trắng</option><option value="white">Chữ đen viền trắng, chữ đang đọc trắng viền đen</option><option value="reveal">Hiện dần từng chữ (trắng viền đen)</option><option value="karaoke">Tô màu dần (kiểu cũ, theo Màu chữ và Nền mờ)</option><option value="off">Tắt: hiện cả câu</option></select></label>
+              <label>Màu hook <select id="ve-hookcolor"><option value="white">Trắng viền đen</option><option value="yellow">Vàng (như cũ)</option></select></label>
+              <label title="Tiếng tự tạo, không dính bản quyền: bụp khi hook hiện, mỗi kiểu chữ lớn một tiếng, vút khi đổi cảnh. Đặt file riêng vào thư mục sfx/ của app để thay (xem README).">Tiếng hiệu ứng <select id="ve-sfx"><option value="off">Tắt</option><option value="soft">Nhỏ</option><option value="normal">Vừa</option><option value="loud">To</option></select></label>
+              <label class="ve-chk"><input type="checkbox" id="ve-sfx-scenes"> Tiếng vút ở chỗ đổi cảnh</label>
+            </div>
+            <p class="hint" id="ve-words-hint" hidden>Kiểu chữ nhảy dùng chữ có viền đậm, không nền mờ, nên ô Màu chữ và Nền mờ không áp dụng. Muốn dùng chúng, chọn "Tô màu dần" hoặc "Tắt".</p>
+            <p class="ve-fx-head"><b>Hiệu ứng hình</b> <span class="hint">(mặc định tắt; video xuất ra vẫn theo chuẩn Reels/Shorts)</span></p>
             <div class="ve-opts" id="ve-fx">
               <label class="ve-chk"><input type="checkbox" id="ve-fade"> Mờ dần đầu và cuối video</label>
               <label title="Chỉ dùng khi bật Cắt ngắn và có từ 2 đoạn trở lên. Không làm đổi độ dài video, phụ đề vẫn khớp.">Chuyển cảnh giữa các đoạn cắt <select id="ve-xfade"><option value="none">Nối thẳng</option><option value="fade">Mờ chéo</option><option value="slide">Trượt sang trái</option><option value="flash">Lóe trắng</option><option value="black">Chớp đen</option></select></label>
@@ -644,7 +668,6 @@
               <label class="ve-chk" title="Phụ đề và hook vẫn đúng chiều; chữ có sẵn trong hình sẽ bị ngược"><input type="checkbox" id="ve-mirror"> Lật ngang hình</label>
               <label>Kiểu hiện hook <select id="ve-hookanim"><option value="pop">Phóng nhẹ (như cũ)</option><option value="bounce">Nảy</option><option value="shake">Lắc</option><option value="fade">Mờ dần</option><option value="slide">Trượt từ trên xuống</option><option value="none">Hiện thẳng</option></select></label>
               <label>Kiểu hiện phụ đề <select id="ve-subanim"><option value="none">Hiện thẳng</option><option value="fade">Mờ dần</option><option value="pop">Bật lên</option><option value="slide">Trượt lên</option></select></label>
-              <label class="ve-chk" title="Chữ đổi màu lần lượt theo câu. Thời gian từng chữ là ước lượng theo độ dài chữ (không phải mốc giọng nói thật), nên khớp tương đối."><input type="checkbox" id="ve-kara"> Tô màu từng chữ (ước lượng)</label>
             </div>
             <p class="msg" id="ve-check" hidden></p>
             <div class="actions">

@@ -6,6 +6,7 @@ Mỗi thư mục video có thể có thêm:
   edit.json          cài đặt lần xuất gần nhất
   video.draft.mp4    bản nháp do "Xuất video" tạo; video.mp4 vẫn nguyên cho tới khi bạn bấm Duyệt
   edit_approved.json dấu "đã duyệt"; sau khi Duyệt, bản nháp THAY THẾ video.mp4 (video gốc bị xoá, không khôi phục được)
+  punch.json         chữ lớn ở khoảnh khắc quan trọng (xem punch.py); scenes.json: mốc đổi cảnh dò được (nhớ tạm)
 
 Công cụ ngoài: ffmpeg (có bộ lọc subtitles/libass) và whisper-cli (whisper.cpp) cùng một file model ggml.
 Đường dẫn tự tìm; đặt FFMPEG_PATH, WHISPER_CLI, WHISPER_MODEL (đường dẫn hoặc tên như large-v3-turbo) trong .env nếu ở chỗ khác.
@@ -23,7 +24,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import audioscan, bars, config, cutplan, hooks, library, origsubs, reelcheck, translate
+from . import audioscan, bars, config, cutplan, hooks, library, origsubs, punch, reelcheck, sfx, translate
 from .videofile import APPROVED, DRAFT, ORIGINAL
 
 SUBS_FILE = "subs.json"
@@ -62,14 +63,21 @@ DEFAULT_SETTINGS = {
     # chữ động
     "hook_anim": "pop",      # kiểu hiện chữ hook, xem _hook_tags
     "sub_anim": "none",      # kiểu hiện từng câu phụ đề: none | fade | pop | slide
-    "karaoke": False,        # tô màu dần từng chữ (thời gian mỗi chữ là ước lượng theo độ dài chữ)
+    # chữ nhảy theo từng chữ (thời gian mỗi chữ là ước lượng theo độ dài chữ), xem WORD_STYLES; "karaoke" = tô màu dần kiểu cũ
+    "word_style": "yellow",
+    "hook_color": "white",   # white = chữ trắng viền đen | yellow = chữ vàng (như cũ)
+    "punch": True,           # in chữ lớn đã lưu trong punch.json (chưa có thì bỏ qua)
+    "sfx": "normal",         # off | soft | normal | loud: tiếng hiệu ứng (hook, chữ lớn, đổi cảnh), xem sfx.py
+    "sfx_scenes": True,      # tiếng vút ở các chỗ đổi cảnh / nối đoạn cắt
 }
 CHOICES = {"framing": ("auto", "scale", "fit", "crop"), "position": ("bottom", "middle", "top", "orig"),   # orig = đúng chỗ sub gốc
            "size": ("small", "medium", "large"), "color": ("white", "yellow", "cyan"),
            "audio_clean": ("off", "light", "voice"), "quality": ("fast", "standard", "high"),
            "transition": ("none", "fade", "slide", "flash", "black"), "zoom": ("off", "in", "out"),
            "grade": ("off", "bright", "vivid", "warm", "cool", "contrast"),
-           "hook_anim": ("pop", "bounce", "shake", "fade", "slide", "none"), "sub_anim": ("none", "fade", "pop", "slide")}
+           "hook_anim": ("pop", "bounce", "shake", "fade", "slide", "none"), "sub_anim": ("none", "fade", "pop", "slide"),
+           "word_style": ("off", "yellow", "black", "white", "reveal", "karaoke"), "hook_color": ("white", "yellow"),
+           "sfx": ("off", "soft", "normal", "loud")}
 SPEEDS = (100, 105, 110, 115, 120, 125)
 # chuyển cảnh: tên hiệu ứng của bộ lọc xfade. Chuyển cảnh không làm đổi độ dài: đoạn trước được kéo dài thêm TRANSITION_SEC
 # (lấy phần ngay sau nó trong video gốc) để chồng lên đầu đoạn sau, nên phụ đề vẫn khớp giờ.
@@ -250,9 +258,11 @@ def clean_settings(raw: dict | None) -> dict:
     for k, allowed in CHOICES.items():
         if raw.get(k) in allowed:
             s[k] = raw[k]
-    for k in ("subs", "box", "loudnorm", "hide_orig", "hook", "trim_bars", "cut", "fade", "mirror", "karaoke"):
+    for k in ("subs", "box", "loudnorm", "hide_orig", "hook", "trim_bars", "cut", "fade", "mirror", "punch", "sfx_scenes"):
         if isinstance(raw.get(k), bool):
             s[k] = raw[k]
+    if "word_style" not in raw and raw.get("karaoke") is True:   # cài đặt lưu từ bản cũ (ô "Tô màu từng chữ")
+        s["word_style"] = "karaoke"
     try:
         sp = int(raw.get("speed", s["speed"]))
         s["speed"] = sp if sp in SPEEDS else s["speed"]
@@ -399,7 +409,8 @@ def status(rel: str) -> dict:
         st = draft.stat()
         info = _read_json(folder / SETTINGS_FILE)
         dr = {"exists": True, "size_mb": round(st.st_size / 1048576, 1), "mtime": int(st.st_mtime), "settings": info.get("settings", {}),
-              "stale": subs.get("edited_at", subs.get("created_at", "")) > info.get("edited_at", "") if subs.get("cues") else False,
+              "stale": (subs.get("edited_at", subs.get("created_at", "")) > info.get("edited_at", "") if subs.get("cues") else False)
+                       or punch_info(folder, 0)["updated_at"] > info.get("edited_at", "zz"),
               "check": draft_check(draft)}
     settings = clean_settings(_read_json(folder / SETTINGS_FILE).get("settings"))
     return {"rel": rel, "tools": t, "source": src, "cues": subs["cues"], "language": subs.get("language", ""),
@@ -409,6 +420,7 @@ def status(rel: str) -> dict:
             "scheduled": is_scheduled(folder), "langs": LANGS, "busy": _busy.locked(), "origsubs": origsubs_info(folder),
             "audioscan": _read_json(folder / audioscan.FILE),
             "hooks": hook_info(folder), "claude": bool(hooks.find_claude()), "cuts": cuts_info(folder, src.get("duration") or 0),
+            "punch": punch_info(folder, src.get("duration") or 0),
             "max_seconds": MAX_SECONDS, "standard": reelcheck.STANDARD_NAME}
 
 
@@ -443,7 +455,7 @@ def approve(rel: str) -> str:
         info_set = _read_json(folder / SETTINGS_FILE)
         settings = info_set.get("applied") or info_set.get("settings", {})   # ghi lại cái thực sự đã dùng cho video được duyệt
         os.replace(draft, folder / ORIGINAL)   # nguyên tử: video.mp4 luôn là một file đầy đủ
-        for name in (SUBS_FILE, SETTINGS_FILE, origsubs.FILE, audioscan.FILE, hooks.FILE, cutplan.FILE):
+        for name in (SUBS_FILE, SETTINGS_FILE, origsubs.FILE, audioscan.FILE, hooks.FILE, cutplan.FILE, punch.FILE, SCENES_FILE):
             (folder / name).unlink(missing_ok=True)
         _remove_voice_files(folder)
         _write_json(folder / APPROVED, {"approved_at": datetime.now(timezone.utc).isoformat(), "settings": settings})
@@ -509,6 +521,115 @@ def suggest_cuts_job(job, rel: str, notes: str = "") -> str:
         _write_json(folder / cutplan.FILE, {"segments": r["segments"], "source": "claude", "summary": r["summary"], "updated_at": cutplan.now()})
         return (f"Claude đề xuất giữ {len(r['segments'])} đoạn, tổng {cutplan.total(r['segments']):.0f} giây. "
                 "Xem lại từng đoạn (bấm ▶ để nghe), sửa nếu cần, tick \"Cắt theo các đoạn này khi xuất\" rồi Xuất video.")
+    finally:
+        _busy.release()
+
+
+# ---------- chữ lớn ở khoảnh khắc quan trọng (punch.json) và mốc đổi cảnh (scenes.json) ----------
+SCENES_FILE = "scenes.json"
+SCENE_THRESHOLD = 0.25
+_PTS_RE = re.compile(r"pts_time:([0-9.]+)")
+
+
+def scene_times(ffmpeg: str, folder: Path, duration: float, cancelled=lambda: False) -> list[float]:
+    """Các mốc đổi cảnh (giây, theo video gốc) dò bằng bộ lọc scene của ffmpeg. Nhớ vào scenes.json theo kích thước +
+    giờ sửa của video.mp4; lỗi thì trả về danh sách rỗng (tiếng hiệu ứng đổi cảnh chỉ là phụ)."""
+    path = folder / ORIGINAL
+    try:
+        stt = path.stat()
+    except OSError:
+        return []
+    key = {"size": stt.st_size, "mtime": int(stt.st_mtime)}
+    cur = _read_json(folder / SCENES_FILE)
+    if cur.get("size") == key["size"] and cur.get("mtime") == key["mtime"] and isinstance(cur.get("times"), list):
+        return [float(x) for x in cur["times"] if isinstance(x, (int, float))]
+    cmd = [ffmpeg, "-nostdin", "-hide_banner", "-v", "info", "-i", str(path), "-an", "-sn",
+           "-vf", f"scale=320:-2,select='gt(scene,{SCENE_THRESHOLD})',showinfo", "-f", "null", "-"]
+    try:
+        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, errors="replace")
+        found, start = [], time.time()
+        for line in proc.stderr:   # type: ignore[union-attr]
+            m = _PTS_RE.search(line)
+            if m:
+                found.append(float(m[1]))
+            if cancelled() or time.time() - start > max(120, duration * 3):
+                _stop(proc)
+                return []
+        proc.wait()
+    except OSError:
+        return []
+    times: list[float] = []
+    for x in sorted(found):
+        if not times or x - times[-1] >= 0.5:
+            times.append(round(x, 2))
+    _write_json(folder / SCENES_FILE, {**key, "times": times})
+    return times
+
+
+def _retime_points(times: list[float], segs: list[dict] | None, speed: float) -> list[float]:
+    """Mốc theo video gốc -> mốc theo bản xuất (bỏ mốc trong phần bị cắt, thêm chỗ nối hai đoạn, chia theo tốc độ)."""
+    out: list[float] = []
+    if segs:
+        off = 0.0
+        for i, sg in enumerate(segs):
+            if i:
+                out.append(off)
+            out += [off + t - sg["start"] for t in times if sg["start"] + 0.3 < t < sg["end"] - 0.3]
+            off += sg["end"] - sg["start"]
+    else:
+        out = list(times)
+    return sorted(round(t / speed, 3) for t in out)
+
+
+def punch_info(folder: Path, duration: float) -> dict:
+    return punch.info(_read_json(folder / punch.FILE), duration)
+
+
+def save_punch(rel: str, items) -> dict:
+    """Lưu chữ lớn do người dùng sửa (source = manual). Danh sách rỗng = bỏ hết."""
+    folder = library.resolve(rel)
+    if is_scheduled(folder):
+        raise EditError("Video này đã lên lịch. Huỷ lịch trước rồi mới chỉnh sửa được.")
+    if _busy.locked():
+        raise EditError("Đang có tác vụ chỉnh sửa khác chạy, đợi xong rồi thử lại.")
+    dur = probe_media(folder / ORIGINAL)["duration"]
+    clean = punch.clean_items(items, dur)
+    if not clean:
+        (folder / punch.FILE).unlink(missing_ok=True)
+    else:
+        cur = punch_info(folder, dur)
+        _write_json(folder / punch.FILE, {"items": clean, "source": "manual", "notes": cur["notes"], "updated_at": punch.now()})
+    return punch_info(folder, dur)
+
+
+def suggest_punch_job(job, rel: str, notes: str = "") -> str:
+    """Nhờ Claude Code chọn khoảnh khắc quan trọng và chữ lớn (dựa vào tên video, phụ đề, mốc đổi cảnh). Chỉ ghi punch.json."""
+    if not _busy.acquire(blocking=False):
+        raise EditError("Đang có một tác vụ chỉnh sửa khác chạy. Đợi nó xong rồi thử lại.")
+    try:
+        folder = library.resolve(rel)
+        if is_scheduled(folder):
+            raise EditError("Video này đã lên lịch. Huỷ lịch trước rồi mới chỉnh sửa được.")
+        t = tools(refresh=True)
+        dur = probe_media(folder / ORIGINAL)["duration"]
+        if not dur:
+            raise EditError("Không đọc được độ dài video.")
+        cues = clean_cues(load_subs(folder)["cues"], dur)
+        scenes = []
+        if t["ffmpeg"]["ok"]:
+            job.log("Dò các chỗ đổi cảnh...")
+            scenes = scene_times(t["ffmpeg"]["path"], folder, dur, lambda: job.cancelled)
+        if not cues:
+            job.log("Chưa có phụ đề nên Claude chỉ dựa vào tên video và mốc đổi cảnh; nên phiên âm hoặc gõ phụ đề trước để chữ sát nội dung.")
+        job.log(f"Đang nhờ Claude chọn chữ lớn ({len(cues)} dòng phụ đề, {len(scenes)} chỗ đổi cảnh; khoảng 20 đến 60 giây)...")
+        try:
+            r = punch.suggest(folder.name, cues, dur, scenes, bool(hook_info(folder)["approved"]), notes,
+                              cancelled=lambda: job.cancelled, model=config.get("HOOK_MODEL", "") or "")
+        except punch.PunchError as exc:
+            raise EditError(str(exc)) from exc
+        _write_json(folder / punch.FILE, {"items": r["items"], "source": "claude", "notes": r["notes"], "updated_at": punch.now()})
+        return (f"Claude đề xuất {len(r['items'])} chữ lớn. Xem lại (bấm ▶ để xem đúng chỗ), sửa chữ / kiểu nếu cần, "
+                "bấm Lưu chữ lớn rồi Xuất video.")
     finally:
         _busy.release()
 
@@ -858,51 +979,160 @@ def _sub_xy(s: dict, center_y: float | None) -> tuple[int, int, int]:
     return 5, OUT_W // 2, OUT_H // 2
 
 
-def build_ass(cues: list[dict], s: dict, center_y: float | None = None, hook: str = "", hook_end: float = 3.0) -> str:
+# chữ nhảy theo từng chữ: (màu chữ, màu viền, màu chữ đang đọc, màu viền chữ đang đọc). Chữ tới lượt đổi màu và nảy lên
+# (chỉ giãn chiều dọc, không phóng ngang nên không xuống dòng lại), đọc qua thì trở lại màu thường. reveal: chữ chưa tới lượt bị ẩn.
+WHITE, BLACK = "&H00FFFFFF", "&H00000000"
+WORD_STYLES = {"yellow": (WHITE, BLACK, COLORS["yellow"], BLACK), "black": (WHITE, BLACK, BLACK, WHITE),
+               "white": (BLACK, WHITE, WHITE, BLACK), "reveal": (WHITE, BLACK, WHITE, BLACK)}
+WORD_BUMP, WORD_BUMP_MS = 125, 80
+HOOK_COLORS = {"white": (WHITE, BLACK, 9), "yellow": (COLORS["yellow"], BLACK, 8)}   # (màu chữ, màu viền, độ dày viền)
+PUNCH_Y, PUNCH_Y_ALT = 1150, 700   # chữ lớn: giữa-dưới khung; nếu phụ đề nằm gần đó thì đưa lên trên
+PUNCH_RED = "&H001C1CD8"
+PUNCH_FS, PUNCH_WIDTH = 120, 860   # cỡ tối đa và bề ngang tối đa (để chừa chỗ khi phóng 125% lúc bật lên)
+
+
+def word_timing(text: str, dur: float) -> list[list[tuple[str, int, int]]]:
+    """Từng dòng -> [(chữ, ms bắt đầu, ms kết thúc)] tính từ đầu câu. Chia 90% thời gian câu theo số ký tự của từng chữ
+    (ước lượng, giống karaoke_text và bản xem trước trong trình duyệt)."""
+    lines = [karaoke_words(ln) for ln in text.split("\n")]
+    weights = [max(1, len(w)) for ln in lines for w in ln]
+    total = max(len(weights), int(dur * 1000 * KARAOKE_FILL))
+    whole = sum(weights) or 1
+    out, acc, done = [], 0, 0
+    for ln in lines:
+        row = []
+        for w in ln:
+            acc += max(1, len(w))
+            end = round(total * acc / whole)
+            row.append((w, done, end))
+            done = end
+        out.append(row)
+    return out
+
+
+def word_text(text: str, dur: float, style: str, pre: str = "\\fscy100") -> str:
+    """Chữ ASS cho kiểu chữ nhảy `style` (WORD_STYLES). pre: thẻ đặt lại đầu mỗi chữ (kèm hiệu ứng bật cả câu nếu có),
+    vì thẻ của chữ trước còn tác dụng lên chữ sau."""
+    fill, edge, hfill, hedge = WORD_STYLES[style]
+    cjk = bool(_CJK_RE.search(text))
+    timing = word_timing(text, dur)
+    last = sum(len(r) for r in timing) - 1
+    rows, k = [], 0
+    for row in timing:
+        parts = []
+        for w, a, b in row:
+            tag = f"\\1c{fill}\\3c{edge}{pre}"
+            if style == "reveal":
+                tag += f"\\1a&HFF&\\3a&HFF&\\4a&HFF&\\t({a},{a + 1},\\1a&H00&\\3a&H00&\\4a&H64&)"
+            else:   # chữ cuối câu giữ màu nổi bật tới hết câu
+                tag += f"\\t({a},{a + 1},\\1c{hfill}\\3c{hedge})" + (f"\\t({b},{b + 1},\\1c{fill}\\3c{edge})" if k < last else "")
+            k += 1
+            tag += f"\\t({a},{a + WORD_BUMP_MS},\\fscy{WORD_BUMP})\\t({a + WORD_BUMP_MS},{a + 2 * WORD_BUMP_MS},\\fscy100)"
+            parts.append("{" + tag + "}" + _ass_text(w))
+        rows.append(("" if cjk and len(row) > 1 and all(len(w) == 1 for w, _, _ in row) else " ").join(parts))
+    return "\\N".join(rows)
+
+
+def punch_y(s: dict, center_y: float | None) -> int:
+    """Chỗ đặt chữ lớn: tránh phụ đề (giữa khung hoặc đúng chỗ sub gốc nằm gần vùng giữa-dưới)."""
+    sub_y = center_y if center_y is not None else (OUT_H // 2 if s["position"] == "middle" else None)
+    if s.get("subs") and sub_y is not None and abs(sub_y - PUNCH_Y) < 300:
+        return PUNCH_Y_ALT
+    return PUNCH_Y
+
+
+def punch_line(p: dict, y: int) -> str:
+    """Một dòng ASS cho chữ lớn p = {t, dur, text, anim, color} (giờ theo bản xuất)."""
+    text = p["text"]
+    if "\n" not in text and len(text) > 12 and " " in text:   # chữ dài: tách 2 dòng ở khoảng trắng gần giữa nhất
+        mid = min((i for i, ch in enumerate(text) if ch == " "), key=lambda i: abs(i - len(text) / 2))
+        text = text[:mid] + "\n" + text[mid + 1:]
+    longest = max(len(ln) for ln in text.split("\n"))
+    fs = min(PUNCH_FS, int(PUNCH_WIDTH / (0.7 * max(1, longest))))
+    x = OUT_W // 2
+    style, head = "Punch", f"\\q2\\fs{fs}\\1c{COLORS['yellow'] if p['color'] == 'yellow' else WHITE}"
+    if p["color"] == "box":
+        style, head = "PunchBox", f"\\q2\\fs{int(fs * 0.9)}"
+    anim = p["anim"]
+    if anim == "slam":     # đập xuống từ rất to rồi rung nhẹ
+        tag = (f"\\an5\\pos({x},{y})\\fscx260\\fscy260\\alpha&HC0&\\t(0,150,\\fscx100\\fscy100\\alpha&H00&)"
+               f"\\org({x},{y})\\t(150,200,\\frz2)\\t(200,250,\\frz-2)\\t(250,300,\\frz0)")
+    elif anim == "slide":  # lướt từ trái vào
+        tag = f"\\an5\\move({x - 900},{y},{x},{y},0,200)\\org({x},{y})\\frz-2"
+    elif anim == "shake":
+        tag = (f"\\an5\\pos({x},{y})\\org({x},{y + 40})\\t(0,80,\\frz6)\\t(80,160,\\frz-6)\\t(160,240,\\frz4)"
+               "\\t(240,320,\\frz-3)\\t(320,400,\\frz0)")
+    elif anim == "stamp":  # đóng dấu: to, nghiêng rồi ập xuống
+        tag = f"\\an5\\pos({x},{y})\\org({x},{y})\\fscx170\\fscy170\\frz8\\t(0,140,\\fscx100\\fscy100\\frz-4)"
+    else:                  # pop: phóng từ nhỏ, hơi nghiêng
+        tag = (f"\\an5\\pos({x},{y})\\org({x},{y})\\frz-3\\fscx20\\fscy20"
+               "\\t(0,110,\\fscx125\\fscy125)\\t(110,220,\\fscx100\\fscy100)")
+    return (f"Dialogue: 3,{_ass_time(p['t'])},{_ass_time(p['t'] + p['dur'])},{style},,0,0,0,,"
+            f"{{{head}{tag}\\fad(0,180)}}{_ass_text(text)}")
+
+
+def build_ass(cues: list[dict], s: dict, center_y: float | None = None, hook: str = "", hook_end: float = 3.0,
+              punches: list[dict] | None = None) -> str:
     align, margin_v = ALIGN[s["position"]]
     font = config.get("EDIT_FONT", "Arial") or "Arial"
     col = COLORS[s["color"]]
-    # tô màu từng chữ: chữ chưa tới lượt = màu đã chọn (Secondary), chữ đã tới lượt = màu nổi bật (Primary)
+    ws = s.get("word_style", "off")
+    size = FONT_SIZES[s["size"]]
+    # tô màu dần kiểu cũ: chữ chưa tới lượt = màu đã chọn (Secondary), chữ đã tới lượt = màu nổi bật (Primary)
     primary, secondary = col, "&H000000FF"
-    if s.get("karaoke"):
+    if ws == "karaoke":
         primary, secondary = (COLORS["cyan"] if s["color"] == "yellow" else COLORS["yellow"]), col
-    if s["box"]:
+    if ws in WORD_STYLES:   # chữ nhảy: chữ có viền đậm, không nền mờ, màu theo kiểu đã chọn (bỏ qua Màu chữ, Nền mờ)
+        primary = secondary = WORD_STYLES[ws][0]
+        border, outline, shadow, outline_col, back = 1, max(4, round(size * 0.09)), 2, WORD_STYLES[ws][1], "&H64000000"
+    elif s["box"]:
         border, outline, shadow, outline_col, back = 3, 14, 0, "&H8C000000", "&H8C000000"
     else:
         border, outline, shadow, outline_col, back = 1, 5, 2, "&H00000000", "&H80000000"
+    hfill, hedge, hout = HOOK_COLORS[s.get("hook_color", "white")]
     head = (
         "[Script Info]\nScriptType: v4.00+\nWrapStyle: 0\nScaledBorderAndShadow: yes\n"
         f"PlayResX: {OUT_W}\nPlayResY: {OUT_H}\n\n[V4+ Styles]\n"
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, "
         "ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
-        f"Style: Default,{font},{FONT_SIZES[s['size']]},{primary},{secondary},{outline_col},{back},-1,0,0,0,100,100,0,0,{border},{outline},{shadow},{align},80,80,{margin_v},1\n"
-        f"Style: Hook,{font},96,&H0000E6FF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,8,3,8,70,70,300,1\n"
+        f"Style: Default,{font},{size},{primary},{secondary},{outline_col},{back},-1,0,0,0,100,100,0,0,{border},{outline},{shadow},{align},80,80,{margin_v},1\n"
+        f"Style: Hook,{font},96,{hfill},&H000000FF,{hedge},&H64000000,-1,0,0,0,100,100,0,0,1,{hout},3,8,70,70,300,1\n"
         # tô màu từng chữ trên nền mờ: libass vẽ nền riêng cho từng chữ (\k) nên chỗ chồng nhau bị sẫm thành vệt.
         # Nền cả câu vẽ ở lớp 0 (chữ trong suốt), chữ tô màu vẽ ở lớp 1 bằng kiểu Kara (viền mảnh, không nền).
-        f"Style: Kara,{font},{FONT_SIZES[s['size']]},{primary},{secondary},&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,3,0,{align},80,80,{margin_v},1\n\n"
+        f"Style: Kara,{font},{size},{primary},{secondary},&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,3,0,{align},80,80,{margin_v},1\n"
+        f"Style: Punch,{font},{PUNCH_FS},{WHITE},{WHITE},{BLACK},&H64000000,-1,0,0,0,100,100,0,0,1,10,5,5,40,40,0,1\n"
+        f"Style: PunchBox,{font},{PUNCH_FS},{WHITE},{WHITE},{PUNCH_RED},{PUNCH_RED},-1,0,0,0,100,100,0,0,3,22,0,5,40,40,0,1\n\n"
         "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
     anim = s.get("sub_anim", "none")
     an, x, y = _sub_xy(s, center_y)
     lines = []
     for c in cues:
         tag = f"\\an5\\pos({OUT_W // 2},{int(center_y)})" if center_y is not None else ""   # đặt giữa vùng sub gốc
+        pop = ""
         if anim == "fade":
             tag += f"\\fad({SUB_FADE_MS},100)"
         elif anim == "pop":
-            tag += f"\\fscy40\\t(0,{SUB_POP_MS},\\fscy100)"   # chỉ giãn chiều dọc để không xuống dòng lại giữa chừng
+            pop = f"\\fscy40\\t(0,{SUB_POP_MS},\\fscy100)"   # chỉ giãn chiều dọc để không xuống dòng lại giữa chừng
         elif anim == "slide":   # trượt nhẹ từ dưới lên (thay cho \pos)
             tag = f"\\an{an}\\move({x},{y + SUB_SLIDE_PX},{x},{y},0,{SUB_SLIDE_MS})\\fad({SUB_FADE_MS // 2},0)"
         t0, t1 = _ass_time(c["start"]), _ass_time(c["end"])
-        if s.get("karaoke") and s["box"]:
+        if ws in WORD_STYLES:
+            body = word_text(c["text"], c["end"] - c["start"], ws, (pop or "\\fscy100"))
+            lines.append(f"Dialogue: 0,{t0},{t1},Default,,0,0,0,,{'{' + tag + '}' if tag else ''}{body}")
+            continue
+        tag += pop
+        if ws == "karaoke" and s["box"]:
             lines.append(f"Dialogue: 0,{t0},{t1},Default,,0,0,0,,{{{tag}\\1a&HFF&\\2a&HFF&}}{_ass_text(c['text'])}")
             lines.append(f"Dialogue: 1,{t0},{t1},Kara,,0,0,0,,{'{' + tag + '}' if tag else ''}{karaoke_text(c['text'], c['end'] - c['start'])}")
             continue
-        body = karaoke_text(c["text"], c["end"] - c["start"]) if s.get("karaoke") else _ass_text(c["text"])
+        body = karaoke_text(c["text"], c["end"] - c["start"]) if ws == "karaoke" else _ass_text(c["text"])
         lines.append(f"Dialogue: 0,{t0},{t1},Default,,0,0,0,,{'{' + tag + '}' if tag else ''}{body}")
     if hook:   # chữ hook ở 3 giây đầu; tránh đè phụ đề nếu phụ đề đặt ở trên
         hy = HOOK_Y.get(s["position"], HOOK_Y_DEFAULT)
         lines.insert(0, f"Dialogue: 2,{_ass_time(0)},{_ass_time(hook_end)},Hook,,0,0,0,,"
                         f"{{{_hook_tags(s.get('hook_anim', 'pop'), OUT_W // 2, hy, int(hook_end * 1000))}}}{_ass_text(hook)}")
+    py = punch_y(s, center_y)
+    lines += [punch_line(p, py) for p in punches or []]
     return head + "\n".join(lines) + "\n"
 
 
@@ -949,14 +1179,16 @@ def out_fps(src: dict) -> int:
 
 
 def build_filter(src: dict, s: dict, voice: bool, ass: bool, cover: str = "", crop: dict | None = None,
-                 segs: list[dict] | None = None, dur: float = 0.0, xlen: float = 0.0) -> tuple[str, list[str]]:
+                 segs: list[dict] | None = None, dur: float = 0.0, xlen: float = 0.0,
+                 fx_events: list[tuple[float, str]] | None = None, fx_index: dict[str, int] | None = None) -> tuple[str, list[str]]:
     """Trả về (filter_complex, các tham số -map). src là kết quả probe_media của video gốc.
     cover: đoạn filter che sub gốc (origsubs.cover_chain, đầu ra là [src]); rỗng = không che.
     crop: vùng hình cần giữ (bars.detect) để cắt viền đen có sẵn; src phải là kích thước SAU khi cắt.
     segs: các đoạn giữ lại (cắt ngắn video). Che sub gốc làm TRƯỚC khi cắt vì khoảng che tính theo giờ của video gốc.
     dur: độ dài video sau khi cắt, TRƯỚC khi đổi tốc độ (cho zoom, mờ dần). xlen: độ dài chuyển cảnh (transition_len).
     Thứ tự hình: che sub -> cắt viền -> cắt đoạn (+chuyển cảnh) -> khung 9:16 -> lật -> màu -> zoom -> tốc độ -> phụ đề -> mờ đầu/cuối.
-    Phụ đề (subs.ass) phải tính theo giờ SAU khi đổi tốc độ."""
+    Phụ đề (subs.ass) phải tính theo giờ SAU khi đổi tốc độ.
+    fx_events: tiếng hiệu ứng [(giây theo bản xuất, tên)] trộn sau cùng (sau chuẩn hoá, mờ dần); fx_index: tên -> số thứ tự đầu vào ffmpeg."""
     speed = s.get("speed", 100) / 100
     dur_out = dur / speed if dur else 0.0
     vin = "src" if cover else "0:v"
@@ -1021,15 +1253,20 @@ def build_filter(src: dict, s: dict, voice: bool, ass: bool, cover: str = "", cr
     clean = clean + "," if clean else ""   # nối trước volume/anull của âm thanh video gốc
     maps = ["-map", "[v]"]
     parts = [vf]
+    fx = bool(fx_events and fx_index and dur_out > 0)
+    alab = "abase" if fx else "a"
     if src["has_audio"] and voice:
         parts.append(f"[{ain}]{clean}volume={s['orig_volume'] / 100:.2f}[o];[{voin}]volume={s['voice_volume'] / 100:.2f}[vo];"
-                     f"[o][vo]amix=inputs=2:duration=first:dropout_transition=0:normalize=0{norm}[a]")
-        maps += ["-map", "[a]"]
+                     f"[o][vo]amix=inputs=2:duration=first:dropout_transition=0:normalize=0{norm}[{alab}]")
     elif voice:
-        parts.append(f"[{voin}]volume={s['voice_volume'] / 100:.2f}{norm}[a]")
-        maps += ["-map", "[a]"]
+        parts.append(f"[{voin}]volume={s['voice_volume'] / 100:.2f}{norm}[{alab}]")
     elif src["has_audio"]:
-        parts.append(f"[{ain}]{clean}anull{norm}[a]")
+        parts.append(f"[{ain}]{clean}anull{norm}[{alab}]")
+    elif fx:   # video không có tiếng: nền im lặng để trộn tiếng hiệu ứng vào
+        parts.append(f"anullsrc=r=44100:cl=stereo,atrim=duration={dur_out:.3f}[{alab}]")
+    if fx:
+        parts.append(sfx.mix_chain(alab, fx_events, fx_index, sfx.LEVELS.get(s.get("sfx"), 1.0), "a"))
+    if src["has_audio"] or voice or fx:
         maps += ["-map", "[a]"]
     return ";".join(parts), maps
 
@@ -1118,7 +1355,19 @@ def render_job(job, rel: str, settings: dict | None = None) -> str:
             if not hook_text:
                 s["hook"] = False
                 job.log("Chưa duyệt hook nào nên xuất không kèm hook.")
-        if (cues or hook_text) and not t["ffmpeg"]["libass"]:
+        hook_end = (min(hooks.HOOK_SECONDS, out_dur) if out_dur else hooks.HOOK_SECONDS) if hook_text else 0.0
+        punches = []
+        if s["punch"]:
+            items = punch_info(folder, src["duration"])["items"]
+            punches = punch.retime(items, segs or None, speed, out_dur)
+            if not items:
+                s["punch"] = False
+            elif not punches:
+                s["punch"] = False
+                job.log("Các chữ lớn đều nằm trong phần bị cắt bỏ nên không in chữ lớn nào.")
+            elif len(punches) < len(items):
+                job.log(f"{len(items) - len(punches)} chữ lớn nằm trong phần bị cắt bỏ nên không in.")
+        if (cues or hook_text or punches) and not t["ffmpeg"]["libass"]:
             raise EditError(t["ffmpeg"]["problem"])
         oi = origsubs_info(folder)
         cover, center_y = "", None
@@ -1160,22 +1409,49 @@ def render_job(job, rel: str, settings: dict | None = None) -> str:
             f"tốc độ {s['speed']}%" if speed != 1 else "",
             f"hook kiểu {s['hook_anim']}" if hook_text and s["hook_anim"] != "pop" else "",
             f"phụ đề kiểu {s['sub_anim']}" if cues and s["sub_anim"] != "none" else "",
-            "tô màu từng chữ" if cues and s["karaoke"] else "") if x]
+            f"chữ nhảy kiểu {s['word_style']}" if cues and s["word_style"] != "off" else "",
+            f"{len(punches)} chữ lớn" if punches else "") if x]
         if fx:
             job.log("Hiệu ứng: " + ", ".join(fx) + ".")
         if s["zoom"] != "off" and s["hide_orig"] and s["subs"] and s["position"] == "orig":
             job.log("Lưu ý: zoom chậm phóng cả vùng che sub gốc (tối đa 8%) còn phụ đề mới đứng yên, nên về cuối có thể lệch vài chục điểm ảnh so với vùng che.")
-        fc, maps = build_filter(eff, s, voice is not None, bool(cues) or bool(hook_text), cover, bar, segs or None, cut_dur, xlen)
-        job.log(f"Xuất video {OUT_W}x{OUT_H}" + (f", {len(cues)} dòng phụ đề" if cues else "") + (", kèm hook 3 giây đầu" if hook_text else "") + (f", kèm giọng đọc {voice.name}" if voice else "") + "...")
+        fx_events: list[tuple[float, str]] = []
+        if s["sfx"] != "off":
+            if not out_dur:
+                s["sfx"] = "off"
+                job.log("Không đọc được độ dài video nên bỏ qua tiếng hiệu ứng.")
+            else:
+                scenes_out: list[float] = []
+                if s["sfx_scenes"]:
+                    job.log("Dò các chỗ đổi cảnh để đặt tiếng hiệu ứng...")
+                    scenes_out = _retime_points(scene_times(t["ffmpeg"]["path"], folder, src["duration"], lambda: job.cancelled), segs or None, speed)
+                fx_events = sfx.plan(hook_end, punches, scenes_out, out_dur, s["sfx_scenes"])
+                if not fx_events:
+                    s["sfx"] = "off"
+                    job.log("Không có chỗ nào để chèn tiếng hiệu ứng (chưa có hook, chữ lớn hay chỗ đổi cảnh).")
+        job.log(f"Xuất video {OUT_W}x{OUT_H}" + (f", {len(cues)} dòng phụ đề" if cues else "") + (", kèm hook 3 giây đầu" if hook_text else "")
+                + (f", {len(fx_events)} tiếng hiệu ứng" if fx_events else "") + (f", kèm giọng đọc {voice.name}" if voice else "") + "...")
         with tempfile.TemporaryDirectory(prefix="mvt-render-") as tmp:
             tmpd = Path(tmp)
-            if cues or hook_text:
-                hook_end = min(hooks.HOOK_SECONDS, out_dur) if out_dur else hooks.HOOK_SECONDS
-                (tmpd / "subs.ass").write_text(build_ass(cues, s, center_y, hook_text, hook_end), encoding="utf-8")
+            if cues or hook_text or punches:
+                (tmpd / "subs.ass").write_text(build_ass(cues, s, center_y, hook_text, hook_end, punches), encoding="utf-8")
+            fx_files: dict[str, Path] = {}
+            if fx_events:
+                try:
+                    fx_files = sfx.files(t["ffmpeg"]["path"], [n for _, n in fx_events], tmpd)
+                except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
+                    job.log(f"Không tạo được tiếng hiệu ứng nên xuất không kèm: {exc}")
+                    fx_events, s["sfx"] = [], "off"
+            first_fx = 2 if voice else 1
+            fx_index = {n: first_fx + i for i, n in enumerate(fx_files)}
+            fc, maps = build_filter(eff, s, voice is not None, bool(cues or hook_text or punches), cover, bar, segs or None, cut_dur, xlen,
+                                    fx_events, fx_index)
             out_tmp = folder / "video.draft.render.tmp.mp4"
             cmd = [t["ffmpeg"]["path"], "-nostdin", "-v", "error", "-nostats", "-y", "-i", str(src_path)]
             if voice:
                 cmd += ["-i", str(voice)]
+            for f in fx_files.values():
+                cmd += ["-i", str(f)]
             cmd += ["-filter_complex", fc, *maps, "-c:v", "libx264", "-preset", "veryfast", "-crf", str(crf), "-pix_fmt", "yuv420p",
                     "-c:a", "aac", "-b:a", abr, "-ar", "44100", "-movflags", "+faststart", "-progress", "pipe:1"]
             if out_dur:
