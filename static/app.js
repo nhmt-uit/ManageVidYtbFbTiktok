@@ -1438,6 +1438,7 @@ function veSettings() {
     orig_volume: Number($("#ve-ov").value), voice_volume: 100,
     fade: $("#ve-fade").checked, transition: $("#ve-xfade").value, zoom: $("#ve-zoom").value, grade: $("#ve-grade").value,
     mirror: $("#ve-mirror").checked, speed: Number($("#ve-speed").value),
+    hook_anim: $("#ve-hookanim").value, sub_anim: $("#ve-subanim").value, karaoke: $("#ve-kara").checked,
   };
 }
 function veBusy(on, msg) {
@@ -1485,6 +1486,7 @@ function veHookPv() {
   const vid = $("#ve-video"), pv = $("#ve-hook-pv");
   const ap = ve.st && ve.st.hooks && ve.st.hooks.approved;
   const show = ap && $("#ve-hook-use").checked && ve.view === "orig" && vid.currentTime < 3;
+  if (show && pv.hidden) veAnimRestart(pv, "ve-a-h" + $("#ve-hookanim").value);
   pv.hidden = !show;
   if (show) pv.textContent = ap.text;
 }
@@ -1518,11 +1520,33 @@ $("#ve-hook-clear").addEventListener("click", async () => {
     await veLoad(ve.view);
   } catch (e) { toast(e.message, 8000); }
 });
+// Xem trước "tô màu từng chữ": cùng cách chia thời gian với editor.karaoke_text (theo số ký tự, 90% thời gian câu)
+const VE_CJK = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff]/;
+function veKaraHtml(c, now) {
+  const lines = c.text.split("\n").map((ln) => {
+    const w = ln.split(/\s+/).filter(Boolean);
+    return w.length <= 1 && VE_CJK.test(ln) ? [...ln].filter((ch) => ch.trim()) : w;
+  });
+  const total = lines.flat().reduce((a, w) => a + Math.max(1, [...w].length), 0) || 1;
+  const span = (c.end - c.start) * 0.9, hl = $("#ve-color").value === "yellow" ? "#00e6ff" : "#ffe600";
+  let acc = 0;
+  return lines.map((ln) => ln.map((w) => {
+    const on = now - c.start >= span * acc / total;   // chữ sáng lên khi tới lượt
+    acc += Math.max(1, [...w].length);
+    return on ? `<span style="color:${hl}">${esc(w)}</span>` : esc(w);
+  }).join(ln.length > 1 && ln.every((w) => [...w].length === 1) && VE_CJK.test(ln.join("")) ? "" : " ")).join("\n");
+}
+function veAnimRestart(el, cls) {   // chạy lại hiệu ứng CSS mỗi lần câu/hook mới hiện
+  el.classList.remove(...[...el.classList].filter((x) => x.startsWith("ve-a-")));
+  if (cls) { void el.offsetWidth; el.classList.add(cls); }
+}
 function veCap() {
   const vid = $("#ve-video"), cap = $("#ve-cap");
   const c = ve.view === "orig" && $("#ve-subs").checked ? ve.cues.find((x) => vid.currentTime >= x.start && vid.currentTime < x.end) : null;
   cap.hidden = !c;
-  if (c) cap.textContent = c.text;
+  const key = c ? c.start + "|" + c.text : "";
+  if (key !== ve.capKey) { ve.capKey = key; if (c) veAnimRestart(cap, $("#ve-subanim").value !== "none" ? "ve-a-" + $("#ve-subanim").value : ""); }
+  if (c) { if ($("#ve-kara").checked) cap.innerHTML = veKaraHtml(c, vid.currentTime); else cap.textContent = c.text; }
   const r = $("#ve-position").value === "orig" ? veBandRect() : null;   // "Đúng chỗ sub gốc": phụ đề mới nằm chính giữa vùng sub cũ
   cap.style.top = r ? r.top + r.height / 2 + "px" : "";
   cap.style.bottom = r ? "auto" : "";
@@ -1616,6 +1640,7 @@ function veRender() {
   $("#ve-trim").checked = set.trim_bars; $("#ve-aclean").value = set.audio_clean; $("#ve-quality").value = set.quality;
   $("#ve-fade").checked = !!set.fade; $("#ve-xfade").value = set.transition || "none"; $("#ve-zoom").value = set.zoom || "off";
   $("#ve-grade").value = set.grade || "off"; $("#ve-mirror").checked = !!set.mirror; $("#ve-speed").value = String(set.speed || 100);
+  $("#ve-hookanim").value = set.hook_anim || "pop"; $("#ve-subanim").value = set.sub_anim || "none"; $("#ve-kara").checked = !!set.karaoke;
   veAcRender();
   veHookRender();
   $("#ve-ov").value = set.orig_volume; $("#ve-ov-n").textContent = set.orig_volume + "%";
@@ -1878,6 +1903,8 @@ $("#ve-dlg").addEventListener("click", (e) => { if (e.target === $("#ve-dlg") &&
 document.querySelectorAll("input[name=ve-view]").forEach((r) => r.addEventListener("change", (e) => veSetView(e.target.value)));
 $("#ve-video").addEventListener("timeupdate", () => { veCap(); veCover(); });
 $("#ve-subs").addEventListener("change", veCap);
+["#ve-kara", "#ve-subanim", "#ve-color"].forEach((s) => $(s).addEventListener("change", () => { ve.capKey = null; veCap(); }));
+$("#ve-hookanim").addEventListener("change", () => { $("#ve-hook-pv").hidden = true; veHookPv(); });
 $("#ve-ov").addEventListener("input", () => { $("#ve-ov-n").textContent = $("#ve-ov").value + "%"; });
 $("#ve-cues").addEventListener("click", (e) => {
   const row = e.target.closest(".ve-cue");

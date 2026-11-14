@@ -59,12 +59,17 @@ DEFAULT_SETTINGS = {
     "grade": "off",          # chỉnh màu, xem GRADES
     "mirror": False,         # lật ngang hình (phụ đề, hook vẫn đúng chiều)
     "speed": 100,            # % tốc độ phát (giữ cao độ giọng)
+    # chữ động
+    "hook_anim": "pop",      # kiểu hiện chữ hook, xem _hook_tags
+    "sub_anim": "none",      # kiểu hiện từng câu phụ đề: none | fade | pop | slide
+    "karaoke": False,        # tô màu dần từng chữ (thời gian mỗi chữ là ước lượng theo độ dài chữ)
 }
 CHOICES = {"framing": ("auto", "scale", "fit", "crop"), "position": ("bottom", "middle", "top", "orig"),   # orig = đúng chỗ sub gốc
            "size": ("small", "medium", "large"), "color": ("white", "yellow", "cyan"),
            "audio_clean": ("off", "light", "voice"), "quality": ("fast", "standard", "high"),
            "transition": ("none", "fade", "slide", "flash", "black"), "zoom": ("off", "in", "out"),
-           "grade": ("off", "bright", "vivid", "warm", "cool", "contrast")}
+           "grade": ("off", "bright", "vivid", "warm", "cool", "contrast"),
+           "hook_anim": ("pop", "bounce", "shake", "fade", "slide", "none"), "sub_anim": ("none", "fade", "pop", "slide")}
 SPEEDS = (100, 105, 110, 115, 120, 125)
 # chuyển cảnh: tên hiệu ứng của bộ lọc xfade. Chuyển cảnh không làm đổi độ dài: đoạn trước được kéo dài thêm TRANSITION_SEC
 # (lấy phần ngay sau nó trong video gốc) để chồng lên đầu đoạn sau, nên phụ đề vẫn khớp giờ.
@@ -245,7 +250,7 @@ def clean_settings(raw: dict | None) -> dict:
     for k, allowed in CHOICES.items():
         if raw.get(k) in allowed:
             s[k] = raw[k]
-    for k in ("subs", "box", "loudnorm", "hide_orig", "hook", "trim_bars", "cut", "fade", "mirror"):
+    for k in ("subs", "box", "loudnorm", "hide_orig", "hook", "trim_bars", "cut", "fade", "mirror", "karaoke"):
         if isinstance(raw.get(k), bool):
             s[k] = raw[k]
     try:
@@ -788,10 +793,79 @@ def _ass_text(text: str) -> str:
     return "\\N".join(line for line in text.split("\n"))
 
 
+HOOK_Y = {"top": 520}          # hook nằm phần trên khung; nếu phụ đề cũng ở trên thì hạ hook xuống
+HOOK_Y_DEFAULT = 330
+SUB_FADE_MS, SUB_POP_MS, SUB_SLIDE_MS, SUB_SLIDE_PX = 150, 140, 180, 45
+KARAOKE_FILL = 0.9            # chữ cuối sáng lên trước khi hết câu một chút
+_CJK_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff]")
+
+
+def karaoke_words(line: str) -> list[str]:
+    """Tách một dòng phụ đề thành các chữ để tô màu. Câu tiếng Trung/Nhật/Hàn không có dấu cách thì tách từng ký tự."""
+    words = line.split()
+    if len(words) <= 1 and _CJK_RE.search(line):
+        return [ch for ch in line if not ch.isspace()]
+    return words
+
+
+def karaoke_text(text: str, dur: float) -> str:
+    """Chữ ASS có thẻ \\k: chữ thứ i đổi sang màu nổi bật khi tới lượt. Thời gian chia theo số ký tự của từng chữ
+    (ước lượng, không phải mốc từng chữ thật của giọng nói)."""
+    lines = [karaoke_words(ln) for ln in text.split("\n")]
+    weights = [max(1, len(w)) for ln in lines for w in ln]
+    total_cs = max(len(weights), int(dur * 100 * KARAOKE_FILL))
+    whole = sum(weights) or 1
+    out_lines, acc_w, done_cs = [], 0, 0
+    cjk = bool(_CJK_RE.search(text))
+    for ln in lines:
+        parts = []
+        for w in ln:
+            acc_w += max(1, len(w))
+            cs = round(total_cs * acc_w / whole) - done_cs
+            done_cs += cs
+            parts.append(f"{{\\k{cs}}}{_ass_text(w)}")
+        out_lines.append(("" if cjk and len(ln) > 1 and all(len(w) == 1 for w in ln) else " ").join(parts))
+    return "\\N".join(out_lines)
+
+
+def _hook_tags(anim: str, x: int, y: int, dur_ms: int) -> str:
+    """Thẻ ASS cho chữ hook. Không phóng chiều ngang quá 100% (libass sẽ xuống dòng lại giữa chừng làm chữ nhảy),
+    nên kiểu nảy chỉ co giãn chiều dọc, kiểu lắc chỉ xoay."""
+    pos = f"\\an8\\pos({x},{y})"
+    if anim == "bounce":   # nảy: bật cao quá rồi nhún về
+        return pos + "\\fscy30\\fad(80,250)\\t(0,160,\\fscy118)\\t(160,260,\\fscy90)\\t(260,360,\\fscy100)"
+    if anim == "shake":    # lắc nhẹ trái phải lúc hiện
+        return (pos + f"\\org({x},{y + 60})\\fad(80,250)\\t(0,90,\\frz4)\\t(90,180,\\frz-4)\\t(180,270,\\frz3)"
+                "\\t(270,360,\\frz-2)\\t(360,450,\\frz0)")
+    if anim == "fade":
+        return pos + "\\fad(450,400)"
+    if anim == "slide":    # trượt từ trên xuống
+        return f"\\an8\\move({x},{y - 160},{x},{y},0,260)\\fad(150,250)"
+    if anim == "none":
+        return pos
+    return pos + "\\fscx70\\fscy70\\fad(100,250)\\t(0,200,\\fscx100\\fscy100)"   # pop (mặc định, như trước)
+
+
+def _sub_xy(s: dict, center_y: float | None) -> tuple[int, int, int]:
+    """(\\an, x, y) của phụ đề khi cần đặt vị trí cụ thể (hiệu ứng trượt)."""
+    if center_y is not None:
+        return 5, OUT_W // 2, int(center_y)
+    align, margin_v = ALIGN[s["position"]]
+    if align == 2:
+        return 2, OUT_W // 2, OUT_H - margin_v
+    if align == 8:
+        return 8, OUT_W // 2, margin_v
+    return 5, OUT_W // 2, OUT_H // 2
+
+
 def build_ass(cues: list[dict], s: dict, center_y: float | None = None, hook: str = "", hook_end: float = 3.0) -> str:
     align, margin_v = ALIGN[s["position"]]
     font = config.get("EDIT_FONT", "Arial") or "Arial"
     col = COLORS[s["color"]]
+    # tô màu từng chữ: chữ chưa tới lượt = màu đã chọn (Secondary), chữ đã tới lượt = màu nổi bật (Primary)
+    primary, secondary = col, "&H000000FF"
+    if s.get("karaoke"):
+        primary, secondary = (COLORS["cyan"] if s["color"] == "yellow" else COLORS["yellow"]), col
     if s["box"]:
         border, outline, shadow, outline_col, back = 3, 14, 0, "&H8C000000", "&H8C000000"
     else:
@@ -801,15 +875,34 @@ def build_ass(cues: list[dict], s: dict, center_y: float | None = None, hook: st
         f"PlayResX: {OUT_W}\nPlayResY: {OUT_H}\n\n[V4+ Styles]\n"
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, "
         "ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
-        f"Style: Default,{font},{FONT_SIZES[s['size']]},{col},&H000000FF,{outline_col},{back},-1,0,0,0,100,100,0,0,{border},{outline},{shadow},{align},80,80,{margin_v},1\n"
-        f"Style: Hook,{font},96,&H0000E6FF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,8,3,8,70,70,300,1\n\n"
+        f"Style: Default,{font},{FONT_SIZES[s['size']]},{primary},{secondary},{outline_col},{back},-1,0,0,0,100,100,0,0,{border},{outline},{shadow},{align},80,80,{margin_v},1\n"
+        f"Style: Hook,{font},96,&H0000E6FF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,8,3,8,70,70,300,1\n"
+        # tô màu từng chữ trên nền mờ: libass vẽ nền riêng cho từng chữ (\k) nên chỗ chồng nhau bị sẫm thành vệt.
+        # Nền cả câu vẽ ở lớp 0 (chữ trong suốt), chữ tô màu vẽ ở lớp 1 bằng kiểu Kara (viền mảnh, không nền).
+        f"Style: Kara,{font},{FONT_SIZES[s['size']]},{primary},{secondary},&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,3,0,{align},80,80,{margin_v},1\n\n"
         "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
-    tag = f"{{\\an5\\pos({OUT_W // 2},{int(center_y)})}}" if center_y is not None else ""   # đặt giữa vùng sub gốc
-    lines = [f"Dialogue: 0,{_ass_time(c['start'])},{_ass_time(c['end'])},Default,,0,0,0,,{tag}{_ass_text(c['text'])}" for c in cues]
-    if hook:   # chữ hook ở 3 giây đầu: hiện nhanh (phóng nhẹ), mờ dần khi hết; tránh đè phụ đề nếu phụ đề đặt ở trên
-        y = 520 if s["position"] == "top" else 330
-        lines.insert(0, f"Dialogue: 1,{_ass_time(0)},{_ass_time(hook_end)},Hook,,0,0,0,,"
-                        f"{{\\an8\\pos({OUT_W // 2},{y})\\fscx70\\fscy70\\fad(100,250)\\t(0,200,\\fscx100\\fscy100)}}{_ass_text(hook)}")
+    anim = s.get("sub_anim", "none")
+    an, x, y = _sub_xy(s, center_y)
+    lines = []
+    for c in cues:
+        tag = f"\\an5\\pos({OUT_W // 2},{int(center_y)})" if center_y is not None else ""   # đặt giữa vùng sub gốc
+        if anim == "fade":
+            tag += f"\\fad({SUB_FADE_MS},100)"
+        elif anim == "pop":
+            tag += f"\\fscy40\\t(0,{SUB_POP_MS},\\fscy100)"   # chỉ giãn chiều dọc để không xuống dòng lại giữa chừng
+        elif anim == "slide":   # trượt nhẹ từ dưới lên (thay cho \pos)
+            tag = f"\\an{an}\\move({x},{y + SUB_SLIDE_PX},{x},{y},0,{SUB_SLIDE_MS})\\fad({SUB_FADE_MS // 2},0)"
+        t0, t1 = _ass_time(c["start"]), _ass_time(c["end"])
+        if s.get("karaoke") and s["box"]:
+            lines.append(f"Dialogue: 0,{t0},{t1},Default,,0,0,0,,{{{tag}\\1a&HFF&\\2a&HFF&}}{_ass_text(c['text'])}")
+            lines.append(f"Dialogue: 1,{t0},{t1},Kara,,0,0,0,,{'{' + tag + '}' if tag else ''}{karaoke_text(c['text'], c['end'] - c['start'])}")
+            continue
+        body = karaoke_text(c["text"], c["end"] - c["start"]) if s.get("karaoke") else _ass_text(c["text"])
+        lines.append(f"Dialogue: 0,{t0},{t1},Default,,0,0,0,,{'{' + tag + '}' if tag else ''}{body}")
+    if hook:   # chữ hook ở 3 giây đầu; tránh đè phụ đề nếu phụ đề đặt ở trên
+        hy = HOOK_Y.get(s["position"], HOOK_Y_DEFAULT)
+        lines.insert(0, f"Dialogue: 2,{_ass_time(0)},{_ass_time(hook_end)},Hook,,0,0,0,,"
+                        f"{{{_hook_tags(s.get('hook_anim', 'pop'), OUT_W // 2, hy, int(hook_end * 1000))}}}{_ass_text(hook)}")
     return head + "\n".join(lines) + "\n"
 
 
@@ -1064,7 +1157,10 @@ def render_job(job, rel: str, settings: dict | None = None) -> str:
             {"in": "zoom chậm vào", "out": "zoom chậm ra"}.get(s["zoom"], ""),
             f"màu {s['grade']}" if s["grade"] != "off" else "",
             "lật ngang" if s["mirror"] else "",
-            f"tốc độ {s['speed']}%" if speed != 1 else "") if x]
+            f"tốc độ {s['speed']}%" if speed != 1 else "",
+            f"hook kiểu {s['hook_anim']}" if hook_text and s["hook_anim"] != "pop" else "",
+            f"phụ đề kiểu {s['sub_anim']}" if cues and s["sub_anim"] != "none" else "",
+            "tô màu từng chữ" if cues and s["karaoke"] else "") if x]
         if fx:
             job.log("Hiệu ứng: " + ", ".join(fx) + ".")
         if s["zoom"] != "off" and s["hide_orig"] and s["subs"] and s["position"] == "orig":

@@ -220,6 +220,21 @@ Xuất xong chỉ ra **bản nháp** `video.draft.mp4`; chưa duyệt thì video
 - **Lật ngang hình:** phụ đề và hook vẫn đúng chiều, nhưng chữ có sẵn trong hình sẽ bị ngược.
 - Thứ tự áp dụng: che sub, cắt viền, cắt đoạn và chuyển cảnh, khung 9:16, lật, màu, zoom, tốc độ, phụ đề và hook, mờ đầu/cuối.
 
+**Chữ động (cùng mục Hiệu ứng):** khung xem trước trên video cũng chạy hiệu ứng, nhưng chỉ gần giống bản xuất.
+- **Kiểu hiện hook:**
+  - *Phóng nhẹ*: như trước, là mặc định.
+  - *Nảy*: chữ giãn cao rồi nhún về.
+  - *Lắc*: xoay nhẹ trái phải khi hiện.
+  - *Mờ dần*.
+  - *Trượt từ trên xuống*.
+  - *Hiện thẳng*.
+- **Kiểu hiện phụ đề:** từng câu hiện ra kiểu *Mờ dần*, *Bật lên* (giãn theo chiều dọc) hoặc *Trượt lên*. Mặc định là *Hiện thẳng*.
+- **Tô màu từng chữ (ước lượng):** chữ đổi màu lần lượt trong câu. Chữ đổi sang vàng, hoặc xanh lơ nếu đang chọn màu chữ vàng.
+  - Thời gian mỗi chữ chia theo độ dài chữ, trong 90% thời gian của câu. Đây không phải mốc giọng nói thật, nên chỉ khớp tương đối.
+  - Phụ đề tiếng Trung, Nhật, Hàn được tô từng ký tự.
+  - Dùng được cùng nền mờ: nền cả câu vẽ riêng nên không bị vệt sẫm giữa các chữ.
+- Các hiệu ứng chữ không phóng chữ to quá 100% theo chiều ngang. Nếu phóng to hơn, libass sẽ tự xuống dòng lại giữa chừng và làm chữ nhảy.
+
 **Hook 3 giây đầu (bước 5, nhờ Claude đề xuất):** bấm **Nhờ Claude đề xuất hook**, app chạy `claude -p` (Claude Code) trên máy bạn, gửi tên video và phụ đề đã phiên âm, rồi nhận về 5 hook (kèm kiểu và lý do), vài câu trend và câu kêu gọi cuối video.
 - Chọn **Dùng** ở một hook (hoặc tự viết), sửa chữ rồi bấm **Duyệt hook**. Chỉ hook đã duyệt mới được in; tick **In hook ở 3 giây đầu khi xuất**. Chữ vàng viền đen hiện ở phần trên của khung hình trong 3 giây đầu và có xem trước trên video.
 - Cần Claude Code đã cài và đăng nhập trên máy (chạy `claude` trong Terminal một lần). Nếu lệnh nằm chỗ lạ, đặt `CLAUDE_BIN=/đường/dẫn/claude` trong `.env`; đặt `HOOK_MODEL` nếu muốn chỉ định model. Lệnh chạy trong thư mục tạm và không cho dùng công cụ nào.

@@ -413,6 +413,22 @@ dialog#ve-dlg.modal { width: min(1320px, 97vw); }
 .ve-opts label { display: grid; gap: 4px; font-size: 14px; }
 .ve-opts .ve-chk { display: flex; gap: 8px; align-items: center; }
 .ve-fx-head { margin: 10px 0 6px; font-size: 14px; }
+/* xem trước kiểu hiện phụ đề / hook (gần giống bản xuất; dùng translate/scale/rotate riêng để không đè transform đặt vị trí) */
+.ve-a-fade { animation: veFade .15s ease-out; }
+.ve-a-pop { animation: veSubPop .14s ease-out; }
+.ve-a-slide { animation: veSubSlide .18s ease-out; }
+.ve-a-hpop { animation: veHookPop .2s ease-out; }
+.ve-a-hbounce { animation: veHookBounce .36s ease-out; }
+.ve-a-hshake { animation: veHookShake .45s linear; }
+.ve-a-hfade { animation: veFade .45s ease-out; }
+.ve-a-hslide { animation: veHookSlide .26s ease-out; }
+@keyframes veFade { from { opacity: 0; } }
+@keyframes veSubPop { from { scale: 1 .4; } }
+@keyframes veSubSlide { from { translate: 0 8px; opacity: .5; } }
+@keyframes veHookPop { from { scale: .7; } }
+@keyframes veHookBounce { 0% { scale: 1 .3; } 44% { scale: 1 1.18; } 72% { scale: 1 .9; } 100% { scale: 1 1; } }
+@keyframes veHookShake { 20% { rotate: 4deg; } 40% { rotate: -4deg; } 60% { rotate: 3deg; } 80% { rotate: -2deg; } }
+@keyframes veHookSlide { from { translate: 0 -30px; } }
 #ve-bar { width: 100%; }
 @media (max-width: 760px) {
   .ve-grid { grid-template-columns: 1fr; }
