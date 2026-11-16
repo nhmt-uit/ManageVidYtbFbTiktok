@@ -534,3 +534,14 @@ label.fd-field, label.fd-days { display: inline-flex; flex-direction: row; align
 #ve-cap.ws-reveal .ve-w.off { visibility: hidden; }
 @keyframes veWordBump { 50% { scale: 1 1.12; } }
 #ve-hook-pv.hc-white { color: #fff; text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000, 0 2px 4px #000; }
+
+/* Đăng đa nền tảng: ô FB / YouTube / TikTok trên thẻ video */
+.xp { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin: 6px 0 2px; }
+.xp-st { font: inherit; font-size: 11px; line-height: 1.25; padding: 3px 2px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: var(--muted); text-align: center; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.xp-st small { display: block; font-size: 10px; opacity: .8; }
+.xp-st.xp-fb { cursor: default; }
+.xp-st.xp-todo { color: var(--warn); border-color: var(--warn); }
+.xp-st.xp-scheduled { color: var(--text, inherit); border-color: var(--muted); }
+.xp-st.xp-posted { color: var(--ok); border-color: var(--ok); }
+.xp-st.xp-bad { color: var(--bad); border-color: var(--bad); }
+.xp-tools { display: flex; flex-wrap: wrap; gap: 2px 10px; margin-bottom: 4px; }

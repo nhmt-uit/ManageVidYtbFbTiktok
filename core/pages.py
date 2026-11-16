@@ -192,6 +192,26 @@ def set_settings(page_id: str, settings: dict) -> dict:
     return _mutate(page_id, lambda p: p.__setitem__("settings", settings))
 
 
+PLATFORMS = ("youtube", "tiktok")   # đăng thêm ngoài Facebook (đăng tay, app theo dõi trạng thái: xem xpost.py)
+
+
+def platforms_of(p: dict) -> list[str]:
+    raw = (p or {}).get("platforms")
+    return [k for k in PLATFORMS if isinstance(raw, dict) and raw.get(k) is True]
+
+
+def set_platforms(page_id: str, d: dict) -> dict:
+    if not isinstance(d, dict):
+        raise ValueError("Cài đặt nền tảng không hợp lệ.")
+    def fn(p):
+        cur = {k: True for k in platforms_of(p)}
+        for k in PLATFORMS:
+            if k in d:
+                cur[k] = bool(d[k])
+        p["platforms"] = {k: True for k, v in cur.items() if v}
+    return _mutate(page_id, fn)
+
+
 def set_schedule(page_id: str, rules: dict) -> dict:
     return _mutate(page_id, lambda p: p.__setitem__("schedule", rules))
 
@@ -257,6 +277,7 @@ def public(p: dict) -> dict:
         "has_token": bool(p.get("token")),
         "auto_comment": bool(p.get("auto_comment")),
         "comment_count": len(p.get("comments", [])),
+        "platforms": platforms_of(p),
     }
 
 

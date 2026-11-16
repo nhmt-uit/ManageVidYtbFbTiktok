@@ -477,7 +477,7 @@ function selKind(v) {
   return ["error", "missing"].includes(v.publish_status) ? "rebook" : "cancel";
 }
 // Nút "Chọn tất cả" của từng tab chọn loại nào (tab Tất cả chỉ chọn video chưa lên lịch để không lỡ huỷ lịch hàng loạt)
-const SELALL_KINDS = { all: ["new"], new: ["new"], pending: ["cancel"], problem: ["cancel", "rebook"], published: ["done"] };
+const SELALL_KINDS = { all: ["new"], new: ["new"], pending: ["cancel"], problem: ["cancel", "rebook"], published: ["done"], xmissing: [] };
 const SELALL_TIP = {
   all: "Chọn mọi video chưa lên lịch đang hiển thị. Muốn chọn video đã hẹn hoặc bị lỗi, mở tab Chờ đăng hoặc Lỗi / quá giờ.",
   new: "Chọn mọi video chưa lên lịch đang hiển thị",
@@ -492,6 +492,7 @@ const TAB_TOOLS = {
   pending: { reels: false, check: true },
   problem: { reels: false, check: true },
   published: { reels: false, check: false },
+  xmissing: { reels: false, check: true },
 };
 const TAB_HINT = {
   all: "Kiểm tra Reels: soát video chưa hẹn có đạt yêu cầu Reels không. Kiểm tra trạng thái: hỏi Facebook về các bài đã hẹn.",
@@ -499,10 +500,78 @@ const TAB_HINT = {
   pending: "Bài đã hẹn, đang chờ đến giờ đăng. Kiểm tra trạng thái hỏi Facebook xem bài còn trên lịch không (phát hiện bài bạn đã xóa). Chọn bài rồi bấm Huỷ lịch để xóa hẹn.",
   problem: "Bài báo lỗi, quá giờ mà chưa đăng, hoặc không còn trên Facebook. Kiểm tra trạng thái để cập nhật lại; chọn bài rồi bấm Hẹn lại (hoặc Huỷ lịch với bài quá giờ).",
   published: "Bài đã đăng thành công. Chọn để xoá video (chuyển cả thư mục vào Thùng rác) khi không cần giữ nữa.",
+  xmissing: "Video đã hẹn trên Facebook nhưng chưa đăng đủ YouTube Shorts / TikTok. Đăng tay rồi bấm vào ô YouTube / TikTok để đổi: Chưa đăng → Đã hẹn → Đã đăng.",
 };
 function selectedBy(kind) {
   const byRel = new Map(lib.videos.map((v) => [v.rel, v]));
   return [...lib.selected].filter((r) => byRel.has(r) && selKind(byRel.get(r)) === kind);
+}
+/* ---------- Đăng đa nền tảng: YouTube Shorts / TikTok đăng tay, app ghi trạng thái (xpost.json) ---------- */
+const XP_LABEL = { youtube: "YouTube", tiktok: "TikTok" };
+const XP_ST = { todo: "Chưa đăng", scheduled: "Đã hẹn", posted: "Đã đăng" };
+const XP_NEXT = { todo: "scheduled", scheduled: "posted", posted: "todo" };
+function xpostMissing(v) {
+  return (v.xpost_required || []).filter((p) => !v.xpost || !v.xpost[p] || v.xpost[p].status !== "posted");
+}
+function safeXpLink(u) {
+  return /^https:\/\/([a-z0-9-]+\.)*(youtube\.com|youtu\.be|tiktok\.com)\//i.test(u || "") ? u : "";
+}
+function fbShort(v) {
+  if (v.publish_status === "published") return ["Đã đăng", "posted"];
+  if (["error", "missing"].includes(v.publish_status)) return ["Lỗi", "bad"];
+  return v.overdue ? ["Quá giờ", "bad"] : ["Đã hẹn", "scheduled"];
+}
+function xpostHtml(v) {
+  const req = v.xpost_required || [];
+  if (!req.length || !v.scheduled) return "";
+  const [fbText, fbCls] = fbShort(v);
+  const links = [];
+  const cells = req.map((p) => {
+    const x = (v.xpost && v.xpost[p]) || { status: "todo", url: "" };
+    const link = safeXpLink(x.url);
+    if (link) links.push(`<a class="link" href="${esc(link)}" target="_blank" rel="noopener noreferrer">Xem trên ${XP_LABEL[p]}</a>`);
+    return `<button class="xp-st xp-${esc(x.status)}" type="button" data-p="${esc(p)}" title="Bấm để đổi: Chưa đăng → Đã hẹn → Đã đăng${x.at ? " (đổi lúc " + esc(x.at.replace("T", " ").slice(0, 16)) + ")" : ""}"><small>${XP_LABEL[p]}</small>${XP_ST[x.status] || x.status}</button>`;
+  }).join("");
+  return `<div class="xp"><span class="xp-st xp-${fbCls} xp-fb"><small>Facebook</small>${fbText}</span>${cells}</div>
+    <div class="xp-tools">
+      <button class="link xp-copy" type="button" data-what="title" title="Chép dòng đầu của nội dung đăng (bỏ hashtag), dùng làm tiêu đề YouTube">Copy tiêu đề</button>
+      <button class="link xp-copy" type="button" data-what="hashtags">Copy hashtag</button>
+      <button class="link xp-copy" type="button" data-what="caption" title="Chép cả nội dung đăng (như bài Facebook), dùng cho TikTok">Copy cả bài</button>
+      <button class="link xp-open" type="button" data-what="folder">Mở thư mục</button>
+      <button class="link xp-open" type="button" data-what="video">Mở video</button>
+      ${links.join(" ")}
+    </div>`;
+}
+async function xpostCycle(rel, platform) {
+  const v = lib.videos.find((x) => x.rel === rel);
+  if (!v) return;
+  const cur = (v.xpost && v.xpost[platform]) || { status: "todo", url: "" };
+  const next = XP_NEXT[cur.status] || "scheduled";
+  const payload = { rel, platform, status: next };
+  if (next === "posted") {
+    const url = prompt(`Đánh dấu đã đăng ${XP_LABEL[platform]}.\n\nDán link bài (có thể để trống):`, cur.url || "");
+    if (url === null) return;
+    payload.url = url.trim();
+  } else if (next === "todo" && !confirm(`Đưa ${XP_LABEL[platform]} về "Chưa đăng"?`)) return;
+  try {
+    const r = await api("/api/xpost", "POST", payload);
+    v.xpost = r.xpost;
+    renderLibrary();
+  } catch (e) { toast(e.message); }
+}
+async function xpostCopy(rel, what) {
+  try {
+    const t = await api("/api/xpost/text?rel=" + encodeURIComponent(rel));
+    const text = t[what] || "";
+    if (!text) { toast(what === "hashtags" ? "Video này chưa có hashtag." : "Không có nội dung để chép."); return; }
+    const msg = { title: "Đã chép tiêu đề.", hashtags: "Đã chép hashtag.", caption: "Đã chép cả bài." }[what];
+    await veCopy(text, what === "title" && t.title_len > t.title_max
+      ? `${msg} Lưu ý: dài ${t.title_len} ký tự, YouTube chỉ nhận tối đa ${t.title_max}.` : msg);
+  } catch (e) { toast(e.message); }
+}
+async function xpostOpen(rel, what) {
+  try { await api("/api/open", "POST", { rel, what }); }
+  catch (e) { toast(e.message); }
 }
 function reelBadge(v) {
   const rc = v.reel_check;
@@ -597,15 +666,22 @@ function channelVideos() {
 }
 
 function filteredVideos() {
+  if (lib.status === "xmissing") return channelVideos().filter((v) => v.scheduled && xpostMissing(v).length);
   return channelVideos().filter((v) => lib.status === "all" || videoGroup(v) === lib.status);
 }
 
 // Số video của từng nhóm (theo thư mục đang chọn) hiện ngay trên nút lọc
 function renderStatusBar() {
-  const counts = { all: 0, new: 0, pending: 0, published: 0, problem: 0 };
-  channelVideos().forEach((v) => { counts.all++; counts[videoGroup(v)]++; });
+  const counts = { all: 0, new: 0, pending: 0, published: 0, problem: 0, xmissing: 0 };
+  let multi = false;
+  channelVideos().forEach((v) => {
+    counts.all++; counts[videoGroup(v)]++;
+    if ((v.xpost_required || []).length) multi = true;
+    if (v.scheduled && xpostMissing(v).length) counts.xmissing++;
+  });
   $$("#lib-status button").forEach((b) => {
     const st = b.dataset.st;
+    if (st === "xmissing") b.hidden = !multi;
     b.classList.toggle("active", st === lib.status);
     b.classList.toggle("alert", st === "problem" && counts.problem > 0);
     $("b", b).textContent = counts[st];
@@ -773,6 +849,7 @@ async function editSeries(rel) {
 }
 
 function renderLibrary() {
+  if (lib.status === "xmissing" && !channelVideos().some((v) => (v.xpost_required || []).length)) lib.status = "all";   // nút lọc đang ẩn
   const list = filteredVideos();
   // Chỉ giữ lại những video đang thấy trên màn hình, để thao tác hàng loạt (nhất là Huỷ lịch) đúng với những gì bạn nhìn thấy
   const visible = new Set(list.filter((v) => selKind(v)).map((v) => v.rel));
@@ -800,6 +877,7 @@ function renderLibrary() {
           ${commentBadge(v)}
           ${v.has_permission ? "" :'<span class="badge warn" title="Chưa có ghi chú đồng ý của chủ kênh trong thư mục này">Chưa ghi nhận quyền</span>'}
         </div>
+        ${xpostHtml(v)}
         <button class="link edit" type="button">Sửa nội dung</button>
         ${v.scheduled ? "" : '<button class="link vedit" type="button">Chỉnh sửa video</button>'}
         <button class="link sedit" type="button" title="Sửa tên phim và số tập khi app nhận sai từ tiêu đề">Sửa phim / tập</button>
@@ -861,6 +939,7 @@ const ED_COMMENT_WINDOW_MS = (3 * 24 + 1) * 3600e3;   // commenter.MAX_AGE_DAYS 
 function edDeletable(v) {
   if (!v.scheduled) return true;
   if (v.publish_status !== "published") return false;
+  if (xpostMissing(v).length) return false;   // Page đa nền tảng: chưa đăng đủ YouTube / TikTok thì chưa xoá (giống removed.blocked_reason)
   const posted = Date.parse(v.scheduled);
   return ED_COMMENT_FINISHED.includes(v.comment_status) || (!isNaN(posted) && posted < Date.now() - ED_COMMENT_WINDOW_MS);
 }
@@ -994,6 +1073,10 @@ $("#lib-grid").addEventListener("click", (e) => {
   if (e.target.classList.contains("vedit")) openVideoEdit(e.target.closest(".card").dataset.rel);
   if (e.target.classList.contains("vdel")) libDelete([e.target.closest(".card").dataset.rel]);
   if (e.target.classList.contains("sedit")) editSeries(e.target.closest(".card").dataset.rel);
+  const xpb = e.target.closest(".xp-st[data-p]");
+  if (xpb) xpostCycle(xpb.closest(".card").dataset.rel, xpb.dataset.p);
+  if (e.target.classList.contains("xp-copy")) xpostCopy(e.target.closest(".card").dataset.rel, e.target.dataset.what);
+  if (e.target.classList.contains("xp-open")) xpostOpen(e.target.closest(".card").dataset.rel, e.target.dataset.what);
   const grp = e.target.closest(".grp");
   if (grp && e.target.classList.contains("gsel")) selectGroup(grp.dataset.gk);
   if (grp && e.target.classList.contains("gren")) renameSeries(grp.dataset.gk);
@@ -2623,6 +2706,14 @@ function renderPageSettings() {
         <label class="check"><input class="pg-auto" type="checkbox" ${p.auto_comment ? "checked" : ""}> <span>Tự động comment sau khi bài đăng</span></label>
       </div>
       <fieldset class="rules">
+        <legend>Đăng đa nền tảng</legend>
+        <p class="hint">Video đã hẹn của Page này có thêm ô trạng thái YouTube / TikTok ở mục Video (bạn tự đăng, app ghi lại để không sót), nút chép tiêu đề, hashtag và mở file. Video chưa đánh dấu đã đăng đủ thì không xoá được (kể cả tự xoá), và app nhắc khi đã lên Facebook quá 2 ngày mà còn thiếu.</p>
+        <div class="row2">
+          <label class="check"><input class="pg-plat" type="checkbox" value="youtube" ${(p.platforms || []).includes("youtube") ? "checked" : ""}> <span>Đăng thêm YouTube Shorts</span></label>
+          <label class="check"><input class="pg-plat" type="checkbox" value="tiktok" ${(p.platforms || []).includes("tiktok") ? "checked" : ""}> <span>Đăng thêm TikTok</span></label>
+        </div>
+      </fieldset>
+      <fieldset class="rules">
         <legend>Quy tắc đăng (dùng cho kiểu hẹn "Tự xếp")</legend>
         <div class="rrow">
           <label>Khung giờ trong ngày (cách nhau bằng dấu phẩy)
@@ -2733,6 +2824,20 @@ async function onPageCardClick(e) {
   }
 }
 async function onPageCardChange(e) {
+  if (e.target.classList.contains("pg-plat")) {
+    const card = e.target.closest(".page-card");
+    try {
+      const r = await api(`/api/pages/${encodeURIComponent(card.dataset.id)}`, "PUT", { platforms: { [e.target.value]: e.target.checked } });
+      const p = pg.list.find((x) => x.id === card.dataset.id);
+      if (p) p.platforms = r.page.platforms;
+      toast((e.target.checked ? "Đã bật " : "Đã tắt ") + (e.target.value === "youtube" ? "YouTube Shorts" : "TikTok") + " cho Page này.");
+      if (typeof loadLibrary === "function" && lib.videos.length) loadLibrary();
+    } catch (err) {
+      e.target.checked = !e.target.checked;
+      cardMsg(card, err.message, false);
+    }
+    return;
+  }
   if (!e.target.classList.contains("pg-auto")) return;
   const card = e.target.closest(".page-card");
   try {

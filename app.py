@@ -13,7 +13,7 @@ from datetime import datetime
 from flask import Flask, abort, jsonify, request, send_from_directory
 
 from core import affiliate, commenter, editor, series, translate, config, downloader, fbgate, library, manage, notify, pages, planner, publish, reelcheck, scheduler, stats, stock, tokens, ytdlp_update
-from core import linkfile, removed, videofile
+from core import linkfile, removed, videofile, xpost
 from core.jobs import manager
 
 config.load_env()
@@ -607,6 +607,52 @@ def api_save_text():
     return jsonify({"ok": True})
 
 
+# ---------- Đăng đa nền tảng (YouTube Shorts / TikTok đăng tay, app theo dõi) ----------
+@app.post("/api/xpost")
+def api_xpost_set():
+    d = body()
+    try:
+        folder = library.resolve(d.get("rel", ""))
+        st = xpost.write(folder, str(d.get("platform") or ""), str(d.get("status") or ""), d.get("url") if "url" in d else None)
+    except ValueError as e:
+        return err(str(e))
+    except OSError as e:
+        return err(f"Không ghi được trạng thái ({type(e).__name__}).")
+    return jsonify({"ok": True, "xpost": st})
+
+
+@app.get("/api/xpost/text")
+def api_xpost_text():
+    try:
+        return jsonify(xpost.texts(library.resolve(request.args.get("rel", ""))))
+    except ValueError as e:
+        return err(str(e), 404)
+
+
+@app.post("/api/open")
+def api_open():
+    """Mở thư mục video trong Finder hoặc mở file video bằng app mặc định của macOS."""
+    import subprocess
+    import sys
+    d = body()
+    try:
+        folder = library.resolve(d.get("rel", ""))
+    except ValueError as e:
+        return err(str(e), 404)
+    what = d.get("what")
+    if what not in ("folder", "video"):
+        return err("Không rõ cần mở gì.")
+    if sys.platform != "darwin":
+        return err("Chỉ mở được trên macOS.")
+    target = folder if what == "folder" else videofile.video_file(folder)
+    try:
+        # đường dẫn tuyệt đối bắt đầu bằng "/" nên không bị hiểu nhầm là tuỳ chọn của open
+        subprocess.run(["open", str(target)], check=True, timeout=15, capture_output=True)
+    except (OSError, subprocess.SubprocessError) as e:
+        return err(f"Không mở được ({type(e).__name__}).")
+    return jsonify({"ok": True})
+
+
 # ---------- Comment tự động ----------
 @app.get("/api/pages/<page_id>/comment-pool")
 def api_get_comment_pool(page_id):
@@ -859,6 +905,8 @@ def api_page_update(page_id):
             p = pages.set_schedule(page_id, rules)
         if new_settings is not None:
             p = pages.set_settings(page_id, new_settings)
+        if "platforms" in d:
+            p = pages.set_platforms(page_id, d["platforms"])
     except KeyError:
         return err("Không tìm thấy Fanpage.", 404)
     except ValueError as e:

@@ -96,6 +96,16 @@ Mục **Thư mục** (thanh trên cùng) liệt kê mọi thư mục video, kể
 
 Mỗi Page có múi giờ riêng (mặc định Asia/Ho_Chi_Minh). Khung giờ đăng, giờ mặc định trong khung Lên lịch, giờ hiển thị trên thẻ video và Lịch đều tính theo múi giờ của Page. Giới hạn 24 giờ, nghỉ giữa hai video, thời gian chờ và nghỉ giữa các comment có thể đặt riêng cho Page (ô để trống = dùng mặc định ở Cài đặt > Mặc định Page).
 
+## Đăng thêm YouTube Shorts và TikTok (theo dõi, đăng tay)
+
+YouTube và TikTok khoá video đăng qua API ở chế độ riêng tư cho tới khi app qua kiểm duyệt của họ, nên app không tự đăng hai nền tảng này mà giúp bạn đăng tay không sót:
+
+- Bật ở Cài đặt > Cài đặt Page > Đăng đa nền tảng: "Đăng thêm YouTube Shorts", "Đăng thêm TikTok" (từng Page).
+- Mục Video: mỗi video đã hẹn của Page đó có 3 ô Facebook / YouTube / TikTok. Ô Facebook tự cập nhật; bấm ô YouTube hoặc TikTok để đổi Chưa đăng → Đã hẹn → Đã đăng (khi đánh dấu Đã đăng có thể dán link bài). Trạng thái lưu ở `xpost.json` trong thư mục video.
+- Nút Copy tiêu đề (dòng đầu của nội dung đăng, bỏ hashtag; báo nếu dài quá 100 ký tự của YouTube), Copy hashtag, Copy cả bài, Mở thư mục (Finder), Mở video.
+- Bộ lọc "Thiếu YT/TT": video đã hẹn trên Facebook mà chưa đăng đủ.
+- Video chưa đánh dấu đã đăng đủ thì không xoá được (cả tự xoá sau khi đăng). App nhắc (thông báo, tối đa 1 lần/ngày mỗi Page) khi video đã lên Facebook quá 2 ngày mà còn thiếu.
+
 ## Lên lịch thông minh
 
 Mỗi Fanpage có **Quy tắc đăng** (Cài đặt > Cài đặt Page): các khung giờ trong ngày (ví dụ `12:00, 19:00, 21:00`), ngày nghỉ và số bài tối đa mỗi ngày. Trong cửa sổ **Lên lịch đăng** có hai kiểu hẹn giờ:
@@ -449,6 +459,7 @@ OfflineYtb/
         ├── affiliate.txt               # (tùy chọn) link affiliate của video, thay vào {link}
         ├── scheduled.json              # có sau khi đã hẹn giờ, kèm Page, trạng thái đăng và comment
         ├── scheduled.old.json          # (tùy chọn) lịch cũ sau khi bấm Hẹn lại
+        ├── xpost.json                  # (tùy chọn) trạng thái đăng tay YouTube Shorts / TikTok
         ├── subs.json                   # (tùy chọn) phụ đề của bước Chỉnh sửa, gồm cả câu gốc nếu đã dịch (xoá sau khi duyệt)
         ├── voice.mp3                   # (tùy chọn) giọng đọc của bạn (đuôi có thể khác)
         ├── edit.json                   # (tùy chọn) cài đặt lần xuất gần nhất

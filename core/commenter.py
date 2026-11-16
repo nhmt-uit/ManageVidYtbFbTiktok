@@ -566,6 +566,11 @@ def _worker(job, manager) -> None:
                 stock.alerts(job)
             except Exception as exc:  # noqa: BLE001
                 job.log(f"Lỗi kiểm tra kho video: {exc}")
+            try:   # nhắc video đã lên Facebook mà còn thiếu YouTube / TikTok (Page bật đa nền tảng)
+                from . import xpost
+                xpost.alerts(job)
+            except Exception as exc:  # noqa: BLE001
+                job.log(f"Lỗi kiểm tra đăng đa nền tảng: {exc}")
         try:   # tự xoá video đã đăng ở các thư mục bật "Xoá video sau khi đăng" (tự giãn 30 phút một lần)
             from . import editor, removed
             if not (editor._busy.locked() or manager.has_running("schedule") or manager.has_running("cancel")):

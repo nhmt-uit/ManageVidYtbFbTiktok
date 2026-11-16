@@ -156,6 +156,7 @@
           <button type="button" data-st="pending" title="Đã hẹn giờ, đang chờ đến giờ đăng">Chờ đăng <b></b></button>
           <button type="button" data-st="published">Đã đăng <b></b></button>
           <button type="button" data-st="problem" title="Facebook báo lỗi, hoặc đã quá giờ hẹn mà chưa đăng">Lỗi / quá giờ <b></b></button>
+          <button type="button" data-st="xmissing" hidden title="Page bật đăng thêm YouTube Shorts / TikTok: video đã hẹn trên Facebook nhưng chưa đánh dấu đã đăng đủ các nền tảng kia">Thiếu YT/TT <b></b></button>
         </div>
         <select id="lib-scope" aria-label="Lọc theo Page" hidden></select>
         <select id="lib-channel" aria-label="Lọc theo thư mục"></select>
@@ -264,7 +265,7 @@
     <!-- THƯ MỤC VIDEO: nơi đăng, tạo thư mục, tự xoá -->
     <section id="tab-folders" class="tab">
       <h2 class="ov-title">Thư mục video</h2>
-      <p class="hint">Mỗi thư mục chứa video. Chọn nơi đăng cho từng thư mục: mỗi nền tảng tối đa một tài khoản (ví dụ một Page Facebook). Một Page có thể có nhiều thư mục, hoặc không có thư mục nào. Thư mục không chọn Page Facebook thì video của nó không hiện khi lọc theo Page ở mục Video. Instagram, TikTok, YouTube: sẽ thêm sau.</p>
+      <p class="hint">Mỗi thư mục chứa video. Chọn nơi đăng cho từng thư mục: mỗi nền tảng tối đa một tài khoản (ví dụ một Page Facebook). Một Page có thể có nhiều thư mục, hoặc không có thư mục nào. Thư mục không chọn Page Facebook thì video của nó không hiện khi lọc theo Page ở mục Video. YouTube Shorts và TikTok: bật ở Cài đặt Page (đăng tay, app theo dõi trạng thái từng video).</p>
       <div class="panel">
         <h3>Tạo thư mục mới</h3>
         <div class="row fd-create">

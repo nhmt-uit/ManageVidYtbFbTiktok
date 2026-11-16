@@ -115,7 +115,8 @@ def blocked_reason(folder: Path) -> str:
     state, _ = commenter.comment_status(folder, sched)
     if state not in _COMMENT_FINISHED and not comment_window_over(sched):
         return "Video đã đăng nhưng app còn chờ tự comment link: đợi comment xong rồi xoá."
-    return ""
+    from . import xpost
+    return xpost.blocked_reason(folder)
 
 
 def comment_window_over(sched: dict, now: datetime | None = None) -> bool:

@@ -7,7 +7,7 @@ import re
 import threading
 from pathlib import Path
 
-from . import commenter, config, pages, publish, reelcheck, series
+from . import commenter, config, pages, publish, reelcheck, series, xpost
 from .videofile import APPROVED, DRAFT, video_file
 
 DATE_RE = re.compile(r"^(\d{8}) - ")
@@ -276,6 +276,8 @@ def _video_info(root: Path, vdir: Path, channel_dir: Path | None) -> dict:
         "has_draft": has_draft,
         "has_subs": (vdir / "subs.json").exists(),
         "reel_check": reelcheck.summary(vdir),
+        "xpost": xpost.read(vdir),
+        "xpost_required": xpost.required(vdir, sched),
         **series.info_for(vdir),   # phim / tập nhận từ tiêu đề (hoặc sửa tay); series.finalize gộp nhóm sau
     }
 
