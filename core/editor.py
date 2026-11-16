@@ -984,7 +984,7 @@ def _sub_xy(s: dict, center_y: float | None) -> tuple[int, int, int]:
 WHITE, BLACK = "&H00FFFFFF", "&H00000000"
 WORD_STYLES = {"yellow": (WHITE, BLACK, COLORS["yellow"], BLACK), "black": (WHITE, BLACK, BLACK, WHITE),
                "white": (BLACK, WHITE, WHITE, BLACK), "reveal": (WHITE, BLACK, WHITE, BLACK)}
-WORD_BUMP, WORD_BUMP_MS = 125, 80
+WORD_BUMP, WORD_BUMP_MS = 112, 80   # nảy nhẹ (xu hướng 2026: phóng nhiều khó đọc)
 HOOK_COLORS = {"white": (WHITE, BLACK, 9), "yellow": (COLORS["yellow"], BLACK, 8)}   # (màu chữ, màu viền, độ dày viền)
 PUNCH_Y, PUNCH_Y_ALT = 1150, 700   # chữ lớn: giữa-dưới khung; nếu phụ đề nằm gần đó thì đưa lên trên
 PUNCH_RED = "&H001C1CD8"

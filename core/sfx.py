@@ -24,17 +24,25 @@ RECIPES = {
     "boing": ("eval", "0.6*sin(2*PI*260*t+3*sin(2*PI*14*t)*exp(-3*t))*exp(-4*t)", 0.7),  # lò xo
     "sparkle": ("eval", _SPARKLE, 0.9),                                                  # lấp lánh
     "click": ("eval", "0.8*(random(0)*2-1)*exp(-180*t)+0.5*sin(2*PI*2400*t)*exp(-90*t)", 0.08),
-    "whoosh": ("noise", "pink", 0.5, "highpass=f=500,lowpass=f=5000,afade=t=in:d=0.3:curve=exp,afade=t=out:st=0.3:d=0.2"),
+    # tiếng vút đổi cảnh: ngắn (0,3 giây), 3 biến thể dùng xoay vòng để người xem không "quen tai" rồi bỏ qua
+    "whoosh": ("noise", "pink", 0.3, "highpass=f=500,lowpass=f=5000,afade=t=in:d=0.18:curve=exp,afade=t=out:st=0.18:d=0.12"),
+    "whoosh2": ("noise", "white", 0.3, "highpass=f=900,lowpass=f=3500,afade=t=in:d=0.18:curve=exp,afade=t=out:st=0.18:d=0.12"),
+    "whoosh3": ("noise", "pink", 0.3, "highpass=f=1500,lowpass=f=8000,afade=t=in:d=0.18:curve=exp,afade=t=out:st=0.18:d=0.12"),
     "swish": ("noise", "white", 0.25, "highpass=f=1800,lowpass=f=9000,afade=t=in:d=0.12:curve=exp,afade=t=out:st=0.12:d=0.13"),
     "rise": ("noise", "pink", 0.42, "highpass=f=300,lowpass=f=7000,afade=t=in:d=0.4:curve=cub,afade=t=out:st=0.4:d=0.02"),
 }
 SOUNDS = tuple(RECIPES)
 # độ to từng tiếng (đã đo trên nhạc nền chuẩn hoá -16 LUFS: tiếng nhỏ/ngắn phải nâng thì mới nổi)
-GAIN = {"boom": 0.55, "whoosh": 3.9, "swish": 2.2, "rise": 3.5, "pop": 1.3, "click": 2.2, "hit": 0.9,
+GAIN = {"boom": 0.55, "whoosh": 3.9, "whoosh2": 1.8, "whoosh3": 4.6, "swish": 2.2, "rise": 3.5, "pop": 1.3, "click": 2.2, "hit": 0.9,
         "sparkle": 1.8, "boing": 0.9, "ding": 0.9}
 # tiếng mặc định theo kiểu bật của chữ lớn; slam có thêm tiếng vút lên ngay trước
 BY_ANIM = {"pop": "pop", "slide": "swish", "slam": "hit", "stamp": "sparkle", "shake": "boing"}
-LEAD = {"whoosh": 0.15, "swish": 0.05, "rise": 0.42}   # tiếng bắt đầu sớm hơn chừng ấy giây để "chạm" đúng lúc
+# tiếng to dần: bắt đầu sớm đúng bằng lúc to nhất (đã đo) để đỉnh tiếng rơi đúng khung hình đổi cảnh / chữ hiện
+LEAD = {"whoosh": 0.18, "whoosh2": 0.18, "whoosh3": 0.18, "swish": 0.12, "rise": 0.4}
+WHOOSHES = ("whoosh", "whoosh2", "whoosh3")
+VARIANT_OF = {"whoosh2": "whoosh", "whoosh3": "whoosh"}   # có file riêng sfx/whoosh.* mà không có biến thể: dùng file đó
+HEAVY = ("boom", "hit")  # tiếng trầm mạnh: tối đa MAX_HEAVY lần mỗi video, dùng nhiều thì nhàm
+MAX_HEAVY = 2
 SCENE_GAP = 2.5          # tiếng vút đổi cảnh cách nhau ít nhất chừng này
 CLEAR = 0.6              # không chèn tiếng vút sát một tiếng khác
 MAX_EVENTS = 60
@@ -43,36 +51,48 @@ MAX_EVENTS = 60
 def plan(hook_end: float, punches: list[dict], scenes: list[float], out_dur: float, scene_sounds: bool = True) -> list[tuple[float, str]]:
     """Danh sách (giây theo bản xuất, tên tiếng). punches, scenes đã đổi sang giờ của bản xuất."""
     ev: list[tuple[float, str]] = []
+    heavy = 0
     if hook_end > 0:
         ev.append((0.0, "boom"))
-    for p in punches:
+        heavy += 1
+    for p in sorted(punches, key=lambda x: x["t"]):
         name = p.get("sound", "auto")
         if name == "none":
             continue
-        if name not in RECIPES:
+        auto = name not in RECIPES
+        if auto:
             name = BY_ANIM.get(p.get("anim"), "pop")
-        if p.get("anim") == "slam" and p.get("sound", "auto") == "auto":
-            ev.append((p["t"] - LEAD["rise"], "rise"))
+            if name in HEAVY and heavy >= MAX_HEAVY:   # đã đủ tiếng trầm: chữ "đập xuống" sau đó dùng tiếng pốp
+                name = "pop"
+            elif p.get("anim") == "slam":
+                ev.append((p["t"] - LEAD["rise"], "rise"))
+        if name in HEAVY:
+            heavy += 1
         ev.append((p["t"] - LEAD.get(name, 0.0), name))
     if scene_sounds:
-        last = -99.0
+        last, k = -99.0, 0
         for t in sorted(scenes):
-            st = t - LEAD["whoosh"]
+            name = WHOOSHES[k % len(WHOOSHES)]
+            st = t - LEAD[name]
             if t < 0.5 or (out_dur and t > out_dur - 0.5) or t - last < SCENE_GAP:
                 continue
             if any(abs(st - e) < CLEAR for e, _ in ev):
                 continue
-            ev.append((st, "whoosh"))
-            last = t
+            ev.append((st, name))
+            last, k = t, k + 1
     ev = [(max(0.0, round(t, 3)), n) for t, n in ev if not out_dur or t < out_dur - 0.05]
     return sorted(ev)[:MAX_EVENTS]
+
+
+def _own(name: str) -> Path | None:
+    return next((USER_DIR / f"{name}{e}" for e in USER_EXTS if (USER_DIR / f"{name}{e}").is_file()), None)
 
 
 def files(ffmpeg: str, names, tmpdir: Path) -> dict[str, Path]:
     """Đường dẫn file âm thanh cho từng tên: file riêng trong sfx/ nếu có, không thì tạo vào tmpdir."""
     out: dict[str, Path] = {}
     for name in sorted(set(names)):
-        own = next((USER_DIR / f"{name}{e}" for e in USER_EXTS if (USER_DIR / f"{name}{e}").is_file()), None)
+        own = _own(name) or (_own(VARIANT_OF[name]) if name in VARIANT_OF else None)
         if own:
             out[name] = own
             continue

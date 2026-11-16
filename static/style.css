@@ -532,5 +532,5 @@ label.fd-field, label.fd-days { display: inline-flex; flex-direction: row; align
 #ve-cap.ws-white { color: #000; text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff; }
 #ve-cap.ws-white .ve-w.on { color: #fff; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; }
 #ve-cap.ws-reveal .ve-w.off { visibility: hidden; }
-@keyframes veWordBump { 50% { scale: 1 1.25; } }
+@keyframes veWordBump { 50% { scale: 1 1.12; } }
 #ve-hook-pv.hc-white { color: #fff; text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000, 0 2px 4px #000; }
