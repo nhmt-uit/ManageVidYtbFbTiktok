@@ -54,7 +54,7 @@ MAX_URLS = 1000
 REDNOTE_NOTE_RE = re.compile(r"^/(?:explore|discovery/item)/([0-9a-f]{16,32})/?$", re.I)
 REDNOTE_PROFILE_NOTE_RE = re.compile(r"^/user/profile/[0-9a-f]+/([0-9a-f]{16,32})/?$", re.I)
 BILI_HOSTS = ("bilibili.com", "b23.tv")
-BILI_VIDEO_RE = re.compile(r"^/video/(BV[0-9A-Za-z]{10}|av\d{1,20})/?$")
+BILI_VIDEO_RE = re.compile(r"^/(?:[a-z]{2}(?:-[a-z]{2,4})?/)?video/(BV[0-9A-Za-z]{10}|av\d{1,20})/?$", re.I)   # kể cả có mã ngôn ngữ (/vi/video/...)
 BILI_SPACE_RE = re.compile(r"^/(?:[a-z]{2}(?:-[a-z]{2,4})?/)?(\d{1,20})(?:/(?:upload/)?video)?/?$", re.I)   # trang kênh, kể cả có mã ngôn ngữ (/vi/...)
 
 
