@@ -6,6 +6,9 @@ Theo tài liệu Reels Publishing API của Meta:
   - tỉ lệ khung hình 9:16 (nằm trong khoảng từ 16:9 đến 9:16)
   - 24 đến 60 khung hình/giây
 
+Video ngang (rộng/cao từ LAND_RATIO trở lên) không đăng dạng Reel mà đăng dạng video thường của Page (scheduler.schedule_page_video),
+nên được kiểm theo chuẩn video ngang: 3 giây đến 4 giờ, tối thiểu 640x360 (khuyến nghị 1920x1080). Kết quả có "kind": vertical | landscape.
+
 Lỗi (error): Facebook sẽ từ chối hoặc không hiện như Reel, nên app bỏ qua video khi hẹn giờ.
 Lưu ý (warning): vẫn đăng được nhưng chất lượng hoặc cách hiển thị có thể không như ý.
 Kết quả lưu trong reels_check.json của thư mục video, gắn với kích thước và giờ sửa file nên tự làm mới khi file đổi.
@@ -29,6 +32,16 @@ MIN_DUR, MAX_DUR = 3.0, 90.0
 RATIO = 9 / 16
 RATIO_TOL = 0.06     # |w/h - 9/16| lớn hơn mức này thì cảnh báo "không phải 9:16"
 MIN_FPS, MAX_FPS = 23.5, 60.5
+LAND_RATIO = 1.2     # rộng/cao từ mức này trở lên = video ngang (đăng dạng video thường, không phải Reel)
+LAND_MIN_W, LAND_MIN_H = 640, 360
+LAND_REC_H = 720     # cạnh ngắn dưới mức này chỉ cảnh báo (khuyến nghị 1920x1080)
+LAND_MAX_DUR = 4 * 3600.0   # video Page tối đa 240 phút
+LAND_RATIO_169 = 16 / 9
+
+
+def kind_of(w: int, h: int) -> str:
+    """"landscape" nếu là video ngang (đăng dạng video thường), ngược lại "vertical" (đăng dạng Reel)."""
+    return "landscape" if w and h and w / h >= LAND_RATIO else "vertical"
 
 
 def enabled() -> bool:
@@ -105,6 +118,9 @@ def evaluate(info: dict) -> dict:
         except (TypeError, ValueError):
             continue
     fps = _fps(v.get("avg_frame_rate")) or _fps(v.get("r_frame_rate"))
+    kind = kind_of(w, h)
+    if kind == "landscape":
+        return _evaluate_landscape(w, h, dur, fps, has_audio)
 
     if dur and dur < MIN_DUR:
         errors.append(f"Video chỉ dài {dur:.1f} giây, Reels cần tối thiểu {MIN_DUR:g} giây.")
@@ -125,7 +141,32 @@ def evaluate(info: dict) -> dict:
         warnings.append(f"Tốc độ khung hình {fps:.0f} fps nằm ngoài khoảng 24 đến 60 fps của Reels.")
     if not has_audio:
         warnings.append("Video không có âm thanh.")
-    return {"errors": errors, "warnings": warnings, "w": w, "h": h, "duration": round(dur, 1), "fps": round(fps, 1), "has_audio": has_audio}
+    return {"errors": errors, "warnings": warnings, "w": w, "h": h, "duration": round(dur, 1), "fps": round(fps, 1), "has_audio": has_audio,
+            "kind": kind}
+
+
+def _evaluate_landscape(w: int, h: int, dur: float, fps: float, has_audio: bool) -> dict:
+    """Chuẩn video ngang (đăng dạng video thường của Page, đăng tay YouTube)."""
+    errors: list[str] = []
+    warnings: list[str] = []
+    if dur and dur < MIN_DUR:
+        errors.append(f"Video chỉ dài {dur:.1f} giây, cần tối thiểu {MIN_DUR:g} giây.")
+    if dur > LAND_MAX_DUR:
+        errors.append(f"Video dài {dur / 60:.0f} phút, Facebook chỉ nhận video tối đa {LAND_MAX_DUR / 60:.0f} phút.")
+    if not dur:
+        warnings.append("Không đọc được độ dài video.")
+    if w < LAND_MIN_W or h < LAND_MIN_H:
+        errors.append(f"Độ phân giải {w}x{h} thấp hơn mức tối thiểu {LAND_MIN_W}x{LAND_MIN_H}.")
+    elif h < LAND_REC_H:
+        warnings.append(f"Độ phân giải {w}x{h} khá thấp (nên từ 1280x720, tốt nhất 1920x1080).")
+    if abs(w / h - LAND_RATIO_169) > RATIO_TOL * 3:
+        warnings.append(f"Khung hình {w}x{h} không phải ngang 16:9, YouTube/Facebook sẽ thêm viền đen.")
+    if fps and not (MIN_FPS <= fps <= MAX_FPS):
+        warnings.append(f"Tốc độ khung hình {fps:.0f} fps nằm ngoài khoảng 24 đến 60 fps.")
+    if not has_audio:
+        warnings.append("Video không có âm thanh.")
+    return {"errors": errors, "warnings": warnings, "w": w, "h": h, "duration": round(dur, 1), "fps": round(fps, 1), "has_audio": has_audio,
+            "kind": "landscape"}
 
 
 def _sig(video: Path) -> list:
@@ -142,8 +183,10 @@ def cached(folder: Path) -> dict | None:
     video = video_file(folder)
     try:
         data = json.loads((folder / CACHE_FILE).read_text(encoding="utf-8"))
-        if data.get("sig") == _sig(video) and isinstance(data.get("result"), dict):
-            return data["result"]
+        res = data.get("result")
+        # kết quả lưu từ bản cũ (chưa có "kind") của video ngang được kiểm lại theo chuẩn video ngang
+        if data.get("sig") == _sig(video) and isinstance(res, dict) and (res.get("kind") or kind_of(res.get("w", 0), res.get("h", 0)) == "vertical"):
+            return res
     except (ValueError, OSError):
         pass
     return None
@@ -153,8 +196,9 @@ def summary(folder: Path) -> dict:
     """Bản tóm tắt cho giao diện: {state: ""|ok|warn|error, messages: [...]}. Chỉ đọc cache, không chạy ffprobe."""
     res = cached(folder)
     if res is None:
-        return {"state": "", "messages": []}
-    return {"state": state_of(res), "messages": list(res.get("errors", [])) + list(res.get("warnings", []))}
+        return {"state": "", "messages": [], "kind": ""}
+    kind = res.get("kind") or kind_of(res.get("w", 0), res.get("h", 0))
+    return {"state": state_of(res), "messages": list(res.get("errors", [])) + list(res.get("warnings", [])), "kind": kind}
 
 
 def ensure(folder: Path, force: bool = False) -> dict | None:
@@ -187,6 +231,7 @@ def run_check(job, page_id: str, force: bool = False) -> str:
     videos = [v for v in library.scan(page_id)["videos"] if not v["scheduled"]]
     job.set_progress(0, len(videos))
     counts = {"ok": 0, "warn": 0, "error": 0}
+    land = 0
     for i, v in enumerate(videos, 1):
         if job.cancelled:
             job.log("Đã dừng theo yêu cầu.")
@@ -200,10 +245,12 @@ def run_check(job, page_id: str, force: bool = False) -> str:
             continue
         st = state_of(res)
         counts[st] += 1
+        land += res.get("kind") == "landscape"
         if st != "ok":
             job.log(f"{'KHÔNG ĐẠT' if st == 'error' else 'Lưu ý'}: {folder.name}: {' '.join(res['errors'] + res['warnings'])}")
         job.set_progress(i, len(videos))
-    return f"Đã kiểm tra {sum(counts.values())} video: {counts['ok']} đạt, {counts['warn']} cần xem lại, {counts['error']} không đạt yêu cầu Reels."
+    return (f"Đã kiểm tra {sum(counts.values())} video: {counts['ok']} đạt, {counts['warn']} cần xem lại, {counts['error']} không đạt yêu cầu."
+            + (f" Trong đó {land} video ngang (kiểm theo chuẩn video ngang, hẹn giờ sẽ đăng dạng video thường chứ không phải Reel)." if land else ""))
 
 
 # ---------- Chuẩn chung để đăng được cả Reels Facebook, Instagram Reels và YouTube Shorts ----------
@@ -213,14 +260,28 @@ STANDARD_NAME = "Reels Facebook, Instagram Reels và YouTube Shorts"
 STRICT_RATIO_TOL = 0.02
 
 
+STANDARD_NAME_LAND = "video ngang 16:9 (YouTube, video Facebook)"
+LAND_STRICT_MIN_H = 720
+
+
+def standard_name(kind: str) -> str:
+    return STANDARD_NAME_LAND if kind == "landscape" else STANDARD_NAME
+
+
 def strict_check(path: Path) -> dict:
-    """Kiểm tra một file video theo chuẩn chung. Trả về {errors, warnings, w, h, duration, fps, has_audio}.
-    errors rỗng = đăng được. Ném RuntimeError nếu không có ffprobe."""
+    """Kiểm tra một file video theo chuẩn chung của đúng loại khung: dọc (Reels/Shorts) hoặc ngang 16:9 (YouTube, video Facebook).
+    Trả về {errors, warnings, w, h, duration, fps, has_audio, kind}. errors rỗng = đăng được. Ném RuntimeError nếu không có ffprobe."""
     info = probe(path)
     res = evaluate(info)
-    errors, warnings = list(res["errors"]), [w for w in res["warnings"] if "9:16" not in w and "fps" not in w]
+    errors, warnings = list(res["errors"]), [w for w in res["warnings"] if "9:16" not in w and "16:9" not in w and "fps" not in w]
     w, h, fps = res["w"], res["h"], res["fps"]
-    if w and h and abs(w / h - RATIO) > STRICT_RATIO_TOL:
+    if res.get("kind") == "landscape":
+        if abs(w / h - LAND_RATIO_169) > STRICT_RATIO_TOL:
+            errors.append(f"Khung hình {w}x{h} không phải ngang 16:9.")
+        if h < LAND_STRICT_MIN_H:
+            errors.append(f"Độ phân giải {w}x{h} thấp hơn 1280x720.")
+        warnings = [x for x in warnings if "khá thấp" not in x]
+    elif w and h and abs(w / h - RATIO) > STRICT_RATIO_TOL:
         errors.append(f"Khung hình {w}x{h} không phải dọc 9:16.")
     if fps and not (MIN_FPS <= fps <= MAX_FPS):
         errors.append(f"Tốc độ khung hình {fps:.0f} fps nằm ngoài khoảng 24 đến 60 fps.")

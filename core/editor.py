@@ -34,10 +34,12 @@ VOICE_EXTS = (".mp3", ".m4a", ".wav", ".aac", ".ogg", ".flac", ".opus")
 MAX_VOICE_BYTES = 300 * 1024 * 1024
 MAX_CUES = 3000
 MAX_CUE_CHARS = 200
-OUT_W, OUT_H = 1080, 1920
+OUT_W, OUT_H = 1080, 1920   # khổ dọc 9:16 (mặc định); khổ ngang dùng ASPECTS["16:9"], xem dims()
+ASPECTS = {"9:16": (1080, 1920), "16:9": (1920, 1080)}   # "Khổ xuất": dọc cho Reels/Shorts/TikTok, ngang cho YouTube / video Facebook
 LANGS = {"vi": "Tiếng Việt", "en": "English", "ja": "日本語", "zh": "中文", "ko": "한국어", "th": "ไทย", "auto": "Tự nhận diện"}
 
 DEFAULT_SETTINGS = {
+    "aspect": "9:16",        # khổ xuất: 9:16 (Reels/Shorts) | 16:9 (YouTube, video Facebook), xem ASPECTS
     "framing": "auto",       # auto | scale | fit | crop
     "subs": True,            # in phụ đề vào video
     "position": "bottom",    # bottom | middle | top
@@ -70,7 +72,7 @@ DEFAULT_SETTINGS = {
     "sfx": "normal",         # off | soft | normal | loud: tiếng hiệu ứng (hook, chữ lớn, đổi cảnh), xem sfx.py
     "sfx_scenes": True,      # tiếng vút ở các chỗ đổi cảnh / nối đoạn cắt
 }
-CHOICES = {"framing": ("auto", "scale", "fit", "crop"), "position": ("bottom", "middle", "top", "orig"),   # orig = đúng chỗ sub gốc
+CHOICES = {"aspect": tuple(ASPECTS), "framing": ("auto", "scale", "fit", "crop"), "position": ("bottom", "middle", "top", "orig"),   # orig = đúng chỗ sub gốc
            "size": ("small", "medium", "large"), "color": ("white", "yellow", "cyan"),
            "audio_clean": ("off", "light", "voice"), "quality": ("fast", "standard", "high"),
            "transition": ("none", "fade", "slide", "flash", "black"), "zoom": ("off", "in", "out"),
@@ -100,6 +102,28 @@ MAX_SECONDS = 90   # nên đăng Reels/Shorts/TikTok dưới mức này
 FONT_SIZES = {"small": 54, "medium": 66, "large": 80}
 COLORS = {"white": "&H00FFFFFF", "yellow": "&H0000E6FF", "cyan": "&H00FFE600"}   # ASS dùng thứ tự BGR
 ALIGN = {"bottom": (2, 330), "middle": (5, 0), "top": (8, 260), "orig": (5, 0)}                    # (Alignment, MarginV)
+# Bố cục chữ theo khổ xuất. Khổ dọc chừa chỗ cho nút bấm của Reels (dưới, phải); khổ ngang chữ sát mép như phụ đề YouTube.
+LAYOUT = {
+    "9:16": {"align": ALIGN, "hook_y": {"top": 520}, "hook_y_default": 330, "hook_fs": 96, "font_scale": 1.0,
+             "punch_y": 1150, "punch_y_alt": 700, "punch_width": 860, "punch_near": 300, "slide_x": 900, "margin_lr": 80},
+    "16:9": {"align": {"bottom": (2, 70), "middle": (5, 0), "top": (8, 60), "orig": (5, 0)}, "hook_y": {"top": 200}, "hook_y_default": 60,
+             "hook_fs": 84, "font_scale": 0.85, "punch_y": 600, "punch_y_alt": 330, "punch_width": 1500, "punch_near": 200, "slide_x": 1400,
+             "margin_lr": 160},
+}
+
+
+def dims(s: dict | None) -> tuple[int, int]:
+    """(rộng, cao) của bản xuất theo khổ xuất đã chọn."""
+    return ASPECTS.get((s or {}).get("aspect", "9:16"), ASPECTS["9:16"])
+
+
+def layout(s: dict | None) -> dict:
+    return LAYOUT.get((s or {}).get("aspect", "9:16"), LAYOUT["9:16"])
+
+
+def max_seconds(s: dict | None) -> int:
+    """Giới hạn độ dài khi duyệt: khổ dọc theo Reels (90 giây); khổ ngang không giới hạn chặt (0)."""
+    return MAX_SECONDS if (s or {}).get("aspect", "9:16") == "9:16" else 0
 
 _busy = threading.Lock()
 
@@ -412,7 +436,10 @@ def status(rel: str) -> dict:
               "stale": (subs.get("edited_at", subs.get("created_at", "")) > info.get("edited_at", "") if subs.get("cues") else False)
                        or punch_info(folder, 0)["updated_at"] > info.get("edited_at", "zz"),
               "check": draft_check(draft)}
-    settings = clean_settings(_read_json(folder / SETTINGS_FILE).get("settings"))
+    saved = _read_json(folder / SETTINGS_FILE).get("settings")
+    settings = clean_settings(saved)
+    if not (isinstance(saved, dict) and saved.get("aspect")) and reelcheck.kind_of(src.get("width") or 0, src.get("height") or 0) == "landscape":
+        settings["aspect"] = "16:9"   # video gốc ngang, chưa chọn khổ lần nào: mặc định xuất ngang (YouTube, video Facebook)
     return {"rel": rel, "tools": t, "source": src, "cues": subs["cues"], "language": subs.get("language", ""),
             "transcribed": bool(subs.get("created_at")), "voice": voice_info(folder), "draft": dr, "translate": {k: v for k, v in translate.settings().items() if k != "base"}, "translated_to": subs.get("translated_to", ""),
             "translator": subs.get("translator", ""),
@@ -421,7 +448,8 @@ def status(rel: str) -> dict:
             "audioscan": _read_json(folder / audioscan.FILE),
             "hooks": hook_info(folder), "claude": bool(hooks.find_claude()), "cuts": cuts_info(folder, src.get("duration") or 0),
             "punch": punch_info(folder, src.get("duration") or 0),
-            "max_seconds": MAX_SECONDS, "standard": reelcheck.STANDARD_NAME}
+            "max_seconds": max_seconds(settings), "standard": reelcheck.standard_name("landscape" if settings["aspect"] == "16:9" else "vertical"),
+            "aspects": {k: f"{w}x{h}" for k, (w, h) in ASPECTS.items()}}
 
 
 def discard(rel: str) -> None:
@@ -451,7 +479,7 @@ def approve(rel: str) -> str:
             raise EditError("Bản nháp không đọc được (file hỏng?). Hãy xuất lại.")
         chk = draft_check(draft)
         if chk["errors"]:
-            raise EditError(f"Bản nháp chưa đạt chuẩn đăng {reelcheck.STANDARD_NAME} nên chưa duyệt được: " + " ".join(chk["errors"]))
+            raise EditError(f"Bản nháp chưa đạt chuẩn đăng {chk.get('standard') or reelcheck.STANDARD_NAME} nên chưa duyệt được: " + " ".join(chk["errors"]))
         info_set = _read_json(folder / SETTINGS_FILE)
         settings = info_set.get("applied") or info_set.get("settings", {})   # ghi lại cái thực sự đã dùng cho video được duyệt
         os.replace(draft, folder / ORIGINAL)   # nguyên tử: video.mp4 luôn là một file đầy đủ
@@ -475,7 +503,8 @@ def draft_check(path: Path) -> dict:
         r = reelcheck.strict_check(path)
     except RuntimeError as exc:
         return {"errors": [f"Không kiểm tra được bản nháp: {exc}"], "warnings": [], "checked": False}
-    return {"errors": r["errors"], "warnings": r["warnings"], "duration": r["duration"], "w": r["w"], "h": r["h"], "checked": True}
+    return {"errors": r["errors"], "warnings": r["warnings"], "duration": r["duration"], "w": r["w"], "h": r["h"], "checked": True,
+            "kind": r.get("kind", "vertical"), "standard": reelcheck.standard_name(r.get("kind", "vertical"))}
 
 
 # ---------- cắt ngắn video dài (các đoạn giữ lại, cuts.json) ----------
@@ -748,13 +777,22 @@ def scan_audio_job(job, rel: str) -> str:
         _busy.release()
 
 
-def _framing_transform(src: dict, framing: str) -> tuple[float, float, float]:
-    """(hệ số phóng, lệch x, lệch y) khi đưa video gốc vào khung 1080x1920 theo kiểu khung hình `framing` (đã giải quyết 'auto')."""
+def resolve_framing(src: dict, framing: str, s: dict | None = None) -> str:
+    """'auto': cùng tỉ lệ với khổ xuất thì cắt cho đầy khung, khác tỉ lệ thì nền mờ, video ở giữa."""
+    if framing != "auto":
+        return framing
+    W, H = dims(s)
+    w, h = src.get("width") or 0, src.get("height") or 0
+    return "crop" if w and h and abs(w / h - W / H) < 0.03 else "fit"
+
+
+def _framing_transform(src: dict, framing: str, s: dict | None = None) -> tuple[float, float, float]:
+    """(hệ số phóng, lệch x, lệch y) khi đưa video gốc vào khung xuất (dims(s)) theo kiểu khung hình `framing`."""
+    W, H = dims(s)
     w, h = src["width"], src["height"]
-    if framing == "auto":
-        framing = "crop" if abs(w / h - 9 / 16) < 0.03 else "fit"
-    f = max(OUT_W / w, OUT_H / h) if framing == "crop" else min(OUT_W / w, OUT_H / h)
-    return f, (OUT_W - w * f) / 2, (OUT_H - h * f) / 2
+    framing = resolve_framing(src, framing, s)
+    f = max(W / w, H / h) if framing == "crop" else min(W / w, H / h)
+    return f, (W - w * f) / 2, (H - h * f) / 2
 
 
 # ---------- phiên âm ----------
@@ -914,8 +952,6 @@ def _ass_text(text: str) -> str:
     return "\\N".join(line for line in text.split("\n"))
 
 
-HOOK_Y = {"top": 520}          # hook nằm phần trên khung; nếu phụ đề cũng ở trên thì hạ hook xuống
-HOOK_Y_DEFAULT = 330
 SUB_FADE_MS, SUB_POP_MS, SUB_SLIDE_MS, SUB_SLIDE_PX = 150, 140, 180, 45
 KARAOKE_FILL = 0.9            # chữ cuối sáng lên trước khi hết câu một chút
 _CJK_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff]")
@@ -969,14 +1005,15 @@ def _hook_tags(anim: str, x: int, y: int, dur_ms: int) -> str:
 
 def _sub_xy(s: dict, center_y: float | None) -> tuple[int, int, int]:
     """(\\an, x, y) của phụ đề khi cần đặt vị trí cụ thể (hiệu ứng trượt)."""
+    W, H = dims(s)
     if center_y is not None:
-        return 5, OUT_W // 2, int(center_y)
-    align, margin_v = ALIGN[s["position"]]
+        return 5, W // 2, int(center_y)
+    align, margin_v = layout(s)["align"][s["position"]]
     if align == 2:
-        return 2, OUT_W // 2, OUT_H - margin_v
+        return 2, W // 2, H - margin_v
     if align == 8:
-        return 8, OUT_W // 2, margin_v
-    return 5, OUT_W // 2, OUT_H // 2
+        return 8, W // 2, margin_v
+    return 5, W // 2, H // 2
 
 
 # chữ nhảy theo từng chữ: (màu chữ, màu viền, màu chữ đang đọc, màu viền chữ đang đọc). Chữ tới lượt đổi màu và nảy lên
@@ -986,9 +1023,8 @@ WORD_STYLES = {"yellow": (WHITE, BLACK, COLORS["yellow"], BLACK), "black": (WHIT
                "white": (BLACK, WHITE, WHITE, BLACK), "reveal": (WHITE, BLACK, WHITE, BLACK)}
 WORD_BUMP, WORD_BUMP_MS = 112, 80   # nảy nhẹ (xu hướng 2026: phóng nhiều khó đọc)
 HOOK_COLORS = {"white": (WHITE, BLACK, 9), "yellow": (COLORS["yellow"], BLACK, 8)}   # (màu chữ, màu viền, độ dày viền)
-PUNCH_Y, PUNCH_Y_ALT = 1150, 700   # chữ lớn: giữa-dưới khung; nếu phụ đề nằm gần đó thì đưa lên trên
 PUNCH_RED = "&H001C1CD8"
-PUNCH_FS, PUNCH_WIDTH = 120, 860   # cỡ tối đa và bề ngang tối đa (để chừa chỗ khi phóng 125% lúc bật lên)
+PUNCH_FS = 120   # cỡ tối đa; vị trí, bề ngang tối đa của chữ lớn và vị trí hook theo khổ xuất: xem LAYOUT
 
 
 def word_timing(text: str, dur: float) -> list[list[tuple[str, int, int]]]:
@@ -1035,21 +1071,23 @@ def word_text(text: str, dur: float, style: str, pre: str = "\\fscy100") -> str:
 
 def punch_y(s: dict, center_y: float | None) -> int:
     """Chỗ đặt chữ lớn: tránh phụ đề (giữa khung hoặc đúng chỗ sub gốc nằm gần vùng giữa-dưới)."""
-    sub_y = center_y if center_y is not None else (OUT_H // 2 if s["position"] == "middle" else None)
-    if s.get("subs") and sub_y is not None and abs(sub_y - PUNCH_Y) < 300:
-        return PUNCH_Y_ALT
-    return PUNCH_Y
+    lo = layout(s)
+    sub_y = center_y if center_y is not None else (dims(s)[1] // 2 if s["position"] == "middle" else None)
+    if s.get("subs") and sub_y is not None and abs(sub_y - lo["punch_y"]) < lo["punch_near"]:
+        return lo["punch_y_alt"]
+    return lo["punch_y"]
 
 
-def punch_line(p: dict, y: int) -> str:
+def punch_line(p: dict, y: int, s: dict | None = None) -> str:
     """Một dòng ASS cho chữ lớn p = {t, dur, text, anim, color} (giờ theo bản xuất)."""
     text = p["text"]
     if "\n" not in text and len(text) > 12 and " " in text:   # chữ dài: tách 2 dòng ở khoảng trắng gần giữa nhất
         mid = min((i for i, ch in enumerate(text) if ch == " "), key=lambda i: abs(i - len(text) / 2))
         text = text[:mid] + "\n" + text[mid + 1:]
     longest = max(len(ln) for ln in text.split("\n"))
-    fs = min(PUNCH_FS, int(PUNCH_WIDTH / (0.7 * max(1, longest))))
-    x = OUT_W // 2
+    lo = layout(s)
+    fs = min(PUNCH_FS, int(lo["punch_width"] / (0.7 * max(1, longest))))
+    x = dims(s)[0] // 2
     style, head = "Punch", f"\\q2\\fs{fs}\\1c{COLORS['yellow'] if p['color'] == 'yellow' else WHITE}"
     if p["color"] == "box":
         style, head = "PunchBox", f"\\q2\\fs{int(fs * 0.9)}"
@@ -1058,7 +1096,7 @@ def punch_line(p: dict, y: int) -> str:
         tag = (f"\\an5\\pos({x},{y})\\fscx260\\fscy260\\alpha&HC0&\\t(0,150,\\fscx100\\fscy100\\alpha&H00&)"
                f"\\org({x},{y})\\t(150,200,\\frz2)\\t(200,250,\\frz-2)\\t(250,300,\\frz0)")
     elif anim == "slide":  # lướt từ trái vào
-        tag = f"\\an5\\move({x - 900},{y},{x},{y},0,200)\\org({x},{y})\\frz-2"
+        tag = f"\\an5\\move({x - lo['slide_x']},{y},{x},{y},0,200)\\org({x},{y})\\frz-2"
     elif anim == "shake":
         tag = (f"\\an5\\pos({x},{y})\\org({x},{y + 40})\\t(0,80,\\frz6)\\t(80,160,\\frz-6)\\t(160,240,\\frz4)"
                "\\t(240,320,\\frz-3)\\t(320,400,\\frz0)")
@@ -1073,11 +1111,14 @@ def punch_line(p: dict, y: int) -> str:
 
 def build_ass(cues: list[dict], s: dict, center_y: float | None = None, hook: str = "", hook_end: float = 3.0,
               punches: list[dict] | None = None) -> str:
-    align, margin_v = ALIGN[s["position"]]
+    W, H = dims(s)
+    lo = layout(s)
+    align, margin_v = lo["align"][s["position"]]
+    mlr = lo["margin_lr"]
     font = config.get("EDIT_FONT", "Arial") or "Arial"
     col = COLORS[s["color"]]
     ws = s.get("word_style", "off")
-    size = FONT_SIZES[s["size"]]
+    size = round(FONT_SIZES[s["size"]] * lo["font_scale"])
     # tô màu dần kiểu cũ: chữ chưa tới lượt = màu đã chọn (Secondary), chữ đã tới lượt = màu nổi bật (Primary)
     primary, secondary = col, "&H000000FF"
     if ws == "karaoke":
@@ -1092,14 +1133,14 @@ def build_ass(cues: list[dict], s: dict, center_y: float | None = None, hook: st
     hfill, hedge, hout = HOOK_COLORS[s.get("hook_color", "white")]
     head = (
         "[Script Info]\nScriptType: v4.00+\nWrapStyle: 0\nScaledBorderAndShadow: yes\n"
-        f"PlayResX: {OUT_W}\nPlayResY: {OUT_H}\n\n[V4+ Styles]\n"
+        f"PlayResX: {W}\nPlayResY: {H}\n\n[V4+ Styles]\n"
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, "
         "ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
-        f"Style: Default,{font},{size},{primary},{secondary},{outline_col},{back},-1,0,0,0,100,100,0,0,{border},{outline},{shadow},{align},80,80,{margin_v},1\n"
-        f"Style: Hook,{font},96,{hfill},&H000000FF,{hedge},&H64000000,-1,0,0,0,100,100,0,0,1,{hout},3,8,70,70,300,1\n"
+        f"Style: Default,{font},{size},{primary},{secondary},{outline_col},{back},-1,0,0,0,100,100,0,0,{border},{outline},{shadow},{align},{mlr},{mlr},{margin_v},1\n"
+        f"Style: Hook,{font},{lo['hook_fs']},{hfill},&H000000FF,{hedge},&H64000000,-1,0,0,0,100,100,0,0,1,{hout},3,8,70,70,300,1\n"
         # tô màu từng chữ trên nền mờ: libass vẽ nền riêng cho từng chữ (\k) nên chỗ chồng nhau bị sẫm thành vệt.
         # Nền cả câu vẽ ở lớp 0 (chữ trong suốt), chữ tô màu vẽ ở lớp 1 bằng kiểu Kara (viền mảnh, không nền).
-        f"Style: Kara,{font},{size},{primary},{secondary},&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,3,0,{align},80,80,{margin_v},1\n"
+        f"Style: Kara,{font},{size},{primary},{secondary},&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,3,0,{align},{mlr},{mlr},{margin_v},1\n"
         f"Style: Punch,{font},{PUNCH_FS},{WHITE},{WHITE},{BLACK},&H64000000,-1,0,0,0,100,100,0,0,1,10,5,5,40,40,0,1\n"
         f"Style: PunchBox,{font},{PUNCH_FS},{WHITE},{WHITE},{PUNCH_RED},{PUNCH_RED},-1,0,0,0,100,100,0,0,3,22,0,5,40,40,0,1\n\n"
         "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
@@ -1107,7 +1148,7 @@ def build_ass(cues: list[dict], s: dict, center_y: float | None = None, hook: st
     an, x, y = _sub_xy(s, center_y)
     lines = []
     for c in cues:
-        tag = f"\\an5\\pos({OUT_W // 2},{int(center_y)})" if center_y is not None else ""   # đặt giữa vùng sub gốc
+        tag = f"\\an5\\pos({W // 2},{int(center_y)})" if center_y is not None else ""   # đặt giữa vùng sub gốc
         pop = ""
         if anim == "fade":
             tag += f"\\fad({SUB_FADE_MS},100)"
@@ -1128,11 +1169,11 @@ def build_ass(cues: list[dict], s: dict, center_y: float | None = None, hook: st
         body = karaoke_text(c["text"], c["end"] - c["start"]) if ws == "karaoke" else _ass_text(c["text"])
         lines.append(f"Dialogue: 0,{t0},{t1},Default,,0,0,0,,{'{' + tag + '}' if tag else ''}{body}")
     if hook:   # chữ hook ở 3 giây đầu; tránh đè phụ đề nếu phụ đề đặt ở trên
-        hy = HOOK_Y.get(s["position"], HOOK_Y_DEFAULT)
+        hy = lo["hook_y"].get(s["position"], lo["hook_y_default"])
         lines.insert(0, f"Dialogue: 2,{_ass_time(0)},{_ass_time(hook_end)},Hook,,0,0,0,,"
-                        f"{{{_hook_tags(s.get('hook_anim', 'pop'), OUT_W // 2, hy, int(hook_end * 1000))}}}{_ass_text(hook)}")
+                        f"{{{_hook_tags(s.get('hook_anim', 'pop'), W // 2, hy, int(hook_end * 1000))}}}{_ass_text(hook)}")
     py = punch_y(s, center_y)
-    lines += [punch_line(p, py) for p in punches or []]
+    lines += [punch_line(p, py, s) for p in punches or []]
     return head + "\n".join(lines) + "\n"
 
 
@@ -1207,17 +1248,16 @@ def build_filter(src: dict, s: dict, voice: bool, ass: bool, cover: str = "", cr
         if voice:   # giọng đọc thu theo giờ của video gốc: cắt cùng các đoạn để không lệch
             pre.append(_cut_chain("1:a", "vocut", segs, audio=True))
             voin = "vocut"
-    framing = s["framing"]
-    if framing == "auto":
-        ratio = src["width"] / src["height"] if src["width"] and src["height"] else 0
-        framing = "crop" if ratio and abs(ratio - 9 / 16) < 0.03 else "fit"
+    W, H = dims(s)
+    framing = resolve_framing(src, s["framing"], s)
     if framing == "crop":
-        vf = f"[{vin}]scale={OUT_W}:{OUT_H}:force_original_aspect_ratio=increase,crop={OUT_W}:{OUT_H},setsar=1[vf]"
+        vf = f"[{vin}]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1[vf]"
     elif framing == "scale":
-        vf = f"[{vin}]scale={OUT_W}:{OUT_H}:force_original_aspect_ratio=decrease,pad={OUT_W}:{OUT_H}:(ow-iw)/2:(oh-ih)/2:black,setsar=1[vf]"
-    else:   # fit: video nằm giữa, phía trên/dưới là chính nó phóng to và làm mờ
-        vf = (f"[{vin}]split=2[bg0][fg0];[bg0]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,gblur=sigma=8,"
-              f"scale={OUT_W}:{OUT_H},eq=brightness=-0.08[bg];[fg0]scale={OUT_W}:{OUT_H}:force_original_aspect_ratio=decrease[fg];"
+        vf = f"[{vin}]scale={W}:{H}:force_original_aspect_ratio=decrease,pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:black,setsar=1[vf]"
+    else:   # fit: video nằm giữa, phần còn trống (trên/dưới hoặc hai bên) là chính nó phóng to và làm mờ
+        bw, bh = W // 4, H // 4
+        vf = (f"[{vin}]split=2[bg0][fg0];[bg0]scale={bw}:{bh}:force_original_aspect_ratio=increase,crop={bw}:{bh},gblur=sigma=8,"
+              f"scale={W}:{H},eq=brightness=-0.08[bg];[fg0]scale={W}:{H}:force_original_aspect_ratio=decrease[fg];"
               "[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[vf]")
     if pre:
         vf = ";".join(pre) + ";" + vf
@@ -1229,8 +1269,8 @@ def build_filter(src: dict, s: dict, voice: bool, ass: bool, cover: str = "", cr
     if s.get("zoom") in ("in", "out") and dur > 0:
         p = f"min(t/{dur:.3f},1)" if s["zoom"] == "in" else f"(1-min(t/{dur:.3f},1))"
         z = f"(1+{ZOOM_AMOUNT}*{p})"
-        # phóng to từng khung (kích thước chẵn) rồi cắt giữa về 1080x1920
-        look.append(f"scale=w='trunc({OUT_W}*{z}/2)*2':h='trunc({OUT_H}*{z}/2)*2':eval=frame,crop={OUT_W}:{OUT_H},setsar=1")
+        # phóng to từng khung (kích thước chẵn) rồi cắt giữa về đúng khổ xuất
+        look.append(f"scale=w='trunc({W}*{z}/2)*2':h='trunc({H}*{z}/2)*2':eval=frame,crop={W}:{H},setsar=1")
     if speed != 1:
         look.append(f"setpts=PTS/{speed:.2f},fps={out_fps(src)}")
     if look:
@@ -1382,7 +1422,7 @@ def render_job(job, rel: str, settings: dict | None = None) -> str:
         if s["position"] == "orig":
             if oi["found"]:
                 x, y, w, h = origsubs.pixel_rect(oi, src["width"], src["height"])
-                f, _ox, oy = _framing_transform(eff, s["framing"])
+                f, _ox, oy = _framing_transform(eff, s["framing"], s)
                 center_y = oy + (y + h / 2 - (bar["y"] if bar else 0)) * f
             else:
                 job.log("Chưa dò sub gốc nên phụ đề mới đặt ở vị trí mặc định (dưới).")
@@ -1390,9 +1430,9 @@ def render_job(job, rel: str, settings: dict | None = None) -> str:
         voice = voice_file(folder)
         crf, abr = QUALITY[s["quality"]]
         long_note = ""
-        if out_dur and out_dur > MAX_SECONDS + 0.5:
+        if max_seconds(s) and out_dur and out_dur > max_seconds(s) + 0.5:
             long_note = (f" Lưu ý: bản xuất dài {out_dur:.0f} giây, vượt mức {MAX_SECONDS} giây nên KHÔNG duyệt được (không đăng được Reels)."
-                         " Dùng bước Cắt ngắn để giữ các đoạn dưới 90 giây rồi xuất lại.")
+                         " Dùng bước Cắt ngắn để giữ các đoạn dưới 90 giây rồi xuất lại, hoặc chọn Khổ xuất ngang 16:9 (đăng dạng video thường).")
             job.log(long_note.strip())
         if s["zoom"] != "off" and not cut_dur:
             s["zoom"] = "off"
@@ -1429,7 +1469,7 @@ def render_job(job, rel: str, settings: dict | None = None) -> str:
                 if not fx_events:
                     s["sfx"] = "off"
                     job.log("Không có chỗ nào để chèn tiếng hiệu ứng (chưa có hook, chữ lớn hay chỗ đổi cảnh).")
-        job.log(f"Xuất video {OUT_W}x{OUT_H}" + (f", {len(cues)} dòng phụ đề" if cues else "") + (", kèm hook 3 giây đầu" if hook_text else "")
+        job.log(f"Xuất video {dims(s)[0]}x{dims(s)[1]} ({s['aspect']})" + (f", {len(cues)} dòng phụ đề" if cues else "") + (", kèm hook 3 giây đầu" if hook_text else "")
                 + (f", {len(fx_events)} tiếng hiệu ứng" if fx_events else "") + (f", kèm giọng đọc {voice.name}" if voice else "") + "...")
         with tempfile.TemporaryDirectory(prefix="mvt-render-") as tmp:
             tmpd = Path(tmp)

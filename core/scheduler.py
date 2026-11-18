@@ -1,4 +1,5 @@
-"""Hẹn giờ đăng Reels lên Facebook Page qua Graph API."""
+"""Hẹn giờ đăng lên Facebook Page qua Graph API: video dọc đăng dạng Reel (/video_reels), video ngang đăng dạng video thường
+của Page (/videos, tải lên theo từng phần: upload_phase start / transfer / finish, published=false + scheduled_publish_time)."""
 from __future__ import annotations
 
 import json
@@ -10,7 +11,7 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from . import commenter, config, fbgate, library, pages, planner, ratelimit, reelcheck, series
+from . import commenter, config, fbgate, library, pages, planner, ratelimit, reelcheck, series, xpost
 from .videofile import video_file
 
 
@@ -78,6 +79,80 @@ def schedule_reel(page_id: str, token: str, video: Path, caption: str, when_ts: 
     )
     _check(r, "finish")
     return video_id
+
+
+TRANSFER_RETRIES = 3
+MAX_CHUNKS = 20000
+TITLE_MAX = 250
+
+
+def video_graph_url() -> str:
+    """Máy chủ tải video của Graph API (graph-video.facebook.com), cùng phiên bản API với graph_url()."""
+    return config.graph_url().replace("://graph.facebook.com", "://graph-video.facebook.com", 1)
+
+
+def schedule_page_video(page_id: str, token: str, video: Path, title: str, caption: str, when_ts: int, log=None) -> str:
+    """Tải video lên Page theo từng phần rồi hẹn giờ đăng dạng video thường (không phải Reel). Trả về video_id.
+
+    Facebook trả về khoảng byte cần gửi tiếp (start_offset, end_offset) sau mỗi phần; start_offset == end_offset là đã nhận đủ.
+    Cổng giới hạn: tính trước COSTS["schedule"] lượt ở bước bắt đầu như Reel; các phần tải lên và bước hoàn tất gọi với weight=0
+    (chỉ kiểm tra có đang bị dừng không) để không bỏ dở giữa chừng."""
+    endpoint = f"{video_graph_url()}/{page_id}/videos"
+    size = video.stat().st_size
+    r = fbgate.request("post", endpoint, weight=fbgate.COSTS["schedule"],
+                       data={"upload_phase": "start", "file_size": str(size), "access_token": token}, timeout=60)
+    start = _check(r, "start")
+    session, video_id = start["upload_session_id"], start["video_id"]
+    lo, hi = int(start["start_offset"]), int(start["end_offset"])
+    chunks, last_pct = 0, -1
+    with open(video, "rb") as f:
+        while lo < hi:
+            chunks += 1
+            if chunks > MAX_CHUNKS:
+                raise RuntimeError("transfer: Facebook trả về quá nhiều phần cần tải, dừng lại.")
+            f.seek(lo)
+            data = f.read(hi - lo)
+            for attempt in range(TRANSFER_RETRIES):
+                try:
+                    r = fbgate.request(
+                        "post", endpoint, weight=0,
+                        data={"upload_phase": "transfer", "upload_session_id": session, "start_offset": str(lo), "access_token": token},
+                        files={"video_file_chunk": ("chunk", data, "application/octet-stream")},
+                        timeout=600,
+                    )
+                    nxt = _check(r, "transfer")
+                    break
+                except (requests.RequestException, RuntimeError) as exc:
+                    if isinstance(exc, FacebookError) and ratelimit.block_hours(exc.code, exc.subcode, exc.message):
+                        raise
+                    if attempt == TRANSFER_RETRIES - 1:
+                        raise
+                    time.sleep(5 * (attempt + 1))
+            nlo, nhi = int(nxt["start_offset"]), int(nxt["end_offset"])
+            if nlo <= lo and nlo < nhi:
+                raise RuntimeError(f"transfer: Facebook không nhận thêm dữ liệu (dừng ở byte {lo}/{size}).")
+            lo, hi = nlo, nhi
+            pct = int(lo * 100 / size) if size else 100
+            if log and pct // 25 > last_pct // 25:
+                last_pct = pct
+                log(f"    Đã tải lên {pct}%")
+    r = fbgate.request(
+        "post", endpoint, weight=0,
+        data={
+            "upload_phase": "finish",
+            "upload_session_id": session,
+            "title": title[:TITLE_MAX],
+            "description": caption,
+            "published": "false",
+            "scheduled_publish_time": str(when_ts),
+            "access_token": token,
+        },
+        timeout=120,
+    )
+    fin = _check(r, "finish")
+    if fin.get("success") is False:
+        raise RuntimeError(f"finish: {fin}")
+    return str(video_id)
 
 
 def recent_created(page_id: str, hours: float = 24) -> list[datetime]:
@@ -155,6 +230,7 @@ def run(job, page_id: str, rels: list[str], start: str, interval_hours: float, t
         if any((x / "scheduled.json").exists() and library.owner_of(x.parent) == page_id for x in dirs)
     }
     folders = []
+    kinds: dict[Path, str] = {}   # reel | video (video ngang đăng dạng video thường của Page)
     seen = set()
     invalid = 0
     check_on = reelcheck.enabled() and reelcheck.available()
@@ -182,12 +258,20 @@ def run(job, page_id: str, rels: list[str], start: str, interval_hours: float, t
                 res = None
                 check_on = False
                 job.log(f"Lưu ý: bỏ qua bước kiểm tra Reels ({exc})")
+            land = bool(res) and res.get("kind") == "landscape"
             if res and res["errors"]:
                 invalid += 1
-                job.log(f"Bỏ qua (không đạt yêu cầu Reels): {d.name}: {' '.join(res['errors'])}")
+                job.log(f"Bỏ qua (không đạt yêu cầu {'video ngang' if land else 'Reels'}): {d.name}: {' '.join(res['errors'])}")
                 continue
             if res and res["warnings"]:
                 job.log(f"Lưu ý: {d.name}: {' '.join(res['warnings'])}")
+            kinds[d] = "video" if land else "reel"
+        if d not in kinds and reelcheck.available():   # tắt kiểm tra Reels vẫn phải biết video dọc hay ngang để chọn kiểu đăng
+            try:
+                res = reelcheck.ensure(d)
+                kinds[d] = "video" if res and res.get("kind") == "landscape" else "reel"
+            except RuntimeError:
+                pass
         if vid:
             taken.add(vid)
         folders.append(d)
@@ -276,7 +360,10 @@ def run(job, page_id: str, rels: list[str], start: str, interval_hours: float, t
                     f"Video cuối cùng sẽ rơi vào {last:%Y-%m-%d %H:%M}, vượt giới hạn Facebook cho phép hẹn giờ (trong vòng 29 ngày). "
                     f"Hãy chọn ít video hơn (tối đa khoảng {max(max_n, 1)} video với khoảng cách này) hoặc giảm khoảng cách giờ."
                 )
+    n_video = sum(1 for d in folders if kinds.get(d) == "video")
     job.set_progress(0, total)
+    if n_video:
+        job.log(f"{n_video} video ngang sẽ đăng dạng video thường của Page (không phải Reel), tải lên theo từng phần nên lâu hơn.")
     job.log(
         f"{total} video sẽ được {'xem trước' if dry_run else 'hẹn giờ'} trên Fanpage: {pages.label(page)} "
         f"({'tự xếp theo khung giờ của Page' if mode == 'auto' else f'cách nhau {interval_hours:g} giờ'})."
@@ -290,14 +377,20 @@ def run(job, page_id: str, rels: list[str], start: str, interval_hours: float, t
             job.log("Đã dừng theo yêu cầu.")
             break
         when = times[i]
-        job.log(f"[{i + 1}/{total}] {when:%Y-%m-%d %H:%M} ({tz_name}) <- {folder.name}")
+        kind = kinds.get(folder, "reel")
+        job.log(f"[{i + 1}/{total}] {when:%Y-%m-%d %H:%M} ({tz_name}) <- {folder.name}" + (" (video ngang)" if kind == "video" else ""))
         if dry_run:
             job.set_progress(i + 1, total)
             continue
         try:
-            video_id = schedule_reel(
-                page_id, token, video_file(folder), library.build_caption(folder), int(when.timestamp())
-            )
+            if kind == "video":
+                video_id = schedule_page_video(
+                    page_id, token, video_file(folder), xpost.texts(folder)["title"], library.build_caption(folder), int(when.timestamp()), job.log
+                )
+            else:
+                video_id = schedule_reel(
+                    page_id, token, video_file(folder), library.build_caption(folder), int(when.timestamp())
+                )
         except fbgate.RateLimited as exc:
             raise RuntimeError(
                 f"Đã hẹn thành công {done}/{total} video trước khi dừng. {exc} "
@@ -321,6 +414,7 @@ def run(job, page_id: str, rels: list[str], start: str, interval_hours: float, t
                     "created_at": datetime.now(timezone.utc).isoformat(),
                     "page_id": page_id,
                     "page_name": pages.label(page),
+                    "kind": kind,
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -333,7 +427,7 @@ def run(job, page_id: str, rels: list[str], start: str, interval_hours: float, t
             delay = eff["delay_seconds"]
             _pause(job, delay + random.uniform(0, delay / 2))
 
-    bad_note = f" {invalid} video không đạt yêu cầu Reels nên đã bị bỏ qua (xem nhật ký)." if invalid else ""
+    bad_note = f" {invalid} video không đạt yêu cầu (Reels hoặc video ngang) nên đã bị bỏ qua (xem nhật ký)." if invalid else ""
     if dry_run:
         return "Xem trước xong, chưa đăng gì." + bad_note + (f" ({skipped_left} video sẽ chưa được xếp vì hết chỗ trống hoặc đạt giới hạn mỗi 24 giờ.)" if skipped_left else "")
     note = f" Còn {skipped_left} video chưa xếp (hết chỗ trống hoặc đạt giới hạn mỗi 24 giờ), hãy lên lịch tiếp sau." if skipped_left else ""

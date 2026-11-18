@@ -173,7 +173,13 @@ Tab **Thống kê** của từng Page giúp cân nhắc trước khi hẹn thêm
 - **Comment affiliate** (đã comment bao nhiêu bài đã đăng, đang chờ, lỗi, quá hạn), **bài đã huỷ hoặc gỡ lịch trong 30 ngày qua** theo lý do, bảng theo từng thư mục kênh, và 10 bài đã đăng gần nhất.
 - **Chưa có** lượt xem, like hay lượt tiếp cận: các số đó phải lấy từ Insights của Facebook, cần thêm quyền và tốn lượt gọi.
 
-## Chỉnh sửa video (phụ đề, giọng đọc, khung 9:16)
+## Chỉnh sửa video (phụ đề, giọng đọc, khung 9:16 hoặc 16:9)
+
+**Khổ xuất (bước 8):** *Dọc 9:16* (1080x1920) cho Reels, Shorts, TikTok, như trước; hoặc *Ngang 16:9* (1920x1080) cho YouTube và video thường trên Facebook Page. Video gốc ngang chưa chỉnh sửa lần nào thì mặc định chọn sẵn khổ ngang. Khổ ngang:
+- Video gốc 16:9 (YouTube, Bilibili) giữ nguyên khung; video dọc thì đặt giữa, hai bên là nền mờ (Khung hình "Tự chọn").
+- Phụ đề, hook, chữ lớn, hiệu ứng, giọng đọc, che sub gốc dùng như khổ dọc; chữ được đặt lại cho khung ngang (phụ đề sát mép dưới như YouTube, cỡ chữ nhỏ hơn một chút).
+- Không giới hạn 90 giây; bước Cắt ngắn chỉ dùng khi muốn bỏ đoạn thừa (Claude vẫn đề xuất bản dưới 90 giây, hợp để làm Reels).
+- Duyệt kiểm theo chuẩn video ngang: 16:9, tối thiểu 1280x720, H.264/AAC/MP4, 24 đến 60 khung hình/giây, 3 giây đến 4 giờ.
 
 **Mở ở đâu:** nút **Chỉnh sửa video** trên thẻ video (chỉ hiện với video chưa lên lịch), ở mục **Video** trên thanh trên cùng hoặc ở Thư viện trong một Fanpage. Lọc video theo tình trạng chỉnh sửa (chưa chỉnh sửa, chờ duyệt bản sửa, đã chỉnh sửa) bằng ô "Chỉnh sửa" của mục Video.
 
@@ -324,7 +330,9 @@ Mỗi thẻ Page ở Tổng quan có dòng **Kho** cho biết số video chưa l
 - Page chưa có khung giờ đăng thì app chưa tính được kho. Page chưa có video nào thì không nhắc.
 - Mỗi giờ app kiểm tra một lần, nếu có Page đỏ thì báo qua kênh thông báo (không báo lặp quá 1 lần mỗi 20 giờ cho cùng một Page).
 
-## Kiểm tra video đạt yêu cầu Reels
+## Kiểm tra video đạt yêu cầu Reels (và video ngang)
+
+Video ngang (rộng/cao từ 1,2 trở lên, ví dụ 1920x1080) không đăng dạng Reel mà đăng dạng **video thường của Page**: thẻ video có nhãn **Ngang 16:9**, được kiểm theo chuẩn video ngang (không đạt: dưới 3 giây, trên 4 giờ, dưới 640x360; cần xem lại: dưới 1280x720, không phải 16:9, fps lạ, không có tiếng). Khi hẹn giờ, app tự chọn: video dọc đăng Reel, video ngang tải lên theo từng phần qua `graph-video.facebook.com/{page}/videos` (upload_phase start / transfer / finish, `published=false` + `scheduled_publish_time`), lưu `"kind": "video"` trong `scheduled.json`. Video ngang vẫn tính vào giới hạn 24 giờ của Page và giới hạn lượt gọi, vẫn kiểm tra trạng thái, đổi giờ, huỷ lịch, tự comment như Reel. YouTube đăng tay (cột YT ở mục Video). **Chưa kiểm chứng với Facebook thật:** hẹn thử một video ngang trước rồi xem trên Page.
 
 Trước khi hẹn giờ, app dùng `ffprobe` (đi kèm ffmpeg) đọc từng video và so với yêu cầu Reels của Meta:
 

@@ -276,6 +276,7 @@ def _video_info(root: Path, vdir: Path, channel_dir: Path | None) -> dict:
         "has_draft": has_draft,
         "has_subs": (vdir / "subs.json").exists(),
         "reel_check": reelcheck.summary(vdir),
+        "post_kind": (sched.get("kind") or "reel") if scheduled else "",   # đã hẹn: reel | video (video ngang đăng dạng video thường)
         "xpost": xpost.read(vdir),
         "xpost_required": xpost.required(vdir, sched),
         **series.info_for(vdir),   # phim / tập nhận từ tiêu đề (hoặc sửa tay); series.finalize gộp nhóm sau

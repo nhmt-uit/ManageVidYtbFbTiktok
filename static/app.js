@@ -496,7 +496,7 @@ const TAB_TOOLS = {
 };
 const TAB_HINT = {
   all: "Kiểm tra Reels: soát video chưa hẹn có đạt yêu cầu Reels không. Kiểm tra trạng thái: hỏi Facebook về các bài đã hẹn.",
-  new: "Video chưa hẹn giờ: chọn rồi bấm Lên lịch. Kiểm tra Reels soát video có đạt yêu cầu Reels (dọc 9:16, 3 đến 90 giây) trước khi hẹn.",
+  new: "Video chưa hẹn giờ: chọn rồi bấm Lên lịch. Kiểm tra Reels soát video có đạt yêu cầu Reels (dọc 9:16, 3 đến 90 giây) trước khi hẹn. Video ngang 16:9 được kiểm theo chuẩn video ngang và đăng dạng video thường của Page.",
   pending: "Bài đã hẹn, đang chờ đến giờ đăng. Kiểm tra trạng thái hỏi Facebook xem bài còn trên lịch không (phát hiện bài bạn đã xóa). Chọn bài rồi bấm Huỷ lịch để xóa hẹn.",
   problem: "Bài báo lỗi, quá giờ mà chưa đăng, hoặc không còn trên Facebook. Kiểm tra trạng thái để cập nhật lại; chọn bài rồi bấm Hẹn lại (hoặc Huỷ lịch với bài quá giờ).",
   published: "Bài đã đăng thành công. Chọn để xoá video (chuyển cả thư mục vào Thùng rác) khi không cần giữ nữa.",
@@ -573,13 +573,15 @@ async function xpostOpen(rel, what) {
   try { await api("/api/open", "POST", { rel, what }); }
   catch (e) { toast(e.message); }
 }
+function isLand(v) { return v.post_kind === "video" || (!!v.reel_check && v.reel_check.kind === "landscape"); }
 function reelBadge(v) {
   const rc = v.reel_check;
-  if (v.scheduled || !rc || !rc.state || rc.state === "ok") return "";
-  const tip = esc(rc.messages.join(" "));
-  return rc.state === "error"
-    ? `<span class="badge bad" title="${tip}">Không đạt yêu cầu Reels</span>`
-    : `<span class="badge warn" title="${tip}">Cần xem lại (Reels)</span>`;
+  const land = isLand(v) ? `<span class="badge land" title="Video ngang: hẹn giờ sẽ đăng dạng video thường của Page (không phải Reel). YouTube đăng tay.">Ngang 16:9</span>` : "";
+  if (v.scheduled || !rc || !rc.state || rc.state === "ok") return land;
+  const tip = esc(rc.messages.join(" ")), what = rc.kind === "landscape" ? "video ngang" : "Reels";
+  return land + (rc.state === "error"
+    ? `<span class="badge bad" title="${tip}">Không đạt yêu cầu ${what}</span>`
+    : `<span class="badge warn" title="${tip}">Cần xem lại (${what})</span>`);
 }
 let observer = null;
 
@@ -859,7 +861,7 @@ function renderLibrary() {
   const cardHtml = (v) => `
     <article class="card${lib.selected.has(v.rel) ? " sel" : ""}" data-rel="${esc(v.rel)}">
       ${v.scheduled && !selKind(v) ? "" : `<label class="pick"><input type="checkbox" ${lib.selected.has(v.rel) ? "checked" : ""} ${selKind(v) ? "" : "disabled"}></label>`}
-      <video data-src="${esc(mediaUrl(v.rel) + ("?e=" + v.size_mb))}" controls playsinline muted preload="none"></video>
+      <video${isLand(v) ? ' class="land"' : ""} data-src="${esc(mediaUrl(v.rel) + ("?e=" + v.size_mb))}" controls playsinline muted preload="none"></video>
       <div class="meta">
         <h4 title="${esc(v.title)}">${esc(v.title)}</h4>
         <p class="sub">${esc(v.date)} · ${v.size_mb} MB${v.channel ? " · " + esc(v.channel) : ""}</p>
@@ -907,7 +909,7 @@ function renderLibrary() {
   const rb = $("#lib-reels");
   rb.disabled = !lib.reelcheck.available;
   rb.title = lib.reelcheck.available
-    ? "Kiểm tra các video chưa lên lịch có đạt yêu cầu Reels không (dọc 9:16, 3 đến 90 giây, tối thiểu 540x960). Giữ Shift khi bấm để kiểm tra lại tất cả."
+    ? "Kiểm tra các video chưa lên lịch có đạt yêu cầu Reels không (dọc 9:16, 3 đến 90 giây, tối thiểu 540x960). Video ngang kiểm theo chuẩn video ngang (3 giây đến 4 giờ, tối thiểu 640x360). Giữ Shift khi bấm để kiểm tra lại tất cả."
     : "Chưa cài ffprobe (đi kèm ffmpeg) nên không kiểm tra được.";
   // Mỗi nút công cụ chỉ hiện ở tab có việc cho nó làm; Làm mới dùng được ở mọi tab
   const tools = TAB_TOOLS[lib.status] || TAB_TOOLS.all;
@@ -1515,7 +1517,7 @@ const fmtSec = (n) => (Math.round(n * 10) / 10).toString();
 
 function veSettings() {
   return {
-    framing: $("#ve-framing").value, subs: $("#ve-subs").checked, position: $("#ve-position").value, size: $("#ve-size").value,
+    aspect: $("#ve-aspect").value, framing: $("#ve-framing").value, subs: $("#ve-subs").checked, position: $("#ve-position").value, size: $("#ve-size").value,
     color: $("#ve-color").value, box: $("#ve-box").checked, loudnorm: $("#ve-loud").checked, hide_orig: $("#ve-hide").checked, trim_bars: $("#ve-trim").checked,
     audio_clean: $("#ve-aclean").value, quality: $("#ve-quality").value, hook: $("#ve-hook-use").checked, cut: $("#ve-cut-use").checked,
     orig_volume: Number($("#ve-ov").value), voice_volume: 100,
@@ -1743,7 +1745,7 @@ function veRender() {
   $("#ve-problem").textContent = problems.join(" ");
   $("#ve-locked").hidden = !st.scheduled;
   const s = st.source;
-  $("#ve-vinfo").textContent = s.width ? `Gốc: ${s.width}x${s.height}, ${Math.round(s.duration)} giây${s.has_audio ? "" : ", không có âm thanh"}. Xuất ra 1080x1920 (9:16).` : "";
+  veInfoText();
   $("#ve-lang").innerHTML = Object.entries(st.langs).map(([k, n]) => `<option value="${k}"${k === (st.language || "vi") ? " selected" : ""}>${esc(n)}</option>`).join("");
   $("#ve-src-wrap").hidden = !st.voice.name;
   veRenderCues();
@@ -1753,6 +1755,7 @@ function veRender() {
   $("#ve-voiceinfo").textContent = v.name ? `Đang dùng: ${v.name} (${v.duration} giây, ${v.size_mb} MB).` + (s.duration && v.duration > s.duration + 0.5 ? " Giọng dài hơn video nên sẽ bị cắt cho vừa." : "") : "Chưa có giọng đọc.";
   $("#ve-ov-wrap").hidden = !v.name;
   const set = st.settings;
+  $("#ve-aspect").value = set.aspect || "9:16"; veInfoText();
   $("#ve-framing").value = set.framing; $("#ve-position").value = set.position; $("#ve-size").value = set.size; $("#ve-color").value = set.color;
   $("#ve-subs").checked = set.subs; $("#ve-box").checked = set.box; $("#ve-loud").checked = set.loudnorm;
   $("#ve-trim").checked = set.trim_bars; $("#ve-aclean").value = set.audio_clean; $("#ve-quality").value = set.quality;
@@ -1777,8 +1780,9 @@ function veRender() {
   if (!ck.hidden) {
     ck.className = "msg " + (c.errors.length ? "bad" : "ok");
     ck.textContent = c.errors.length
-      ? `Bản nháp CHƯA đạt chuẩn đăng ${st.standard} nên chưa duyệt được: ${c.errors.join(" ")}`
-      : `Bản nháp đạt chuẩn đăng ${st.standard} (${c.w}x${c.h}, ${fmtSec(c.duration)} giây).` + (c.warnings.length ? " Lưu ý: " + c.warnings.join(" ") : "");
+      ? `Bản nháp CHƯA đạt chuẩn đăng ${c.standard || st.standard} nên chưa duyệt được: ${c.errors.join(" ")}`
+      : `Bản nháp đạt chuẩn đăng ${c.standard || st.standard} (${c.w}x${c.h}, ${fmtSec(c.duration)} giây).` + (c.warnings.length ? " Lưu ý: " + c.warnings.join(" ") : "")
+        + (c.kind === "landscape" ? " Video ngang: khi hẹn giờ sẽ đăng dạng video thường của Page (không phải Reel)." : "");
   }
   $("#ve-msg").textContent = ed.exists
     ? `Có bản nháp (${ed.size_mb} MB), chưa duyệt: hẹn giờ vẫn dùng video hiện tại.` + (ed.stale ? " Phụ đề hoặc chữ lớn đã đổi sau lần xuất, nên xuất lại." : " Xem thử rồi bấm Duyệt để thay video gốc.")
@@ -1800,8 +1804,17 @@ function veCutRowHtml(sg, i) {
     ${sg.note ? `<span class="hint c-note">${esc(sg.note)}</span>` : ""}
   </div>`;
 }
+// Giới hạn độ dài theo khổ xuất đang chọn: dọc 9:16 = 90 giây (Reels), ngang 16:9 = không giới hạn (0)
+function veMaxSec() { return $("#ve-aspect").value === "16:9" ? 0 : 90; }
+function veInfoText() {
+  const s = ve.st && ve.st.source;
+  if (!s || !s.width) { $("#ve-vinfo").textContent = ""; return; }
+  const asp = $("#ve-aspect").value || "9:16", size = (ve.st.aspects || {})[asp] || (asp === "16:9" ? "1920x1080" : "1080x1920");
+  $("#ve-vinfo").textContent = `Gốc: ${s.width}x${s.height}, ${Math.round(s.duration)} giây${s.has_audio ? "" : ", không có âm thanh"}. Xuất ra ${size} (${asp}`
+    + (asp === "16:9" ? ", đăng dạng video thường trên Facebook, YouTube)." : ", Reels/Shorts).");
+}
 function veCutTotal() {
-  const max = ve.st.max_seconds || 90;
+  const max = veMaxSec();
   let tot = 0;
   $$("#ve-cut-list .ve-cutrow").forEach((r) => {
     const a = Number($(".c-a", r).value), b = Number($(".c-b", r).value);
@@ -1811,16 +1824,12 @@ function veCutTotal() {
   });
   const n = $$("#ve-cut-list .ve-cutrow").length;
   const el = $("#ve-cut-total");
-  el.textContent = n ? `giữ ${n} đoạn · ${fmtSec(tot)} giây${tot > max ? ` (vượt ${max} giây)` : ""}` : "";
-  el.classList.toggle("bad", tot > max);
+  el.textContent = n ? `giữ ${n} đoạn · ${fmtSec(tot)} giây${max && tot > max ? ` (vượt ${max} giây)` : ""}` : "";
+  el.classList.toggle("bad", !!max && tot > max);
 }
 function veCutRender() {
-  const st = ve.st, cu = st.cuts || { segments: [] }, dur = st.source.duration || 0, max = st.max_seconds || 90;
-  $("#ve-cut-hint").textContent = (dur > max + 0.5
-    ? `Video dài ${Math.round(dur)} giây, vượt ${max} giây: bản xuất phải từ ${max} giây trở xuống mới duyệt được. `
-    : `Video dài ${Math.round(dur)} giây, không bắt buộc cắt; vẫn có thể bỏ đoạn thừa. `) +
-    (st.claude ? "Claude đọc phụ đề có mốc thời gian (phiên âm ở bước 1 trước) rồi chọn các đoạn giữ lại; bạn xem, sửa, rồi tick ô bên dưới và Xuất video."
-      : "Chưa tìm thấy Claude Code (lệnh `claude`) nên chỉ tự nhập được các đoạn giữ lại.");
+  const st = ve.st, cu = st.cuts || { segments: [] };
+  veCutHint();
   $("#ve-cut-sum").textContent = cu.segments.length
     ? (cu.source === "claude" ? "Đề xuất của Claude" : "Đoạn bạn đã lưu") + (cu.summary ? `: ${cu.summary}` : ".")
     : "Chưa có đoạn cắt nào.";
@@ -1828,6 +1837,15 @@ function veCutRender() {
   $("#ve-cut-use").disabled = !cu.segments.length;
   $("#ve-cut-use").checked = !!(cu.segments.length && st.settings.cut);
   veCutTotal();
+}
+function veCutHint() {
+  const st = ve.st, dur = st.source.duration || 0, max = veMaxSec();
+  $("#ve-cut-hint").textContent = (!max ? `Video dài ${Math.round(dur)} giây. Khổ ngang 16:9 không giới hạn 90 giây; cắt chỉ để bỏ đoạn thừa (Claude đề xuất bản dưới 90 giây, hợp làm Reels). `
+    : dur > max + 0.5
+    ? `Video dài ${Math.round(dur)} giây, vượt ${max} giây: bản xuất phải từ ${max} giây trở xuống mới duyệt được. `
+    : `Video dài ${Math.round(dur)} giây, không bắt buộc cắt; vẫn có thể bỏ đoạn thừa. `) +
+    (st.claude ? "Claude đọc phụ đề có mốc thời gian (phiên âm ở bước 1 trước) rồi chọn các đoạn giữ lại; bạn xem, sửa, rồi tick ô bên dưới và Xuất video."
+      : "Chưa tìm thấy Claude Code (lệnh `claude`) nên chỉ tự nhập được các đoạn giữ lại.");
 }
 async function veSaveCuts() {
   const had = !$("#ve-cut-use").disabled;   // trước đó đã có đoạn cắt: giữ đúng lựa chọn tick / bỏ tick của bạn
@@ -2080,6 +2098,7 @@ $("#ve-os-save").addEventListener("click", async () => {
 });
 $("#ve-hide").addEventListener("change", veCover);
 $("#ve-position").addEventListener("change", veCap);
+$("#ve-aspect").addEventListener("change", () => { if (ve.st) { veInfoText(); veCutHint(); veCutTotal(); } });
 $("#ve-os-mode").addEventListener("change", veCover);
 // Che sub gốc mà phụ đề mới vẫn ở "Dưới/Giữa/Trên" thì sub mới nằm lệch khỏi vùng đã che: tự chuyển sang "Đúng chỗ sub gốc"
 function veAlignToOrig() {

@@ -128,6 +128,7 @@ progress { width: 100%; height: 8px; margin-top: 14px; }
 .card { isolation: isolate; }  /* z-index của checkbox chỉ có tác dụng trong thẻ video */
 .card.sel { outline: 2px solid var(--accent); }
 .card video { width: 100%; aspect-ratio: 9 / 16; background: #000; object-fit: cover; display: block; }
+.card video.land { aspect-ratio: 16 / 9; object-fit: contain; }
 .card .pick { position: absolute; top: 8px; left: 8px; z-index: 1; background: var(--panel); border-radius: 6px; padding: 3px 5px; display: flex; }
 .card .meta { padding: 10px 12px 12px; display: grid; gap: 6px; }
 .card h4 {
@@ -145,6 +146,7 @@ progress { width: 100%; height: 8px; margin-top: 14px; }
 .badge.ok { color: var(--ok); border-color: var(--ok); }
 .badge.warn { color: var(--warn); border-color: var(--warn); }
 .badge.bad { color: var(--bad); border-color: var(--bad); }
+.badge.land { color: var(--accent); border-color: var(--accent); }
 .link { background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0; font: inherit; font-size: 13px; text-align: left; }
 .empty { text-align: center; color: var(--muted); padding: 40px 0; }
 .msg { margin: 12px 0 0; font-size: 14px; }

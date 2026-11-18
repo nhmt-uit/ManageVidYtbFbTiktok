@@ -878,7 +878,7 @@ def _run(job, url: str, folder_name: str, kind: str, limit: int, note: str, page
                 try:
                     chk = reelcheck.ensure(folder)
                     if chk and chk["errors"]:
-                        job.log("    Không đạt yêu cầu Reels (sẽ bị bỏ qua khi hẹn giờ): " + " ".join(chk["errors"]))
+                        job.log(f"    Không đạt yêu cầu {'video ngang' if chk.get('kind') == 'landscape' else 'Reels'} (sẽ bị bỏ qua khi hẹn giờ): " + " ".join(chk["errors"]))
                     elif chk and chk["warnings"]:
                         job.log("    Lưu ý: " + " ".join(chk["warnings"]))
                 except Exception:  # noqa: BLE001  kiểm tra chỉ để báo trước, không làm hỏng việc tải
