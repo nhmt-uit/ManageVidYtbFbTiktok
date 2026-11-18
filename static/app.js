@@ -397,7 +397,7 @@ $("#dl-file-btn").addEventListener("click", async () => {
   try {
     const r = await api("/api/download/pick-txt", "POST", {});   // hộp thoại chọn file của macOS (server biết đường dẫn để xoá link đã xong)
     if (r.cancelled) return;
-    if (!r.links.length) { toast("Không thấy link YouTube/TikTok/Rednote nào trong file này."); return; }
+    if (!r.links.length) { toast("Không thấy link YouTube/TikTok/Rednote/Bilibili nào trong file này."); return; }
     if (!$("#dl-url").value.trim()) dlTxts = [];
     dlTxts = dlTxts.filter((t) => t.path !== r.path).concat([r]);
     addDlLinks(r.links, r.name, true);
@@ -2403,6 +2403,7 @@ const FIELDS = [
   ["DOWNLOAD_MAX_HEIGHT", "Chất lượng tối đa (px)", "number", "set"],
   ["YTDLP_COOKIES_BROWSER", "Trình duyệt lấy cookie nếu YouTube đòi xác minh (chrome, safari, firefox)", "text", "set"],
   ["REDNOTE_COOKIES_BROWSER", "Rednote: trình duyệt đã đăng nhập Rednote để lấy cookie (chrome, safari, firefox), hoặc đường dẫn file cookies.txt", "text", "set"],
+  ["BILIBILI_COOKIES_BROWSER", "Bilibili: trình duyệt đã đăng nhập Bilibili để tải bản 1080p (chrome, safari, firefox), hoặc đường dẫn file cookies.txt", "text", "set"],
   ["SCHEDULE_INTERVAL_HOURS", "Khoảng cách mặc định giữa các bài (giờ)", "number", "set"],
   ["FB_API_VERSION", "Phiên bản Facebook Graph API (v21.0 hết hạn 21/01/2027; v25.0 dùng được đến 07/2028)", "text", "set"],
   ["YTDLP_AUTO_UPDATE", "Tự kiểm tra và cập nhật yt-dlp mỗi ngày (YouTube hay đổi, bản cũ dễ gây lỗi tải)", "onoff", "set"],

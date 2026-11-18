@@ -1,4 +1,4 @@
-"""Tải video YouTube, TikTok (không logo) hoặc Rednote (Xiaohongshu) bằng yt-dlp.
+"""Tải video YouTube, TikTok (không logo), Rednote (Xiaohongshu) hoặc Bilibili (link từng video) bằng yt-dlp.
 
 Cấu trúc lưu:
   <OUTPUT_DIR>/<tên thư mục>/<ngày - tiêu đề [id]>/
@@ -53,10 +53,13 @@ URL_RE = re.compile(r"https?://[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+", re.I)
 MAX_URLS = 1000
 REDNOTE_NOTE_RE = re.compile(r"^/(?:explore|discovery/item)/([0-9a-f]{16,32})/?$", re.I)
 REDNOTE_PROFILE_NOTE_RE = re.compile(r"^/user/profile/[0-9a-f]+/([0-9a-f]{16,32})/?$", re.I)
+BILI_HOSTS = ("bilibili.com", "b23.tv")
+BILI_VIDEO_RE = re.compile(r"^/video/(BV[0-9A-Za-z]{10}|av\d{1,20})/?$")
+BILI_SPACE_RE = re.compile(r"^/(?:[a-z]{2}(?:-[a-z]{2,4})?/)?(\d{1,20})(?:/(?:upload/)?video)?/?$", re.I)   # trang kênh, kể cả có mã ngôn ngữ (/vi/...)
 
 
 def platform_of(url: str) -> str:
-    """"youtube" | "tiktok" | "rednote" | "" theo tên miền của đường dẫn."""
+    """"youtube" | "tiktok" | "rednote" | "bilibili" | "" theo tên miền của đường dẫn."""
     host = (urlparse((url or "").strip()).hostname or "").lower()
     if host == "youtu.be" or host == "youtube.com" or host.endswith(".youtube.com"):
         return "youtube"
@@ -64,13 +67,15 @@ def platform_of(url: str) -> str:
         return "tiktok"
     if any(host == h or host.endswith("." + h) for h in REDNOTE_HOSTS):
         return "rednote"
+    if any(host == h or host.endswith("." + h) for h in BILI_HOSTS):
+        return "bilibili"
     return ""
 
 
 def validate_url(url: str) -> str:
     url = (url or "").strip()
     if urlparse(url).scheme not in ("http", "https") or not platform_of(url):
-        raise ValueError("Chỉ hỗ trợ đường dẫn YouTube (youtube.com, youtu.be), TikTok (tiktok.com, vm.tiktok.com) hoặc Rednote (xiaohongshu.com, rednote.com, xhslink.com).")
+        raise ValueError("Chỉ hỗ trợ đường dẫn YouTube (youtube.com, youtu.be), TikTok (tiktok.com, vm.tiktok.com), Rednote (xiaohongshu.com, rednote.com, xhslink.com) hoặc Bilibili (bilibili.com/video/..., b23.tv).")
     return url
 
 
@@ -110,6 +115,11 @@ def known_id(platform: str, url: str) -> str:
     if platform == "rednote":
         m = RN_ID_RE.search(path) or REDNOTE_PROFILE_NOTE_RE.match(path)
         return m.group(1).lower() if m else ""
+    if platform == "bilibili":
+        m = BILI_VIDEO_RE.match(path)
+        if not m or not m.group(1).startswith("BV") or "p" in parse_qs(u.query):
+            return ""   # link av, link từng phần (?p=) hay link rút gọn: ID yt-dlp khác, để yt-dlp đọc
+        return m.group(1)
     return ""
 
 
@@ -184,6 +194,41 @@ def rednote_note_url(url: str) -> str:
     raise RuntimeError("Link Rednote này không phải một bài video (cần dạng xiaohongshu.com/explore/... hoặc /discovery/item/...).")
 
 
+def bilibili_video_url(url: str) -> str:
+    """Link chuẩn cho yt-dlp: một video (www.bilibili.com/video/<BV|av>, giữ ?p= nếu có) hoặc danh sách video của một kênh
+    (space.bilibili.com/<mid>/video, nhận cả /vi/<mid>, /<mid>/upload/video). Link rút gọn b23.tv được mở ra trước.
+    Chỉ nhận video thường do người dùng đăng: phim bộ (bangumi), khoá học (cheese)... báo lỗi."""
+    cur = url.strip()
+    opener = urllib.request.build_opener(_NoRedirect)
+    for _ in range(5):
+        if (urlparse(cur).hostname or "").lower() != "b23.tv":
+            break
+        req = urllib.request.Request(cur, headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/17.0 Safari/605.1.15"})
+        try:
+            opener.open(req, timeout=15).close()
+            break
+        except urllib.error.HTTPError as exc:
+            loc = exc.headers.get("Location") if 300 <= exc.code < 400 else ""
+            nxt = urljoin(cur, loc) if loc else ""
+            if not nxt or platform_of(nxt) != "bilibili":
+                break
+            cur = nxt
+        except (urllib.error.URLError, OSError, ValueError) as exc:
+            raise RuntimeError("Không mở được link rút gọn Bilibili (kiểm tra mạng): " + str(exc)[:120]) from None
+    u = urlparse(cur)
+    host = (u.hostname or "").lower()
+    sp = BILI_SPACE_RE.match(u.path or "") if host in ("space.bilibili.com", "m.space.bilibili.com") else None
+    if sp:
+        return f"https://space.bilibili.com/{sp.group(1)}/video"
+    m = BILI_VIDEO_RE.match(u.path or "") if host in ("bilibili.com", "www.bilibili.com", "m.bilibili.com") else None
+    if not m:
+        raise RuntimeError("Link Bilibili này không phải một video thường (cần dạng bilibili.com/video/BV..., b23.tv/... hoặc trang kênh space.bilibili.com/<số>). "
+                           "Phim bộ, khoá học trả phí không hỗ trợ.")
+    p = (parse_qs(u.query).get("p") or [""])[0]
+    query = f"p={p}" if p.isdigit() and p != "1" else ""
+    return urlunparse(("https", "www.bilibili.com", f"/video/{m.group(1)}", "", query, ""))
+
+
 def normalize_url(url: str, kind: str) -> str:
     """Link kênh YouTube trơn (@tên, /channel/..) thì thêm /shorts hoặc /videos. Link TikTok giữ nguyên."""
     u = url.strip()
@@ -203,7 +248,10 @@ def video_format(platform: str, max_height: int) -> dict:
         fmt = "bv*[format_note!*=?watermarked]+ba/b[format_note!*=?watermarked]"
     else:
         fmt = "bv*+ba/b"
-    return {"format": fmt, "format_sort": [f"res:{max_height}"]}
+    sort = [f"res:{max_height}"]
+    if platform == "bilibili":   # Bilibili có cả H.264, HEVC, AV1 cùng độ nét: ưu tiên H.264 cho dễ đăng/chỉnh sửa
+        sort.append("vcodec:h264")
+    return {"format": fmt, "format_sort": sort}
 
 
 def entry_url(platform: str, entry: dict) -> str:
@@ -220,6 +268,11 @@ def entry_url(platform: str, entry: dict) -> str:
         if isinstance(u, str) and platform_of(u) == "rednote" and ("/explore/" in u or "/discovery/item/" in u):
             return u
         return f"https://www.xiaohongshu.com/explore/{vid}"
+    if platform == "bilibili":
+        u = entry.get("webpage_url") or entry.get("url")
+        if isinstance(u, str) and platform_of(u) == "bilibili":
+            return u
+        return f"https://www.bilibili.com/video/{vid}"
     return f"https://www.youtube.com/watch?v={vid}"
 
 
@@ -231,6 +284,14 @@ def _opts(extra: dict | None = None, platform: str = "youtube") -> dict:
             opts["cookiefile"] = str(Path(src).expanduser())
         elif src:
             opts["cookiesfrombrowser"] = (src,)
+    elif platform == "bilibili":   # không đăng nhập thì nhiều video Bilibili chỉ cho bản thấp: dùng phiên đăng nhập của bạn
+        src = (config.get("BILIBILI_COOKIES_BROWSER") or "").strip()
+        if src.startswith(("/", "~")):
+            opts["cookiefile"] = str(Path(src).expanduser())
+        elif src:
+            opts["cookiesfrombrowser"] = (src,)
+        opts["noplaylist"] = True   # video nhiều phần: chỉ tải phần trong link (không có ?p= thì phần 1)
+        opts["http_chunk_size"] = 10 * 1024 * 1024   # CDN Bilibili trả lỗi 567 cho request không có Range: tải theo khúc để luôn gửi Range
     elif platform != "tiktok":   # cookie trình duyệt hay làm TikTok lỗi, và TikTok công khai không cần
         browser = config.get("YTDLP_COOKIES_BROWSER")
         if browser:
@@ -250,7 +311,7 @@ def _flatten(entries):
             yield e
 
 
-SOURCE_NAMES = {"youtube": "YouTube", "tiktok": "TikTok", "rednote": "Rednote"}
+SOURCE_NAMES = {"youtube": "YouTube", "tiktok": "TikTok", "rednote": "Rednote", "bilibili": "Bilibili"}
 MP3_KBPS = "320"      # chất lượng MP3 khi chỉ tải âm thanh
 MAX_FAIL_STREAK = 10   # từng này video liên tiếp lỗi thì dừng, tránh chạy mãi khi YouTube đang chặn
 RN_FAIL_STREAK = 3     # Rednote đòi đăng nhập/xác minh thì dừng sớm: cứ mở tiếp là dễ bị khóa tài khoản
@@ -374,6 +435,25 @@ def _image_ids(page_id: str) -> set:
     return ids
 
 
+def bili_blocked(msg: str) -> bool:
+    """Bilibili chặn tạm vì nghi bot: HTTP 412 hoặc mã -352 (thường hết khi có cookie đăng nhập, hoặc đợi vài phút)."""
+    return bool(re.search(r"\((?:412|352)\)", msg or ""))
+
+
+def _bili_channel_name(listing: dict) -> str:
+    """Danh sách kênh Bilibili không kèm tên kênh: đọc tên người đăng từ video đầu tiên (thêm 1 lần mở trang). Lỗi thì dùng "Bilibili <mid>"."""
+    first = next(iter(_flatten(listing.get("entries"))), None)
+    if first:
+        try:
+            with YoutubeDL(_opts({"skip_download": True}, "bilibili")) as ydl:
+                info = ydl.extract_info(entry_url("bilibili", first), download=False)
+            if info.get("uploader"):
+                return str(info["uploader"])
+        except Exception:  # noqa: BLE001  chỉ để đặt tên thư mục
+            pass
+    return f"Bilibili {listing.get('id') or ''}".strip()
+
+
 def _explain(platform: str, msg: str) -> str:
     """Đổi lỗi kỹ thuật của yt-dlp thành lời dễ hiểu cho các lỗi hay gặp."""
     low = msg.lower()
@@ -385,6 +465,10 @@ def _explain(platform: str, msg: str) -> str:
     if platform == "rednote" and any(k in low for k in ("initial state", "403", "unable to extract")):
         return ("Rednote không trả nội dung bài (thường do mở quá nhiều bài liên tiếp, nhất là khi chưa đặt cookie đăng nhập; "
                 "cũng có thể bài cần đăng nhập hoặc đã bị xoá). Đợi một lúc rồi tải lại, nên đặt cookie Rednote ở Cài đặt > Chung. Chi tiết: " + msg[:160])
+    if platform == "bilibili" and bili_blocked(msg):
+        return "Bilibili tạm chặn (chống bot, lỗi 412/352), hay gặp khi đọc danh sách kênh mà chưa đăng nhập. Đặt cookie đăng nhập Bilibili ở Cài đặt > Chung, đợi vài phút rồi tải lại. Chi tiết: " + msg[:160]
+    if platform == "bilibili" and ("geo" in low or "may be deleted" in low):
+        return "Bilibili không cho tải video này (bị giới hạn theo vùng, cần quyền thành viên, hoặc đã bị xoá). Mở thử trong trình duyệt đã đăng nhập. Chi tiết: " + msg[:160]
     return msg
 
 
@@ -431,6 +515,8 @@ def _run(job, url: str, folder_name: str, kind: str, limit: int, note: str, page
         job.log("Lưu ý: TikTok cần thư viện curl-cffi để tải ổn định. Cài bằng: pip install \"yt-dlp[default,curl-cffi]\" rồi chạy lại ./service.sh restart.")
     if any(platform_of(u) == "rednote" for u in urls) and not (config.get("REDNOTE_COOKIES_BROWSER") or "").strip():
         job.log("Lưu ý: chưa đặt cookie đăng nhập cho Rednote (Cài đặt > Chung). Bài nào Rednote đòi đăng nhập sẽ bị lỗi.")
+    if any(platform_of(u) == "bilibili" for u in urls) and not (config.get("BILIBILI_COOKIES_BROWSER") or "").strip():
+        job.log("Lưu ý: chưa đặt cookie đăng nhập Bilibili (Cài đặt > Chung), video nào Bilibili chỉ cho thành viên xem bản nét thì sẽ bị tải bản thấp hơn hoặc lỗi.")
 
     # video đã có ở một thư mục của chính Page này (theo ID video) thì không tải lại.
     # Tải không gắn Page (page_id trống): chỉ đối chiếu với các thư mục cũng chưa thuộc Page nào
@@ -503,6 +589,8 @@ def _run(job, url: str, folder_name: str, kind: str, limit: int, note: str, page
         u1 = u0
         try:
             u1 = normalize_url(u0, kind)
+            if pf == "bilibili":
+                u1 = bilibili_video_url(u1)
             if pf == "rednote":
                 u1 = rednote_note_url(resolve_short(u1) if "xhslink.com" in (urlparse(u1).hostname or "") else u1)
             if pf == "rednote":
@@ -514,8 +602,17 @@ def _run(job, url: str, folder_name: str, kind: str, limit: int, note: str, page
             if nid0 and content == "images":   # chỉ ảnh: không cần yt-dlp (bài video sẽ được nhận ra và bỏ qua khi mở trang bài)
                 listing = {"id": nid0.group(1), "webpage_url": u1, "_images": True}
             else:
-                with YoutubeDL(_opts({"extract_flat": True, "skip_download": True}, pf)) as ydl:
-                    listing = ydl.extract_info(u1, download=False)
+                for attempt in range(4):
+                    try:
+                        with YoutubeDL(_opts({"extract_flat": True, "skip_download": True}, pf)) as ydl:
+                            listing = ydl.extract_info(u1, download=False)
+                        break
+                    except Exception as exc0:  # noqa: BLE001  Bilibili hay chặn tạm (412) khi đọc danh sách kênh: nghỉ rồi thử lại
+                        if pf != "bilibili" or not bili_blocked(str(exc0)) or attempt == 3 or job.cancelled:
+                            raise
+                        wait = 15 * (attempt + 1)
+                        job.log(f"    Bilibili tạm chặn đọc danh sách kênh, thử lại sau {wait} giây...")
+                        time.sleep(wait)
         except Exception as exc:  # noqa: BLE001
             nid = RN_ID_RE.search(urlparse(u1).path or "") if pf == "rednote" else None
             if nid and "no video formats" in str(exc).lower():   # bài Rednote chỉ có ảnh: yt-dlp không có gì để tải, app tự lưu ảnh
@@ -588,7 +685,9 @@ def _run(job, url: str, folder_name: str, kind: str, limit: int, note: str, page
     url = urls[0] if len(urls) == 1 else f"{urls[0]} (+{len(urls) - 1} link)"
 
     name = safe_name(
-        folder_name or ("Rednote" if first_platform == "rednote" else "") or listing.get("uploader") or listing.get("channel") or listing.get("title") or "unnamed"
+        folder_name or ("Rednote" if first_platform == "rednote" else "")
+        or (_bili_channel_name(listing) if first_platform == "bilibili" and listing.get("entries") is not None and not listing.get("uploader") else "")
+        or listing.get("uploader") or listing.get("channel") or listing.get("title") or "unnamed"
     )
     channel_dir = root / name
     cur_owner = library.owner_of(channel_dir) if channel_dir.exists() else ""
