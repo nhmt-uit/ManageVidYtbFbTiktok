@@ -926,6 +926,8 @@ function renderLibrary() {
       if (en.isIntersecting) {
         const vid = en.target;
         vid.preload = "metadata";
+        // video ngang chưa được kiểm tra (chưa có reels_check.json): đổi khung thẻ theo kích thước thật khi đọc được
+        vid.addEventListener("loadedmetadata", () => { if (vid.videoWidth >= vid.videoHeight * 1.2) vid.classList.add("land"); }, { once: true });
         vid.src = vid.dataset.src + "#t=0.5";
         observer.unobserve(vid);
       }

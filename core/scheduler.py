@@ -405,7 +405,15 @@ def run(job, page_id: str, rels: list[str], start: str, interval_hours: float, t
                     f"app dừng lại để không bị chặn lâu hơn. Hãy đợi ít nhất {hours} giờ rồi hẹn tiếp (app sẽ nhắc ở Tổng quan và Cài đặt > Cài đặt Page). "
                     f"Chi tiết từ Facebook: {exc}"
                 ) from None
-            raise
+            raise RuntimeError(
+                f"Đã hẹn thành công {done}/{total} video. Lỗi ở video \"{folder.name}\": {config.redact(str(exc)).rstrip('.')}. "
+                "Video này và các video sau giữ nguyên (chưa lên lịch), sửa lỗi rồi hẹn tiếp."
+            ) from None
+        except (requests.RequestException, OSError, RuntimeError) as exc:   # mất mạng, đọc file lỗi, Facebook không nhận phần tải lên...
+            raise RuntimeError(
+                f"Đã hẹn thành công {done}/{total} video. Lỗi ở video \"{folder.name}\" ({type(exc).__name__}): {config.redact(str(exc))[:300].rstrip('.')}. "
+                "Video này và các video sau giữ nguyên (chưa lên lịch); kiểm tra mạng hoặc lỗi trên rồi hẹn tiếp."
+            ) from None
         (folder / "scheduled.json").write_text(
             json.dumps(
                 {
