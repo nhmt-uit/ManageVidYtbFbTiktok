@@ -470,6 +470,7 @@ const lib = { videos: [], selected: new Set(), root: "", status: "all", group: r
 function isBadReel(v) { return !v.scheduled && !!v.reel_check && v.reel_check.state === "error"; }
 // Loại thao tác hàng loạt áp dụng được cho video: new = lên lịch, cancel = huỷ lịch (đã hẹn, chưa đăng), rebook = hẹn lại (lỗi / không thấy), "" = không chọn được
 function selKind(v) {
+  if (!v.scheduled && v.is_source) return "";   // video nguồn đã có bản làm ra: không hẹn giờ, không xoá
   if (!v.scheduled) return isBadReel(v) ? "bad" : "new";   // bad: không đạt Reels, chỉ để xoá (không hẹn giờ được)
   if (v.scheduled === "?") return "";
   if (v.publish_status === "published") return edDeletable(v) ? "done" : "";   // done: đã đăng, chọn để xoá
@@ -866,7 +867,8 @@ function renderLibrary() {
         <h4 title="${esc(v.title)}">${esc(v.title)}</h4>
         <p class="sub">${esc(v.date)} · ${v.size_mb} MB${v.channel ? " · " + esc(v.channel) : ""}</p>
         <div class="badges">
-          ${publishBadge(v)}
+          ${v.is_source ? '<span class="badge src" title="Video nguồn: đã có bản làm ra trong thư mục ra/. Nguồn chỉ làm tư liệu, không hẹn giờ và không xoá được; hẹn giờ các bản làm ra.">Nguồn · không đăng</span>' : publishBadge(v)}
+          ${v.source ? `<span class="badge src" title="Bản làm ra từ: ${esc(v.source)}">Bản làm ra · ${esc(v.derived_name)}</span>` : ""}
           ${reelBadge(v)}
           ${libGlobal() ? ownerBadge(v) : ""}
           ${v.scheduled && v.page_name && (!libGlobal() || v.page_id !== v.owner) ? `<span class="badge" title="Page đã hẹn video này">${esc(v.page_name)}</span>` : ""}
@@ -941,6 +943,7 @@ const ED_COMMENT_FINISHED = ["done", "expired", "none", "error", "skipped"];
 // Xoá được: chưa lên lịch, hoặc đã đăng và không còn chờ tự comment (giống kiểm tra ở server, removed.blocked_reason)
 const ED_COMMENT_WINDOW_MS = (3 * 24 + 1) * 3600e3;   // commenter.MAX_AGE_DAYS (+1 giờ): quá hạn này app không tự comment nữa
 function edDeletable(v) {
+  if (v.is_source) return false;   // xoá nguồn sẽ kéo theo cả thư mục ra/ (giống removed.blocked_reason)
   if (!v.scheduled) return true;
   if (v.publish_status !== "published") return false;
   if (xpostMissing(v).length) return false;   // Page đa nền tảng: chưa đăng đủ YouTube / TikTok thì chưa xoá (giống removed.blocked_reason)

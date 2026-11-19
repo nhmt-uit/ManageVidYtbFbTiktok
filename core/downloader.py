@@ -521,7 +521,7 @@ def _run(job, url: str, folder_name: str, kind: str, limit: int, note: str, page
     # video đã có ở một thư mục của chính Page này (theo ID video) thì không tải lại.
     # Tải không gắn Page (page_id trống): chỉ đối chiếu với các thư mục cũng chưa thuộc Page nào
     have = {
-        vid: [d for d in dirs if library.owner_of(d.parent) == page_id]
+        vid: [d for d in dirs if library.owner_of_dir(d) == page_id]
         for vid, dirs in library.id_index().items()
     }
     have = {vid: dirs for vid, dirs in have.items() if dirs}

@@ -506,11 +506,8 @@ def check_many(job, folders: list[Path]) -> str:
 
 # ---------- Tiến trình nền ----------
 def find_scheduled():
-    root = config.output_dir()
-    if not root.exists():
-        return []
-    paths = list(root.glob("*/scheduled.json")) + list(root.glob("*/*/scheduled.json"))
-    return sorted(p.parent for p in paths)
+    from . import library
+    return sorted(p.parent for p in library.video_glob("scheduled.json"))
 
 
 _limited_logged = 0.0

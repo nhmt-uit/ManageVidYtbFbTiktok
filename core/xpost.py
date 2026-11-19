@@ -131,7 +131,8 @@ def overdue_missing(now: datetime | None = None) -> dict:
     out: dict[str, list[str]] = {}
     if not root.exists():
         return out
-    for sj in root.glob("*/*/scheduled.json"):
+    from . import library
+    for sj in library.video_glob("scheduled.json"):
         folder = sj.parent
         sched = _sched(folder)
         if sched.get("publish_status") != "published":

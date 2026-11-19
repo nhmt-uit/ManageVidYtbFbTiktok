@@ -185,7 +185,7 @@ def recent_created(page_id: str, hours: float = 24) -> list[datetime]:
     # Bài đã huỷ hoặc gỡ lịch vẫn là một lần gọi API đăng Reel: vẫn tính vào giới hạn 24 giờ
     root = config.output_dir()
     if root.exists():
-        for p in list(root.glob("*/scheduled.old.json")) + list(root.glob("*/*/scheduled.old.json")):
+        for p in library.video_glob("scheduled.old.json"):
             sched = commenter.read_sched_file(p)
             pg = pages.resolve(sched)
             when = commenter._parse(sched.get("created_at"))
@@ -227,7 +227,7 @@ def run(job, page_id: str, rels: list[str], start: str, interval_hours: float, t
     idx = library.id_index()
     taken = {
         vid for vid, dirs in idx.items()
-        if any((x / "scheduled.json").exists() and library.owner_of(x.parent) == page_id for x in dirs)
+        if any((x / "scheduled.json").exists() and library.owner_of_dir(x) == page_id for x in dirs)
     }
     folders = []
     kinds: dict[Path, str] = {}   # reel | video (video ngang đăng dạng video thường của Page)
@@ -241,8 +241,11 @@ def run(job, page_id: str, rels: list[str], start: str, interval_hours: float, t
             continue
         seen.add(rel)
         d = library.resolve(rel)
-        if library.owner_of(d.parent) != page_id:
+        if library.owner_of_dir(d) != page_id:
             job.log(f"Bỏ qua (thư mục này không thuộc Page đang chọn): {d.name}")
+            continue
+        if library.is_source(d):
+            job.log(f"Bỏ qua (video nguồn, đã có bản làm ra trong {library.DERIVED_DIR}/: hẹn giờ các bản đó): {d.name}")
             continue
         if (d / "scheduled.json").exists():
             job.log(f"Bỏ qua (đã hẹn giờ): {d.name}")
@@ -288,7 +291,8 @@ def run(job, page_id: str, rels: list[str], start: str, interval_hours: float, t
         infos = []
         for d in folders:
             i = series.info_for(d)
-            i["channel"] = d.parent.name
+            ch = library.channel_of(d)
+            i["channel"] = ch.name if ch else ""
             infos.append(i)
         series.finalize(infos)   # cùng cách gộp nhóm với thư viện
         keys = {d: (i["series_key"] or f"~{d.name}") for d, i in zip(folders, infos)}

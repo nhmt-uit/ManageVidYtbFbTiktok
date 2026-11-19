@@ -101,6 +101,8 @@ def _parse_time(value):
 
 def blocked_reason(folder: Path) -> str:
     """Lý do không được xoá video này ("" = xoá được)."""
+    if library.is_source(folder):
+        return f"Video nguồn còn bản làm ra trong {library.DERIVED_DIR}/: xoá nguồn sẽ xoá luôn các bản đó. Xoá các bản làm ra trước."
     sj = folder / "scheduled.json"
     if not sj.exists():
         return ""
@@ -185,7 +187,7 @@ def delete_video(rel: str) -> dict:
         "id": vid, "url": url, "platform": platform,
         "title": _title(folder),
         "folder": folder.relative_to(root).as_posix(),
-        "page_id": library.owner_of(folder.parent) if folder.parent != root else "",
+        "page_id": library.owner_of_dir(folder),
         "removed_at": datetime.now().isoformat(timespec="seconds"),
     }
     _to_trash(folder)
@@ -239,9 +241,7 @@ def sweep(log, now: datetime | None = None, force: bool = False) -> int:
         owner = library.owner_of(ch)
         if not ad["enabled"] or not owner or not pages.get(owner):
             continue
-        for v in sorted(ch.iterdir()):
-            if not v.is_dir() or not (v / "video.mp4").exists():
-                continue
+        for v in list(library.channel_videos(ch)):
             rel = v.relative_to(root).as_posix()
             if _time.time() - _failed.get(rel, 0) < RETRY_AFTER:
                 continue

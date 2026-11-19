@@ -128,8 +128,58 @@ def yt_id(folder: Path) -> str:
     return m.group(1) if m else ""
 
 
+# Bản làm ra từ một video nguồn (video dài, các video ngắn...): <kênh>/<nguồn>/ra/<tên>/video.mp4.
+# Mỗi bản là một video riêng (hẹn giờ, comment, đa nền tảng như video thường) và thuộc Page của thư mục kênh.
+# Nguồn đã có bản làm ra thì chỉ để làm tư liệu: không hẹn giờ, không xoá (xoá sẽ kéo theo cả các bản làm ra).
+DERIVED_DIR = "ra"
+
+
+def derived_of(src: Path) -> list[Path]:
+    """Các bản làm ra (thư mục có video.mp4) trong <nguồn>/ra/."""
+    ra = Path(src) / DERIVED_DIR
+    if not ra.is_dir():
+        return []
+    return [w for w in sorted(ra.iterdir()) if w.is_dir() and not w.name.startswith(".") and (w / "video.mp4").exists()]
+
+
+def is_source(vdir: Path) -> bool:
+    return bool(derived_of(vdir))
+
+
+def source_of(vdir: Path) -> Path | None:
+    """Thư mục nguồn của một bản làm ra (None nếu là video thường)."""
+    vdir = Path(vdir)
+    return vdir.parent.parent if vdir.parent.name == DERIVED_DIR else None
+
+
+def channel_videos(ch: Path):
+    """Mọi video trong một thư mục kênh: video thường/nguồn rồi đến các bản làm ra của nó."""
+    for v in sorted(Path(ch).iterdir()):
+        if not v.is_dir():
+            continue
+        if (v / "video.mp4").exists():
+            yield v
+        yield from derived_of(v)
+
+
+def channel_of(vdir: Path) -> Path | None:
+    """Thư mục kênh chứa video (kể cả bản làm ra nằm sâu trong ra/). None nếu video nằm thẳng ở thư mục gốc."""
+    root = config.output_dir().resolve()
+    try:
+        parts = Path(vdir).resolve().relative_to(root).parts
+    except ValueError:
+        return None
+    return root / parts[0] if len(parts) >= 2 else None
+
+
+def owner_of_dir(vdir: Path) -> str:
+    """Page Facebook của thư mục kênh chứa video này ("" nếu chưa gán hoặc video nằm ở thư mục gốc)."""
+    ch = channel_of(vdir)
+    return owner_of(ch) if ch else ""
+
+
 def iter_video_dirs():
-    """Mọi thư mục chứa video.mp4 trong thư mục gốc (cả video nằm thẳng ở gốc lẫn trong thư mục kênh)."""
+    """Mọi thư mục chứa video.mp4 trong thư mục gốc (video nằm thẳng ở gốc, trong thư mục kênh, và các bản làm ra)."""
     root = config.output_dir()
     if not root.exists():
         return
@@ -138,10 +188,18 @@ def iter_video_dirs():
             continue
         if (p / "video.mp4").exists():
             yield p
+            yield from derived_of(p)
             continue
-        for v in sorted(p.iterdir()):
-            if v.is_dir() and (v / "video.mp4").exists():
-                yield v
+        yield from channel_videos(p)
+
+
+def video_glob(name: str) -> list[Path]:
+    """Các file `name` (ví dụ scheduled.json) nằm trong thư mục video ở mọi độ sâu được hỗ trợ."""
+    root = config.output_dir()
+    if not root.exists():
+        return []
+    pats = ["*", "*/*", f"*/{DERIVED_DIR}/*", f"*/*/{DERIVED_DIR}/*"]
+    return [p for pat in pats for p in root.glob(f"{pat}/{name}")]
 
 
 def id_index() -> dict:
@@ -225,7 +283,8 @@ def build_caption(folder: Path) -> str:
 
 def _video_info(root: Path, vdir: Path, channel_dir: Path | None) -> dict:
     rel = vdir.relative_to(root).as_posix()
-    m = DATE_RE.match(vdir.name)
+    src = source_of(vdir)
+    m = DATE_RE.match(vdir.name) or (DATE_RE.match(src.name) if src else None)   # bản làm ra lấy ngày của nguồn
     date = m.group(1) if m else ""
     scheduled = None
     sched: dict = {}
@@ -279,6 +338,9 @@ def _video_info(root: Path, vdir: Path, channel_dir: Path | None) -> dict:
         "post_kind": (sched.get("kind") or "reel") if scheduled else "",   # đã hẹn: reel | video (video ngang đăng dạng video thường)
         "xpost": xpost.read(vdir),
         "xpost_required": xpost.required(vdir, sched),
+        "source": src.relative_to(root).as_posix() if src else "",   # bản làm ra: thư mục nguồn của nó
+        "is_source": src is None and is_source(vdir),                # nguồn đã có bản làm ra: không hẹn giờ
+        "derived_name": vdir.name if src else "",
         **series.info_for(vdir),   # phim / tập nhận từ tiêu đề (hoặc sửa tay); series.finalize gộp nhóm sau
     }
 
@@ -304,7 +366,7 @@ def scan(page_id: str | None = None) -> dict:
             v["owner"] = v["page_id"]
             videos.append(v)
             continue
-        group = [_video_info(root, v, p) for v in sorted(p.iterdir()) if v.is_dir() and (v / "video.mp4").exists()]
+        group = [_video_info(root, v, p) for v in channel_videos(p)]
         if not group:
             continue
         owner = owner_of(p)
@@ -367,8 +429,8 @@ def pending_posts(d: Path) -> dict:
     """{page_id: [rel, ...]} các video trong thư mục còn lịch chưa đăng xong (chờ đăng, quá giờ, lỗi, không thấy)."""
     root = config.output_dir().resolve()
     out: dict = {}
-    for v in sorted(d.iterdir()):
-        if not (v.is_dir() and (v / "scheduled.json").exists()):
+    for v in channel_videos(d):
+        if not (v / "scheduled.json").exists():
             continue
         sched = commenter.read_sched(v)
         if sched.get("publish_status") == "published":
@@ -432,10 +494,7 @@ def create_folder(name: str, page_id: str = "") -> dict:
 
 def owner_of_video(rel: str) -> str:
     """Page sở hữu một video (theo thư mục kênh chứa nó)."""
-    d = resolve(rel)
-    root = config.output_dir().resolve()
-    parent = d.parent
-    return owner_of(parent) if parent != root else ""
+    return owner_of_dir(resolve(rel))
 
 
 def resolve(rel: str) -> Path:
