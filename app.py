@@ -924,13 +924,28 @@ def api_page_unblock(page_id):
     return jsonify({"ok": True, "page": pages.public(p)})
 
 
+@app.get("/api/pages/<page_id>/folders")
+def api_page_folders(page_id):
+    return jsonify({"folders": removed.page_folders(page_id)})
+
+
 @app.delete("/api/pages/<page_id>")
 def api_page_delete(page_id):
+    if not pages.get(page_id):
+        return err("Không tìm thấy Fanpage.", 404)
+    trashed = []
+    if request.args.get("folders") == "1":   # dọn thư mục trước: lỗi thì Page vẫn còn, thử lại được
+        if editor._busy.locked() or manager.busy():   # tải / chỉnh sửa / hẹn lịch đang ghi vào thư mục thì không chuyển đi
+            return err("Đang có tác vụ chạy (tải, chỉnh sửa, hẹn hoặc huỷ lịch...). Đợi xong rồi hãy dọn thư mục.", 409)
+        try:
+            trashed = removed.delete_page_folders(page_id)
+        except removed.DeleteError as exc:
+            return err(str(exc), 409)
     try:
         pages.remove(page_id)
     except KeyError:
         return err("Không tìm thấy Fanpage.", 404)
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "trashed": trashed})
 
 
 @app.get("/api/pages/<page_id>/check")

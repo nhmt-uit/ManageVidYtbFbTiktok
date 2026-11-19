@@ -195,6 +195,47 @@ def delete_video(rel: str) -> dict:
     return rec
 
 
+
+# ---------- dọn thư mục khi gỡ Page khỏi app ----------
+def page_folders(page_id: str) -> list[dict]:
+    """Các thư mục kênh đang gán cho Page này (Facebook), kèm số video và dung lượng."""
+    root = config.output_dir()
+    if not page_id or not root.exists():
+        return []
+    out = []
+    for d in sorted(root.iterdir()):
+        if not d.is_dir() or d.name.startswith(".") or (d / "video.mp4").exists() or library.owner_of(d) != page_id:
+            continue
+        size = 0
+        for dirpath, _dirs, files in os.walk(d):
+            for f in files:
+                try:
+                    size += os.lstat(os.path.join(dirpath, f)).st_size
+                except OSError:
+                    pass
+        out.append({"name": d.name, "videos": sum(1 for _ in library.channel_videos(d)), "bytes": size})
+    return out
+
+
+def delete_page_folders(page_id: str) -> list[str]:
+    """Chuyển mọi thư mục kênh của Page vào Thùng rác và bỏ các video của Page khỏi sổ đã xoá.
+    Lỗi giữa chừng thì dừng, báo những thư mục đã chuyển được."""
+    done = []
+    for f in page_folders(page_id):
+        d = config.output_dir() / f["name"]
+        try:
+            _to_trash(d)
+        except DeleteError as exc:
+            moved = f" (đã chuyển: {', '.join(done)})" if done else ""
+            raise DeleteError(f'Thư mục "{f["name"]}": {exc}{moved}') from exc
+        done.append(f["name"])
+    with _lock:
+        data = _load()
+        keep = {k: v for k, v in data.items() if not (isinstance(v, dict) and str(v.get("page_id") or "") == page_id)}
+        if len(keep) != len(data):
+            _save(keep)
+    return done
+
 # ---------- tự xoá sau khi đăng (cài theo từng thư mục kênh) ----------
 SWEEP_EVERY = 30 * 60          # giây giữa hai lần quét
 RETRY_AFTER = 6 * 3600         # xoá lỗi (ví dụ macOS chặn Thùng rác) thì 6 giờ sau mới thử lại video đó

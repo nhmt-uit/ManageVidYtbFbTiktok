@@ -313,6 +313,8 @@ def remove(page_id: str) -> None:
         data["pages"] = [p for p in data["pages"] if p["id"] != page_id]
         if len(data["pages"]) == before:
             raise KeyError(page_id)
+        if data.get("legacy_page_id") == page_id:
+            data["legacy_page_id"] = ""   # video cũ không ghi page_id không còn thuộc Page đã gỡ
         _write(data)
 
 

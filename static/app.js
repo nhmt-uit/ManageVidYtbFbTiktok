@@ -2839,9 +2839,16 @@ async function onPageCardClick(e) {
     } else if (e.target.classList.contains("pg-del")) {
       const p = pg.list.find((x) => x.id === id);
       const warn = p && p.scheduled ? `\n\nPage này đang có ${p.scheduled} video đã hẹn. Chúng vẫn được đăng trên Facebook, nhưng app sẽ không comment được nữa.` : "";
-      if (!confirm(`Xóa "${p ? p.name : id}" khỏi app? Không xóa gì trên Facebook. Các thư mục của Page này sẽ thành "chưa gán Page".${warn}`)) return;
-      await api(`/api/pages/${enc}`, "DELETE");
-      toast("Đã xóa khỏi app.");
+      if (!confirm(`Xóa "${p ? p.name : id}" khỏi app? Không xóa gì trên Facebook.${warn}`)) return;
+      const { folders } = await api(`/api/pages/${enc}/folders`);
+      let clean = false;
+      if (folders.length) {
+        const gb = (b) => (b >= 1e9 ? (b / 1e9).toFixed(1) + " GB" : Math.max(1, Math.round(b / 1e6)) + " MB");
+        const lines = folders.map((f) => `• ${f.name}: ${f.videos} video, ${gb(f.bytes)}`).join("\n");
+        clean = confirm(`Dọn luôn ${folders.length} thư mục của Page này?\n\n${lines}\n\nOK: chuyển vào Thùng rác (khôi phục được) và bỏ các video của Page khỏi sổ "đã xoá".\nHuỷ: giữ thư mục, chúng thành "chưa gán Page".`);
+      }
+      const r = await api(`/api/pages/${enc}${clean ? "?folders=1" : ""}`, "DELETE");
+      toast(r.trashed && r.trashed.length ? `Đã xóa khỏi app, ${r.trashed.length} thư mục vào Thùng rác.` : "Đã xóa khỏi app.");
       await reloadCards();
     }
   } catch (err) {
