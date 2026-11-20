@@ -260,6 +260,7 @@ class JobManager:
                 "status": j.status,
                 "created": j.created.strftime("%Y-%m-%d %H:%M:%S"),
                 "progress": {"done": j.done, "total": j.total},
+                "file": j.data.get("file") if j.status == "running" else None,   # % file đang tải (tác vụ tải)
             }
             for j in jobs
         ]

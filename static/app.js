@@ -87,7 +87,7 @@ loadFbUsage();
 const STATUS_LABEL = { running: "Đang chạy", done: "Hoàn tất", error: "Lỗi", cancelled: "Đã dừng" };
 
 /* ---------- Theo dõi tác vụ nền ---------- */
-function follow(jobId, pre, bar, onDone) {
+function follow(jobId, pre, bar, onDone, onTick) {
   let since = 0;
   pre.hidden = false;
   pre.textContent = "";
@@ -101,6 +101,7 @@ function follow(jobId, pre, bar, onDone) {
         pre.scrollTop = pre.scrollHeight;
       }
       if (bar) { bar.max = Math.max(j.progress.total, 1); bar.value = j.progress.done; }
+      if (onTick) onTick(j);
       if (j.status === "running") {
         setTimeout(tick, 1200);
       } else {
@@ -293,6 +294,7 @@ function renderDlHeader() {
   dlf.pick = sel.value;
   $("#dl-page").textContent = dlHeaderText();
   loadDlFolders();
+  dlAttach();
 }
 // Thư mục có sẵn thì Page theo thư mục đó (khoá ô Page); thư mục mới thì chọn Page tuỳ ý
 function syncDlTarget() {
@@ -324,6 +326,52 @@ $("#dl-folder").addEventListener("input", syncDlTarget);
 $("#dl-target").addEventListener("change", () => { dlf.pick = $("#dl-target").value; syncDlTarget(); });
 let dlJob = null;
 let dlRunning = false;
+function fmtBytes(n) {
+  if (!n) return "0 MB";
+  return n >= 1e9 ? `${(n / 1e9).toFixed(2)} GB` : `${(n / 1e6).toFixed(n >= 1e8 ? 0 : 1)} MB`;
+}
+function fmtEta(sec) {
+  if (sec == null) return "";
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+  return h ? `${h} giờ ${m} phút` : m ? `${m} phút` : `${sec} giây`;
+}
+// Thanh % của file đang tải (job.data.file do hàm báo tiến độ của yt-dlp ghi)
+function dlFileShow(f) {
+  const box = $("#dl-prog");
+  if (!f) { box.hidden = true; return; }
+  box.hidden = false;
+  const bar = $("#dl-prog-bar");
+  if (f.pct == null) bar.removeAttribute("value"); else bar.value = f.pct;
+  const bits = [`${f.part ? `File ${f.part}` : "File"}: ${f.pct == null ? "?" : f.pct.toFixed(1) + "%"}`,
+    f.total ? `${fmtBytes(f.got)} / ${fmtBytes(f.total)}` : fmtBytes(f.got)];
+  if (f.speed) bits.push(`${fmtBytes(f.speed)}/giây`);
+  if (f.eta != null) bits.push(`còn khoảng ${fmtEta(f.eta)}`);
+  $("#dl-prog-txt").textContent = bits.join(" · ") + " — " + f.name;
+}
+function dlFollow(jobId) {
+  const btn = $("#dl-btn");
+  dlJob = jobId;
+  dlRunning = true;
+  btn.disabled = true;
+  $("#dl-cancel").hidden = false;
+  follow(jobId, $("#dl-log"), $("#dl-bar"), (j) => {
+    dlRunning = false;
+    btn.disabled = false;
+    $("#dl-cancel").hidden = true;
+    dlFileShow(null);
+    showDlErrors(j.data && j.data.link_errors);
+    if (j.data && j.data.links_removed) $("#dl-file-info").textContent = `Đã xoá ${j.data.links_removed} dòng link đã xong khỏi file .txt.`;
+    if (j.status === "done") toast($("#dl-format").value === "audio" ? "Tải xong MP3. File audio.mp3 nằm trong thư mục từng video." : (dlFor ? "Tải xong. Xem ở mục Video." : "Tải xong. Thư mục chưa thuộc Page nào: vào Cài đặt > Thư mục để gán Page khi muốn đăng."));
+  }, (j) => dlFileShow(j.status === "running" && j.data ? j.data.file : null));
+}
+// Mở lại trang (hoặc quay lại màn Tải) khi đang có lượt tải chạy: theo dõi tiếp lượt đó
+async function dlAttach() {
+  if (dlRunning) return;
+  try {
+    const run = (await api("/api/jobs")).find((j) => j.kind === "download" && j.status === "running");
+    if (run && !dlRunning) { dlFor = run.page_id || ""; dlFollow(run.id); }
+  } catch (e) { /* bỏ qua */ }
+}
 let dlFor = "";   // Page đang được tải video ("" = tải không gắn Fanpage, không cản việc chuyển Page)
 let dlTxts = [];  // các file .txt đã chọn qua hộp thoại macOS [{path, name, links}]: link xong sẽ được xoá khỏi các file này
 function dlTxtPaths() {   // chỉ gửi file nào mà ô link vẫn còn link lấy từ file đó
@@ -368,16 +416,7 @@ $("#dl-form").addEventListener("submit", async (e) => {
       confirm: $("#dl-confirm").checked,
       page_id: dlPage(),
     });
-    dlJob = r.job;
-    $("#dl-cancel").hidden = false;
-    follow(r.job, $("#dl-log"), $("#dl-bar"), (j) => {
-      dlRunning = false;
-      btn.disabled = false;
-      $("#dl-cancel").hidden = true;
-      showDlErrors(j.data && j.data.link_errors);
-      if (j.data && j.data.links_removed) $("#dl-file-info").textContent = `Đã xoá ${j.data.links_removed} dòng link đã xong khỏi file .txt.`;
-      if (j.status === "done") toast($("#dl-format").value === "audio" ? "Tải xong MP3. File audio.mp3 nằm trong thư mục từng video." : (dlFor ? "Tải xong. Xem ở mục Video." : "Tải xong. Thư mục chưa thuộc Page nào: vào Cài đặt > Thư mục để gán Page khi muốn đăng."));
-    });
+    dlFollow(r.job);
   } catch (err) {
     dlRunning = false;
     btn.disabled = false;
@@ -443,7 +482,7 @@ $("#rn-script-copy").addEventListener("click", async () => {
   }
 });
 $("#dl-cancel").addEventListener("click", () => {
-  if (dlJob) api(`/api/jobs/${dlJob}/cancel`, "POST").then(() => toast("Đang dừng sau video hiện tại..."));
+  if (dlJob) api(`/api/jobs/${dlJob}/cancel`, "POST").then(() => toast("Đang dừng..."));
 });
 
 /* ---------- Danh sách Fanpage (dùng chung) ---------- */
@@ -2994,7 +3033,7 @@ async function loadJobs() {
         <div class="job" data-id="${j.id}">
           <span class="t">${esc(j.title)}</span>
           <span class="s">${esc(j.created)}</span>
-          <span class="s ${j.status}">${esc(STATUS_LABEL[j.status] || j.status)}${j.progress.total ? ` ${j.progress.done}/${j.progress.total}` : ""}</span>
+          <span class="s ${j.status}">${esc(STATUS_LABEL[j.status] || j.status)}${j.progress.total ? ` ${j.progress.done}/${j.progress.total}` : ""}${j.file && j.file.pct != null ? ` · ${j.file.pct.toFixed(0)}%` : ""}</span>
         </div>`).join("")
       : `<p class="hint">${sel.value ? "Fanpage này chưa có tác vụ nào." : "Chưa có tác vụ nào."}</p>`;
   } catch (e) { /* bỏ qua */ }

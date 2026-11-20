@@ -21,7 +21,7 @@ from urllib.parse import parse_qs, urljoin, urlparse, urlunparse
 
 from yt_dlp import YoutubeDL
 from yt_dlp.networking import Request
-from yt_dlp.utils import js_to_json
+from yt_dlp.utils import DownloadCancelled, js_to_json
 
 from . import config, library, linkfile, pages, reelcheck, removed, ytdlp_update
 
@@ -299,6 +299,33 @@ def _opts(extra: dict | None = None, platform: str = "youtube") -> dict:
     if extra:
         opts.update(extra)
     return opts
+
+
+def _progress_hook(job, name: str):
+    """Báo % file đang tải cho giao diện (job.data["file"]) và ngắt ngay khi bấm Dừng (không phải chờ hết file)."""
+    def hook(d: dict) -> None:
+        if job.cancelled:
+            raise DownloadCancelled("Đã dừng theo yêu cầu.")
+        st = d.get("status")
+        if st not in ("downloading", "finished"):
+            return
+        info = d.get("info_dict") or {}
+        part = "tiếng" if info.get("vcodec") == "none" else ("hình" if info.get("acodec") == "none" else "")
+        got = int(d.get("downloaded_bytes") or 0)
+        total = int(d.get("total_bytes") or d.get("total_bytes_estimate") or 0)
+        if st == "finished":
+            total = total or got
+            got = total
+        job.data["file"] = {
+            "name": name,
+            "part": part,
+            "pct": round(100 * got / total, 1) if total else None,
+            "got": got,
+            "total": total,
+            "speed": int(d.get("speed") or 0),
+            "eta": int(d["eta"]) if d.get("eta") is not None and st == "downloading" else None,
+        }
+    return hook
 
 
 def _flatten(entries):
@@ -836,6 +863,8 @@ def _run(job, url: str, folder_name: str, kind: str, limit: int, note: str, page
                     },
                     platform,
                 )
+            job.data.pop("file", None)
+            dl_opts["progress_hooks"] = [_progress_hook(job, folder.name)]
             with YoutubeDL(dl_opts) as ydl:
                 if known:
                     try:
