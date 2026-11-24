@@ -577,3 +577,27 @@ label.fd-field, label.fd-days { display: inline-flex; flex-direction: row; align
   .ve-fast-list .chip { background: transparent; }
   .ve-cue .ve-short { background: #12301f; border-color: #1f5a37; }
 }
+
+/* lồng tiếng từng câu */
+.ve-dubbox { border: 1px solid var(--line, #e5e7eb); border-radius: 8px; padding: 8px 10px; margin-top: 10px; }
+.ve-dubbox h4 { margin: 0 0 6px; font-size: 14px; }
+.ve-dubbox select { max-width: 320px; }
+.ve-cue .ve-dub { grid-column: 4 / 5; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; font-size: 12px; }
+.ve-cue .ve-dub[hidden] { display: none; }
+.ve-dub-tag { border-radius: 6px; padding: 1px 6px; font-weight: 600; background: #eef2f7; color: #475467; }
+.ve-dub-tag.s-ok { background: #dcfce7; color: #166534; }
+.ve-dub-tag.s-auto { background: #fef3c7; color: #92400e; }
+.ve-dub-tag.s-over, .ve-dub-tag.s-stale { background: #fee2e2; color: #b42318; }
+.ve-dub-cl, .ve-dub-len { color: var(--muted, #6b7280); }
+.ve-dub-cl.low { color: #b42318; font-weight: 600; }
+.ve-dub-sp { display: inline-flex; align-items: center; gap: 4px; }
+.ve-dub-sp button { padding: 0 8px; min-width: 26px; line-height: 20px; }
+.ve-dub-sp b { font-variant-numeric: tabular-nums; min-width: 34px; text-align: center; }
+.ve-cue .ve-dub-say { flex: 1 1 100%; font-size: 13px; }
+@media (max-width: 760px) { .ve-cue .ve-dub { grid-column: 1 / -1; } }
+@media (prefers-color-scheme: dark) {
+  .ve-dub-tag { background: #2a2f37; color: #cbd5e1; }
+  .ve-dub-tag.s-ok { background: #12301f; color: #86efac; }
+  .ve-dub-tag.s-auto { background: #3a2e10; color: #fcd34d; }
+  .ve-dub-tag.s-over, .ve-dub-tag.s-stale { background: #3a1d1d; color: #fca5a5; }
+}

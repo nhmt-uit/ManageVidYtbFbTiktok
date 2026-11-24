@@ -2,7 +2,7 @@
 
 Mỗi thư mục video có thể có thêm:
   subs.json          phụ đề: {"language", "model", "cues": [{"start", "end", "text"}]} (giây)
-  voice.<đuôi>       giọng đọc / bình luận của bạn (tùy chọn), được trộn vào âm thanh
+  voice.<đuôi>       giọng đọc / bình luận của bạn (tùy chọn), được trộn vào âm thanh (lồng tiếng máy ghép ra voice.wav, xem dub.py)
   edit.json          cài đặt lần xuất gần nhất
   video.draft.mp4    bản nháp do "Xuất video" tạo; video.mp4 vẫn nguyên cho tới khi bạn bấm Duyệt
   edit_approved.json dấu "đã duyệt"; sau khi Duyệt, bản nháp THAY THẾ video.mp4 (video gốc bị xoá, không khôi phục được)
@@ -488,6 +488,8 @@ def approve(rel: str) -> str:
         for name in (SUBS_FILE, SETTINGS_FILE, origsubs.FILE, audioscan.FILE, hooks.FILE, cutplan.FILE, punch.FILE, SCENES_FILE):
             (folder / name).unlink(missing_ok=True)
         _remove_voice_files(folder)
+        from . import dub   # tránh vòng import (dub dùng editor)
+        dub.remove_all(folder)
         _write_json(folder / APPROVED, {"approved_at": datetime.now(timezone.utc).isoformat(), "settings": settings})
         if reelcheck.available():
             try:

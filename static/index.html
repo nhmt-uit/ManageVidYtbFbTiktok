@@ -569,6 +569,15 @@
               <button class="ghost" id="ve-addcue" type="button">+ Thêm dòng</button>
               <button class="ghost" id="ve-savecues" type="button">Lưu phụ đề</button>
             </div>
+            <div class="ve-dubbox" id="ve-dubbox">
+              <h4>Lồng tiếng bằng giọng máy (VieNeu, chạy trên máy)</h4>
+              <div class="row">
+                <label>Giọng <select id="ve-dub-voice"></select></label>
+                <button class="ghost" id="ve-dub-gen" type="button" title="Đọc mọi câu chưa có giọng; mỗi câu đọc vài lần, giữ bản whisper nghe rõ nhất">Tạo giọng các câu chưa có</button>
+                <button class="primary" id="ve-dub-build" type="button" title="Ghép giọng các câu theo giờ phụ đề thành giọng đọc ở bước 3">Ghép giọng</button>
+              </div>
+              <p class="hint" id="ve-dub-sum"></p>
+            </div>
           </section>
           <section class="ve-sec">
             <h3>3. Giọng đọc / bình luận của bạn (tuỳ chọn)</h3>

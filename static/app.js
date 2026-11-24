@@ -1578,6 +1578,7 @@ function veBusy(on, msg) {
   $("#ve-cut-gen").disabled = on || !ve.st || ve.st.scheduled || !ve.st.claude;
   $("#ve-punch-gen").disabled = on || !ve.st || ve.st.scheduled || !ve.st.claude;
   if (!on && ve.st) veCpsAll(); else $("#ve-shorten").disabled = true;
+  if (!on && ve.st && ve.st.dub) veDubAll(); else ["#ve-dub-gen", "#ve-dub-build", "#ve-dub-voice"].forEach((x) => { $(x).disabled = true; });
   if (ve.st && ve.st.draft && ve.st.draft.check && ve.st.draft.check.errors.length) $("#ve-approve").disabled = true;   // bản nháp chưa đạt chuẩn đăng
   if (!on) $("#ve-bar").hidden = true;
   if (msg !== undefined) $("#ve-msg").textContent = msg;
@@ -1765,10 +1766,87 @@ function veRenderCues() {
       <span class="ve-acts"><button class="link ve-copy" type="button" title="Sao chép câu gốc để dịch ở nơi khác">Sao chép</button><button class="link ve-del" type="button" title="Xóa dòng này">Xóa</button></span>
       ${c.src ? `<div class="ve-src"><span>Gốc: ${esc(c.src)}</span></div>` : ""}
       <div class="ve-cps"></div>
+      <div class="ve-dub" hidden></div>
       <div class="ve-short" hidden></div>
     </div>`).join("") : '<p class="hint">Chưa có phụ đề. Bấm "Phiên âm" ở bước 1, hoặc tự thêm từng dòng.</p>';
   if (ve.st && ve.st.translate) veTrUi();
   veCpsAll();
+  veDubAll();
+}
+// ---------- lồng tiếng từng câu (VieNeu) ----------
+const VE_DUB_LABEL = { none: "Chưa có giọng", stale: "Lời đã đổi, cần đọc lại", ok: "Khớp tốt", auto: "Tự tăng tốc", over: "Dài hơn chỗ trống" };
+function veDubRowOf(row) {   // giọng của câu đang hiện: khớp theo giờ bắt đầu và đúng chữ đã lưu
+  const dub = ve.st && ve.st.dub;
+  if (!dub || !dub.rows) return null;
+  const s = Math.round(veTimeOf(row, ".ve-s") * 100) / 100;
+  return dub.rows.find((r) => r.start === s) || null;
+}
+function veDubOn() { const d = ve.st && ve.st.dub; return !!(d && d.ok && (d.has_any || ve.dubOn)); }
+function veDubAll() {
+  const d = ve.st && ve.st.dub, box = $("#ve-dubbox");
+  if (!d) { box.hidden = true; return; }
+  box.hidden = false;
+  const sel = $("#ve-dub-voice");
+  if (sel.dataset.n !== String(d.voices.length)) {
+    sel.innerHTML = d.voices.map((v) => `<option value="${esc(v.name)}" title="${esc(v.description)}">${esc(v.name)}${v.description ? " · " + esc(v.description) : ""}</option>`).join("");
+    sel.dataset.n = String(d.voices.length);
+  }
+  sel.value = d.voice || d.default;
+  const busy = ve.busy || !!(ve.st && ve.st.scheduled), n = ve.cues.length;
+  sel.disabled = busy || !d.ok; $("#ve-dub-gen").disabled = busy || !d.ok || !n; $("#ve-dub-build").disabled = busy || !d.ok || !d.has_any;
+  const rows = [...document.querySelectorAll("#ve-cues .ve-cue")];
+  let has = 0, stale = 0, over = 0, low = 0, dirty = 0;
+  rows.forEach((row) => {
+    const el = row.querySelector(".ve-dub"), r = veDubRowOf(row), on = veDubOn();
+    el.hidden = !on;
+    if (!on) return;
+    const text = row.querySelector(".ve-t").value.split("\n").map((x) => x.trim()).filter(Boolean).join("\n");
+    const changed = !r || r.text !== text;   // sửa chữ / giờ mà chưa lưu: giọng cũ không còn đúng câu này
+    const st = changed ? (r && r.has ? "stale" : "none") : r.status;
+    if (changed) dirty++;
+    if (!changed && r.has) has++;
+    if (st === "stale") stale++;
+    if (st === "over") over++;
+    const lowCl = !changed && r.has && r.clarity != null && r.clarity < 0.8;
+    if (lowCl) low++;
+    const tag = st === "auto" ? `Tự tăng tốc x${r.tempo.toFixed(2)}` : st === "over" ? `Dài hơn chỗ trống ${r.over.toFixed(1)}s` : VE_DUB_LABEL[st];
+    const can = !changed && r.has;
+    el.innerHTML = `<span class="ve-dub-tag s-${st}">${tag}</span>`
+      + (can && r.clarity != null ? `<span class="ve-dub-cl${lowCl ? " low" : ""}" title="Whisper nghe lại khớp bao nhiêu với chữ cần đọc">rõ ${r.clarity.toFixed(2)}</span>` : "")
+      + (can ? `<span class="ve-dub-len">${r.duration.toFixed(1)}s</span><button class="link ve-dub-play" type="button" title="Nghe giọng câu này kèm hình (tắt tiếng video)">▶ Nghe</button>` : "")
+      + `<button class="link ve-dub-redo" type="button" title="${changed ? "Lưu phụ đề rồi đọc câu này" : "Đọc lại câu này (lấy bản rõ nhất)"}">↻ ${r && r.has ? "Đọc lại" : "Đọc"}</button>`
+      + (can ? `<span class="ve-dub-sp">Tốc độ <button class="ghost ve-dub-minus" type="button" aria-label="Chậm hơn">−</button><b>${r.speed.toFixed(2)}</b><button class="ghost ve-dub-plus" type="button" aria-label="Nhanh hơn">+</button></span>` : "")
+      + `<button class="link ve-dub-saytog" type="button" title="Viết cách đọc khác chữ hiện trên màn hình, ví dụ cardigan → các-đi-gần">Đọc là${r && r.say ? ": " + esc(r.say) : "…"}</button>`
+      + `<input class="ve-dub-say" type="text" maxlength="200" value="${esc((r && r.say) || "")}" placeholder="Cách đọc (để trống = đọc đúng chữ phụ đề)" hidden>`;
+  });
+  const parts = [];
+  if (!d.ok) parts.push(d.problem);
+  else if (!n) parts.push("Chưa có phụ đề để lồng tiếng.");
+  else {
+    parts.push(`${has}/${n} câu có giọng` + (stale ? ` · ${stale} câu cần đọc lại` : "") + (over ? ` · ${over} câu dài hơn chỗ trống` : "") + (low ? ` · ${low} câu đọc chưa rõ` : ""));
+    if (dirty && d.has_any) parts.push("Có thay đổi chưa lưu: bấm Lưu phụ đề để cập nhật trạng thái.");
+    parts.push(d.built && has < n ? `Đã ghép vào giọng đọc nhưng còn ${n - has} câu chưa có giọng: đọc xong rồi bấm Ghép giọng lại.`
+      : d.built ? "Đã ghép vào giọng đọc (bước 3). Nhớ hạ âm lượng gốc rồi Xuất video." : d.has_any ? "Chưa ghép bản mới nhất: bấm Ghép giọng." : "Mỗi câu đọc khoảng 2–6 giây. Câu nào chưa ưng thì sửa chữ / Đọc là rồi bấm ↻ ở câu đó.");
+  }
+  $("#ve-dub-sum").textContent = parts.join(" ");
+}
+const veDubAudio = new Audio();
+veDubAudio.addEventListener("ended", () => { const v = $("#ve-video"); v.pause(); v.muted = !!ve.dubMuted; });
+function veDubStop() { if (!veDubAudio.paused) { veDubAudio.pause(); const v = $("#ve-video"); v.pause(); v.muted = !!ve.dubMuted; } }
+async function veDubSet(body) {
+  try {
+    const p = await api("/api/edit/dub/item", "POST", { rel: ve.rel, ...body });
+    Object.assign(ve.st.dub, p);
+    veDubAll();
+  } catch (e) { toast(e.message, 6000); }
+}
+async function veDubGen(starts, label) {
+  try {
+    if (document.querySelector("#ve-cues .ve-cue")) await veSaveCues();
+    ve.dubOn = true;
+    await veRunJob("/api/edit/dub/gen", { rel: ve.rel, starts, voice: $("#ve-dub-voice").value }, label);
+  } catch (e) { $("#ve-msg").textContent = e.message; toast(e.message, 8000); }
+  try { await veLoad(ve.view); } catch (e) { /* bỏ qua */ }
 }
 // ---------- đọc quá nhanh: ký tự/giây ----------
 function veChars(t) { return String(t || "").replace(/\s+/g, " ").trim().length; }   // giống editor.char_count
@@ -2263,6 +2341,7 @@ async function veRunJob(path, body, label) {
 async function veSaveCues() {
   const r = await api("/api/edit/subs", "POST", { rel: ve.rel, cues: veReadCues(), shorten: ve.st.shorten || [] });
   ve.cues = r.cues; ve.st.cues = r.cues; ve.st.shorten = r.shorten || [];
+  try { const st = await api("/api/edit/status?rel=" + encodeURIComponent(ve.rel)); ve.st.dub = st.dub; } catch (e) { /* bỏ qua */ }
   veRenderCues();
   return r.cues;
 }
@@ -2310,6 +2389,47 @@ $("#ve-cues").addEventListener("click", (e) => {
   veCpsAll();
 });
 $("#ve-cps-max").addEventListener("input", veCpsAll);
+$("#ve-cues").addEventListener("input", (e) => { if (e.target.matches(".ve-s, .ve-e, .ve-t")) veDubAll(); });
+$("#ve-cues").addEventListener("click", async (e) => {
+  const row = e.target.closest(".ve-cue");
+  if (!row || !e.target.closest(".ve-dub")) return;
+  const r = veDubRowOf(row), text = row.querySelector(".ve-t").value;
+  if (e.target.matches(".ve-dub-play")) {
+    if (!veDubAudio.paused) { veDubStop(); return; }
+    veSetView("orig");
+    const vid = $("#ve-video");
+    ve.dubMuted = vid.muted;
+    veDubAudio.src = `/api/edit/dub/wav?rel=${encodeURIComponent(ve.rel)}&key=${r.key}&t=${encodeURIComponent(r.duration)}`;
+    veDubAudio.playbackRate = r.tempo || 1;   // nghe đúng tốc độ sẽ ghép (giữ cao độ)
+    const go = () => { vid.muted = true; vid.currentTime = r.at; vid.play().catch(() => {}); veDubAudio.play().catch((err) => toast(err.message)); };
+    if (vid.readyState >= 1) go(); else vid.addEventListener("loadedmetadata", go, { once: true });
+  } else if (e.target.matches(".ve-dub-redo")) {
+    await veDubGen([veTimeOf(row, ".ve-s")], "Đang đọc lại câu " + (Number(row.dataset.i) + 1) + "...");
+  } else if (e.target.matches(".ve-dub-minus, .ve-dub-plus")) {
+    const sp = Math.round(((r.speed || 1) + (e.target.matches(".ve-dub-plus") ? 0.05 : -0.05)) * 100) / 100;
+    await veDubSet({ text, speed: Math.min(1.5, Math.max(0.8, sp)) });
+  } else if (e.target.matches(".ve-dub-saytog")) {
+    const inp = row.querySelector(".ve-dub-say");
+    inp.hidden = !inp.hidden;
+    if (!inp.hidden) inp.focus();
+  }
+});
+$("#ve-cues").addEventListener("change", (e) => {
+  if (!e.target.matches(".ve-dub-say")) return;
+  const row = e.target.closest(".ve-cue");
+  veDubSet({ text: row.querySelector(".ve-t").value, say: e.target.value });
+});
+$("#ve-dub-voice").addEventListener("change", () => veDubSet({ voice: $("#ve-dub-voice").value }));
+$("#ve-dub-gen").addEventListener("click", () => veDubGen(null, "Đang tạo giọng các câu..."));
+$("#ve-dub-build").addEventListener("click", async () => {
+  const d = ve.st.dub, v = ve.st.voice;
+  if (v && v.name && !d.ever_built && !confirm(`Video đang có giọng đọc ${v.name} (bạn tải lên). Ghép giọng máy sẽ thay file đó. Tiếp tục?`)) return;
+  try {
+    if (document.querySelector("#ve-cues .ve-cue")) await veSaveCues();
+    await veRunJob("/api/edit/dub/build", { rel: ve.rel }, "Đang ghép giọng...");
+  } catch (e) { $("#ve-msg").textContent = e.message; toast(e.message, 8000); }
+  try { await veLoad(ve.view); } catch (e) { /* bỏ qua */ }
+});
 $("#ve-speed").addEventListener("change", veCpsAll);
 $("#ve-fast-list").addEventListener("click", (e) => {
   const b = e.target.closest(".ve-fast-go");

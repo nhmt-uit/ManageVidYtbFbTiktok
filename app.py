@@ -13,7 +13,7 @@ from datetime import datetime
 from flask import Flask, abort, jsonify, request, send_from_directory
 
 from core import affiliate, commenter, editor, series, translate, config, downloader, fbgate, library, manage, notify, pages, planner, publish, reelcheck, scheduler, stats, stock, tokens, ytdlp_update
-from core import linkfile, removed, videofile, xpost
+from core import dub, linkfile, removed, videofile, xpost
 from core.jobs import manager
 
 config.load_env()
@@ -324,9 +324,60 @@ def _edit_rel(d: dict | None = None) -> str:
 @app.get("/api/edit/status")
 def api_edit_status():
     try:
-        return jsonify(editor.status(_edit_rel()))
+        st = editor.status(_edit_rel())
+        st["dub"] = dub.info(library.resolve(_edit_rel()))
+        return jsonify(st)
     except ValueError as e:
         return err(str(e), 404)
+
+
+def _dub_start(fn, title, args):
+    d = body()
+    try:
+        folder = library.resolve(_edit_rel(d))
+    except ValueError as e:
+        return err(str(e), 404)
+    if manager.has_running("edit"):
+        return err("Đang có một tác vụ chỉnh sửa khác chạy. Đợi nó xong rồi thử lại.", 409)
+    if editor.is_scheduled(folder):
+        return err("Video này đã lên lịch. Huỷ lịch trước rồi mới sửa được.", 409)
+    job = manager.start("edit", f"{title}: {folder.name}", fn, _edit_rel(d), *args(d))
+    return jsonify({"job": job.id})
+
+
+@app.post("/api/edit/dub/gen")
+def api_edit_dub_gen():
+    s = dub.settings()
+    if not s["ok"]:
+        return err(s["problem"], 409)
+    return _dub_start(dub.gen_job, "Lồng tiếng",
+                      lambda d: (d.get("starts") if isinstance(d.get("starts"), list) else None, str(d.get("voice") or ""), 3))
+
+
+@app.post("/api/edit/dub/build")
+def api_edit_dub_build():
+    return _dub_start(dub.build_job, "Ghép giọng", lambda d: ())
+
+
+@app.post("/api/edit/dub/item")
+def api_edit_dub_item():
+    d = body()
+    try:
+        speed = None if d.get("speed") is None else float(d["speed"])
+        return jsonify(dub.set_item(_edit_rel(d), str(d.get("text") or ""), d.get("say"), speed, d.get("voice")))
+    except (TypeError, ValueError) as e:
+        return err(str(e) or "Dữ liệu không hợp lệ.", 400)
+    except editor.EditError as e:
+        return err(str(e))
+
+
+@app.get("/api/edit/dub/wav")
+def api_edit_dub_wav():
+    try:
+        p = dub.wav_path(_edit_rel(), request.args.get("key", ""))
+    except ValueError:
+        abort(404)
+    return send_from_directory(str(p.parent), p.name, conditional=True, max_age=0)
 
 
 @app.post("/api/edit/transcribe")
