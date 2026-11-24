@@ -1771,7 +1771,181 @@ function veRenderCues() {
   if (ve.st && ve.st.translate) veTrUi();
   veCpsAll();
   veDubAll();
+  veTlSoon();
 }
+// ---------- timeline phụ đề (giờ theo video gốc) ----------
+const veTl = { pps: 0, fit: true, drag: null, sel: -1, raf: 0 };
+function veTlDur() {
+  const d = ve.st && ve.st.source && ve.st.source.duration;
+  return d > 0 ? d : Math.max(10, ...ve.cues.map((c) => c.end || 0));
+}
+function veTlRows() {
+  return [...document.querySelectorAll("#ve-cues .ve-cue")].map((row) => ({ row, i: Number(row.dataset.i), s: veTimeOf(row, ".ve-s"), e: veTimeOf(row, ".ve-e"),
+    text: row.querySelector(".ve-t").value, fast: row.classList.contains("fast") }));
+}
+function veTlFitPps() { return Math.max(1, ($("#ve-tl-scroll").clientWidth - 4) / veTlDur()); }
+const VE_TL_MAX = 240;   // điểm ảnh / giây khi phóng to hết
+function veTlSoon() { if (!veTl.raf) veTl.raf = requestAnimationFrame(() => { veTl.raf = 0; veTlRender(); }); }
+function veTlLabel(t) { const c = veClock(t); return c.endsWith(".0") ? c.slice(0, -2) : c; }
+function veTlRender() {
+  const box = $("#ve-tl");
+  if (!ve.st || !document.querySelector("#ve-cues .ve-cue")) { box.hidden = true; return; }
+  box.hidden = false;
+  const dur = veTlDur(), fit = veTlFitPps();
+  if (veTl.fit || !veTl.pps) veTl.pps = fit;
+  veTl.pps = Math.min(Math.max(veTl.pps, fit), VE_TL_MAX);
+  const pps = veTl.pps, W = Math.ceil(dur * pps);
+  $("#ve-tl-inner").style.width = W + "px";
+  $("#ve-tl-z").value = String(Math.round(100 * Math.log(pps / fit) / Math.log(Math.max(VE_TL_MAX / fit, 1.0001))));
+  // thước giờ: vạch chính cách nhau ít nhất ~70 px
+  const step = [0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600].find((x) => x * pps >= 70) || 600;
+  const minor = step / 5 * pps >= 8 ? step / 5 : 0;
+  let ticks = "";
+  for (let t = 0; t <= dur + 0.001; t += minor || step) {
+    const major = Math.abs(t / step - Math.round(t / step)) < 1e-6;
+    ticks += `<i class="${major ? "mj" : ""}" style="left:${(t * pps).toFixed(1)}px">${major ? `<b>${veTlLabel(t)}</b>` : ""}</i>`;
+  }
+  // phần bị cắt bỏ (khi bật cắt ngắn): tô xám
+  const segs = $("#ve-cut-use") && $("#ve-cut-use").checked ? veCutRows().filter((g) => g.end > g.start).sort((a, b) => a.start - b.start) : [];
+  let off = "", last = 0;
+  if (segs.length) {
+    for (const g of segs.concat([{ start: dur, end: dur }])) {
+      if (g.start > last) off += `<u style="left:${(last * pps).toFixed(1)}px;width:${((g.start - last) * pps).toFixed(1)}px"></u>`;
+      last = Math.max(last, g.end);
+    }
+  }
+  $("#ve-tl-ruler").innerHTML = ticks + off;
+  const rows = veTlRows();
+  $("#ve-tl-sub").innerHTML = off + rows.map((r) => {
+    const w = Math.max(3, (r.e - r.s) * pps);
+    return `<div class="ve-tl-cue${r.fast ? " fast" : ""}${r.i === veTl.sel ? " sel" : ""}" data-i="${r.i}" style="left:${(r.s * pps).toFixed(1)}px;width:${w.toFixed(1)}px" title="#${r.i + 1} ${veClock(r.s)} → ${veClock(r.e)}: ${esc(r.text)}">`
+      + `<span>${w > 34 ? `#${r.i + 1} ${esc(r.text.replace(/\s+/g, " "))}` : w > 14 ? r.i + 1 : ""}</span></div>`;
+  }).join("");
+  const d = ve.st.dub, showDub = veDubOn() && d && d.rows && d.rows.some((r) => r.has);
+  $("#ve-tl-dub").hidden = !showDub;
+  $("#ve-tl-dub").innerHTML = !showDub ? "" : d.rows.filter((r) => r.has && r.at != null).map((r) => {
+    const lvl = r.status === "over" && r.over > 0.3 ? "bad" : r.status === "ok" ? "ok" : "warn";
+    return `<div class="ve-tl-voice ${lvl}" style="left:${(r.at * pps).toFixed(1)}px;width:${Math.max(2, (r.end - r.at) * pps).toFixed(1)}px" title="Giọng máy ${veClock(r.at)} → ${veClock(r.end)}"></div>`;
+  }).join("");
+  const dirty = rows.some((r) => { const c = ve.cues[r.i]; return c && (Math.abs(c.start - r.s) > 0.004 || Math.abs(c.end - r.e) > 0.004); });
+  const locked = ve.busy || !!ve.st.scheduled;
+  $("#ve-tl-hint").textContent = dirty ? "Đã đổi giờ, nhớ bấm Lưu phụ đề." : locked ? "" : "Kéo khối để dời câu, kéo mép để đổi giờ hiện / tắt. Bấm chỗ trống để tua, bấm đúp để thêm câu.";
+  $("#ve-tl-hint").classList.toggle("warn", dirty);
+  veTlHead();
+}
+function veTlHead() {
+  const h = $("#ve-tl-head"), vid = $("#ve-video");
+  h.hidden = ve.view !== "orig";
+  if (h.hidden || !veTl.pps) return;
+  const x = (vid.currentTime || 0) * veTl.pps;
+  h.style.left = x.toFixed(1) + "px";
+  const sc = $("#ve-tl-scroll");
+  if (!vid.paused && !veTl.drag && (x < sc.scrollLeft || x > sc.scrollLeft + sc.clientWidth - 20)) sc.scrollLeft = x - sc.clientWidth * 0.2;   // đang phát: cuộn theo đầu phát
+}
+function veTlZoom(pps, anchorT) {
+  const sc = $("#ve-tl-scroll"), old = veTl.pps || veTlFitPps();
+  const t = anchorT != null ? anchorT : (sc.scrollLeft + sc.clientWidth / 2) / old;
+  const px = anchorT != null ? t * old - sc.scrollLeft : sc.clientWidth / 2;   // giữ điểm đang nhìn đứng yên khi phóng
+  veTl.pps = Math.min(Math.max(pps, veTlFitPps()), VE_TL_MAX);
+  veTl.fit = veTl.pps <= veTlFitPps() + 1e-6;
+  veTlRender();
+  sc.scrollLeft = t * veTl.pps - px;
+}
+function veTlSelect(i, seek) {
+  veTl.sel = i;
+  document.querySelectorAll("#ve-cues .ve-cue.sel").forEach((r) => r.classList.remove("sel"));
+  const row = document.querySelector(`#ve-cues .ve-cue[data-i="${i}"]`);
+  if (!row) return;
+  row.classList.add("sel");
+  const list = $("#ve-cues"), a = row.getBoundingClientRect(), b = list.getBoundingClientRect();
+  if (a.top < b.top || a.bottom > b.bottom) list.scrollTop += a.top - b.top - 8;   // chỉ cuộn danh sách, không cuộn cả hộp thoại
+  const sc = $("#ve-tl-scroll"), x = veTimeOf(row, ".ve-s") * veTl.pps;
+  if (x < sc.scrollLeft || x > sc.scrollLeft + sc.clientWidth - 30) sc.scrollLeft = x - 40;
+  document.querySelectorAll("#ve-tl-sub .ve-tl-cue").forEach((el) => el.classList.toggle("sel", Number(el.dataset.i) === i));
+  if (seek) veTlSeek(veTimeOf(row, ".ve-s"));
+}
+function veTlSeek(t) {
+  veDubStop();
+  const vid = $("#ve-video"), go = () => { try { vid.currentTime = Math.max(0, Math.min(t, veTlDur())); } catch (e) { /* bỏ qua */ } veTlHead(); };
+  if (ve.view !== "orig") { veSetView("orig"); vid.addEventListener("loadedmetadata", go, { once: true }); } else go();
+}
+function veTlTime(ev) { const r = $("#ve-tl-inner").getBoundingClientRect(); return Math.max(0, Math.min((ev.clientX - r.left) / veTl.pps, veTlDur())); }
+$("#ve-tl-inner").addEventListener("pointerdown", (ev) => {
+  if (ev.button !== 0) return;
+  const blk = ev.target.closest(".ve-tl-cue");
+  if (!blk) {   // chỗ trống: tua (kéo để tua liên tục)
+    veTl.drag = { mode: "seek" };
+    $("#ve-video").pause();
+    veTlSeek(veTlTime(ev));
+    $("#ve-tl-inner").setPointerCapture(ev.pointerId);
+    return;
+  }
+  const i = Number(blk.dataset.i), rows = veTlRows(), k = rows.findIndex((r) => r.i === i), r = rows[k];
+  const bx = blk.getBoundingClientRect(), edge = Math.min(8, bx.width / 3);
+  const mode = ev.clientX - bx.left <= edge ? "s" : bx.right - ev.clientX <= edge ? "e" : "move";
+  veTl.drag = { mode, i, row: r.row, blk, x0: ev.clientX, s0: r.s, e0: r.e, moved: false,
+    lo: k > 0 ? rows[k - 1].e : 0, hi: k + 1 < rows.length ? rows[k + 1].s : veTlDur(), locked: ve.busy || !!ve.st.scheduled };
+  blk.setPointerCapture(ev.pointerId);
+  ev.preventDefault();
+});
+$("#ve-tl-inner").addEventListener("pointermove", (ev) => {
+  const g = veTl.drag;
+  if (!g) {   // con trỏ đổi theo chỗ đang chỉ (mép = đổi giờ, giữa = dời)
+    const blk = ev.target.closest && ev.target.closest(".ve-tl-cue");
+    if (blk) { const bx = blk.getBoundingClientRect(), edge = Math.min(8, bx.width / 3); blk.style.cursor = ev.clientX - bx.left <= edge || bx.right - ev.clientX <= edge ? "ew-resize" : "grab"; }
+    return;
+  }
+  if (g.mode === "seek") { veTlSeek(veTlTime(ev)); return; }
+  if (g.locked) return;
+  const dt = (ev.clientX - g.x0) / veTl.pps;
+  if (!g.moved && Math.abs(ev.clientX - g.x0) < 4) return;
+  g.moved = true;
+  const snap = (x) => Math.round(x * 20) / 20, MIN = 0.2;
+  let s = g.s0, e = g.e0;
+  if (g.mode === "move") { const len = g.e0 - g.s0; s = Math.min(Math.max(snap(g.s0 + dt), g.lo), g.hi - len); e = s + len; }
+  else if (g.mode === "s") s = Math.min(Math.max(snap(g.s0 + dt), g.lo), e - MIN);
+  else e = Math.max(Math.min(snap(g.e0 + dt), g.hi), s + MIN);
+  g.row.querySelector(".ve-s").value = veClock(s); g.row.querySelector(".ve-e").value = veClock(e);
+  g.blk.style.left = (s * veTl.pps).toFixed(1) + "px"; g.blk.style.width = Math.max(3, (e - s) * veTl.pps).toFixed(1) + "px";
+  $("#ve-tl-hint").textContent = `#${g.i + 1}: ${veClock(s)} → ${veClock(e)} (${(e - s).toFixed(1)}s)`;
+});
+function veTlEnd() {
+  const g = veTl.drag;
+  veTl.drag = null;
+  if (!g || g.mode === "seek") return;
+  if (g.moved) { g.row.querySelector(".ve-s").classList.remove("bad"); g.row.querySelector(".ve-e").classList.remove("bad"); veCpsAll(); veDubAll(); veTlSelect(g.i, false); }
+  else veTlSelect(g.i, true);   // bấm (không kéo) = chọn câu + tua tới đó
+  if (g.moved && g.locked) toast("Đang chạy tác vụ, chưa sửa giờ được.");
+}
+$("#ve-tl-inner").addEventListener("pointerup", veTlEnd);
+$("#ve-tl-inner").addEventListener("pointercancel", veTlEnd);
+$("#ve-tl-inner").addEventListener("dblclick", (ev) => {   // bấm đúp chỗ trống ở hàng phụ đề: thêm câu 2 giây ở đó
+  const lane = $("#ve-tl-sub").getBoundingClientRect();   // lần bấm đầu giữ con trỏ để tua, nên đích sự kiện là cả khung: xét theo toạ độ
+  if (ev.clientY < lane.top || ev.clientY > lane.bottom || ve.busy || ve.st.scheduled) return;
+  if ([...document.querySelectorAll("#ve-tl-sub .ve-tl-cue")].some((b) => { const r = b.getBoundingClientRect(); return ev.clientX >= r.left && ev.clientX <= r.right; })) return;
+  const t = Math.round(veTlTime(ev) * 10) / 10, cues = veReadCues();
+  const next = cues.filter((c) => c.start > t).reduce((m, c) => Math.min(m, c.start), veTlDur());
+  if (next - t < 0.3) { toast("Chỗ này sát câu sau quá, không thêm được."); return; }
+  cues.push({ start: t, end: Math.min(t + 2, next), text: "" });
+  cues.sort((a, b) => a.start - b.start);
+  ve.cues = cues;
+  veRenderCues();
+  const i = cues.findIndex((c) => c.start === t && !c.text);
+  veTlSelect(i, true);
+  const row = document.querySelector(`#ve-cues .ve-cue[data-i="${i}"]`);
+  if (row) row.querySelector(".ve-t").focus({ preventScroll: true });
+});
+$("#ve-tl-scroll").addEventListener("wheel", (ev) => {   // Ctrl/⌘ + cuộn = phóng to quanh con trỏ
+  if (!(ev.ctrlKey || ev.metaKey)) return;
+  ev.preventDefault();
+  veTlZoom(veTl.pps * (ev.deltaY < 0 ? 1.25 : 0.8), veTlTime(ev));
+}, { passive: false });
+$("#ve-tl-in").addEventListener("click", () => veTlZoom(veTl.pps * 1.5));
+$("#ve-tl-out").addEventListener("click", () => veTlZoom(veTl.pps / 1.5));
+$("#ve-tl-fit").addEventListener("click", () => { veTl.fit = true; veTlRender(); $("#ve-tl-scroll").scrollLeft = 0; });
+$("#ve-tl-z").addEventListener("input", () => { const f = veTlFitPps(); veTlZoom(f * Math.pow(Math.max(VE_TL_MAX / f, 1), Number($("#ve-tl-z").value) / 100)); });
+$("#ve-cues").addEventListener("focusin", (e) => { const row = e.target.closest(".ve-cue"); if (row && Number(row.dataset.i) !== veTl.sel) veTlSelect(Number(row.dataset.i), false); });
+window.addEventListener("resize", () => { if ($("#ve-dlg").open) veTlSoon(); });
 // ---------- lồng tiếng từng câu (VieNeu) ----------
 const VE_DUB_LABEL = { none: "Chưa có giọng", stale: "Chữ đã đổi, cần đọc lại", ok: "Khớp tốt", auto: "Tự tăng tốc", over: "Lấn sang câu sau" };
 function veDubRowOf(row) {   // giọng của câu đang hiện: khớp theo giờ bắt đầu và đúng chữ đã lưu
@@ -1829,6 +2003,7 @@ function veDubAll() {
       : d.built ? "Đã ghép vào giọng đọc (bước 3). Nhớ hạ âm lượng gốc rồi Xuất video." : d.has_any ? "Chưa ghép bản mới nhất: bấm Ghép giọng." : "Mỗi câu đọc khoảng 2–6 giây. Câu nào chưa ưng thì sửa chữ / Đọc là rồi bấm ↻ ở câu đó.");
   }
   $("#ve-dub-sum").textContent = parts.join(" ");
+  veTlSoon();
 }
 const veDubAudio = new Audio();
 function veDubDone() { if (!ve.dubPlaying) return; ve.dubPlaying = false; const v = $("#ve-video"); v.pause(); v.muted = !!ve.dubMuted; }
@@ -2028,6 +2203,7 @@ function veCutTotal() {
   const el = $("#ve-cut-total");
   el.textContent = n ? `giữ ${n} đoạn · ${fmtSec(tot)} giây${max && tot > max ? ` (vượt ${max} giây)` : ""}` : "";
   el.classList.toggle("bad", !!max && tot > max);
+  veTlSoon();
 }
 function veCutRender() {
   const st = ve.st, cu = st.cuts || { segments: [] };
@@ -2352,7 +2528,11 @@ $("#ve-close").addEventListener("click", () => $("#ve-dlg").close());
 $("#ve-dlg").addEventListener("close", () => { veDubStop(); $("#ve-video").pause(); loadLibrary(); });
 $("#ve-dlg").addEventListener("click", (e) => { if (e.target === $("#ve-dlg") && !ve.busy) $("#ve-dlg").close(); });
 document.querySelectorAll("input[name=ve-view]").forEach((r) => r.addEventListener("change", (e) => veSetView(e.target.value)));
-$("#ve-video").addEventListener("timeupdate", () => { veCap(); veCover(); });
+$("#ve-video").addEventListener("timeupdate", () => { veCap(); veCover(); veTlHead(); });
+$("#ve-video").addEventListener("play", function tlLoop() {   // đầu phát chạy mượt (timeupdate chỉ ~4 lần/giây)
+  const step = () => { veTlHead(); if (!$("#ve-video").paused) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+});
 $("#ve-subs").addEventListener("change", veCap);
 ["#ve-words", "#ve-subanim", "#ve-color"].forEach((s) => $(s).addEventListener("change", () => { ve.capKey = null; ve.wordKey = null; veWordUi(); veCap(); }));
 $("#ve-hookcolor").addEventListener("change", veHookPv);
@@ -2373,7 +2553,7 @@ $("#ve-cues").addEventListener("click", (e) => {
 });
 $("#ve-cues").addEventListener("input", (e) => {
   const row = e.target.closest(".ve-cue");
-  if (row && e.target.matches(".ve-s, .ve-e, .ve-t")) veCpsAll();
+  if (row && e.target.matches(".ve-s, .ve-e, .ve-t")) { veCpsAll(); veTlSoon(); }
 });
 $("#ve-cues").addEventListener("change", (e) => {   // gõ xong ô giờ: viết lại cho đúng dạng 00:01.5, gõ sai thì báo đỏ
   if (!e.target.matches(".ve-s, .ve-e")) return;

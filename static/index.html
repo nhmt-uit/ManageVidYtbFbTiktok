@@ -557,6 +557,21 @@
               <div class="actions"><button class="primary" id="ve-tr-apply" type="button">Áp dụng</button><button class="ghost" id="ve-tr-cancel" type="button">Hủy</button></div>
               <p class="msg" id="ve-tr-pmsg"></p>
             </div>
+            <div id="ve-tl" class="ve-tl" hidden>
+              <div class="ve-tl-bar">
+                <strong>Timeline</strong>
+                <span class="ve-tl-zoom"><button class="ghost" id="ve-tl-out" type="button" title="Thu nhỏ" aria-label="Thu nhỏ">−</button><input id="ve-tl-z" type="range" min="0" max="100" value="0" aria-label="Phóng to timeline"><button class="ghost" id="ve-tl-in" type="button" title="Phóng to" aria-label="Phóng to">+</button><button class="ghost" id="ve-tl-fit" type="button" title="Thấy cả video">Vừa khung</button></span>
+                <span class="hint" id="ve-tl-hint"></span>
+              </div>
+              <div class="ve-tl-scroll" id="ve-tl-scroll">
+                <div class="ve-tl-inner" id="ve-tl-inner">
+                  <div class="ve-tl-ruler" id="ve-tl-ruler"></div>
+                  <div class="ve-tl-lane ve-tl-sub" id="ve-tl-sub"></div>
+                  <div class="ve-tl-lane ve-tl-dub" id="ve-tl-dub" hidden></div>
+                  <div class="ve-tl-head" id="ve-tl-head"></div>
+                </div>
+              </div>
+            </div>
             <div id="ve-fast" class="ve-fast" hidden>
               <div class="ve-fast-head"><strong>Đọc quá nhanh <span class="count" id="ve-fast-n"></span></strong>
                 <label title="Số ký tự (tính cả khoảng trắng) người xem phải đọc trong một giây. Phụ đề tiếng Việt dễ đọc khoảng 15–17.">Ngưỡng <input id="ve-cps-max" type="number" min="8" max="30" step="1" value="17"> ký tự/giây</label>
