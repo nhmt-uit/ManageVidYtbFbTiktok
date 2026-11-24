@@ -1577,6 +1577,7 @@ function veBusy(on, msg) {
     "#ve-cut-add", "#ve-cut-save", "#ve-cut-clear", "#ve-punch-add", "#ve-punch-save", "#ve-punch-clear"].forEach((s) => { $(s).disabled = on || (ve.st && ve.st.scheduled); });
   $("#ve-cut-gen").disabled = on || !ve.st || ve.st.scheduled || !ve.st.claude;
   $("#ve-punch-gen").disabled = on || !ve.st || ve.st.scheduled || !ve.st.claude;
+  if (!on && ve.st) veCpsAll(); else $("#ve-shorten").disabled = true;
   if (ve.st && ve.st.draft && ve.st.draft.check && ve.st.draft.check.errors.length) $("#ve-approve").disabled = true;   // bản nháp chưa đạt chuẩn đăng
   if (!on) $("#ve-bar").hidden = true;
   if (msg !== undefined) $("#ve-msg").textContent = msg;
@@ -1716,20 +1717,96 @@ function veCap() {
   cap.style.bottom = r ? "auto" : "";
   cap.style.transform = r ? "translateY(-50%)" : "";
 }
+// giờ của câu phụ đề dạng 00:01.5 (phút:giây); nhận cả "1.5", "1,5", "0:01.5", "1:02:03.4"
+function veClock(sec) {
+  const cs = Math.max(0, Math.round(Number(sec) * 100)), m = Math.floor(cs / 6000), r = (cs % 6000) / 100;
+  let ss = r.toFixed(2).replace(/0$/, "");
+  if (r < 10) ss = "0" + ss;
+  return String(m).padStart(2, "0") + ":" + ss;
+}
+function veParseClock(v) {
+  const t = String(v || "").trim().replace(",", ".");
+  if (!/^\d+(\.\d+)?$|^\d+:\d{1,2}(\.\d+)?$|^\d+:\d{1,2}:\d{1,2}(\.\d+)?$/.test(t)) return NaN;
+  const p = t.split(":").map(Number);
+  if (p.length > 1 && p[p.length - 1] >= 60) return NaN;
+  if (p.length > 2 && p[1] >= 60) return NaN;
+  return p.reduce((a, x) => a * 60 + x, 0);
+}
+function veTimeOf(row, cls) {   // giờ trong ô; gõ sai thì giữ giờ cũ của câu (đừng để câu bị bỏ khi lưu)
+  const v = veParseClock(row.querySelector(cls).value);
+  if (isFinite(v)) return v;
+  const c = ve.cues[Number(row.dataset.i)] || {};
+  return Number(cls === ".ve-s" ? c.start : c.end) || 0;
+}
+// ô giờ dùng chung cho Cắt ngắn, Chữ lớn: hiện 00:01.5, gõ sai thì giữ giờ cũ (data-v)
+function veClockInput(cls, sec, label) {
+  const v = Math.max(0, Number(sec) || 0);
+  return `<input type="text" class="${cls} ve-clock" inputmode="decimal" data-v="${v}" value="${veClock(v)}" title="${label}" aria-label="${label}">`;
+}
+function veClockVal(el) {
+  const v = veParseClock(el.value);
+  return isFinite(v) ? v : Number(el.dataset.v) || 0;
+}
+document.addEventListener("change", (e) => {
+  if (!e.target.matches || !e.target.matches("input.ve-clock")) return;
+  const v = veParseClock(e.target.value), bad = !isFinite(v);
+  e.target.classList.toggle("bad", bad);
+  if (bad) toast("Giờ phải có dạng phút:giây, ví dụ 00:01.5 (hoặc chỉ số giây như 1.5). Chưa sửa thì giữ giờ cũ.", 6000);
+  else { e.target.value = veClock(v); e.target.dataset.v = v; }
+}, true);
 function veRenderCues() {
   $("#ve-cuecount").textContent = ve.cues.length ? `(${ve.cues.length} dòng)` : "(chưa có)";
   $("#ve-cues").innerHTML = ve.cues.length ? ve.cues.map((c, i) => `
     <div class="ve-cue" data-i="${i}">
       <span class="ve-n" aria-label="Câu số ${i + 1}">${i + 1}</span>
       <button class="link ve-play" type="button" title="Nghe lại đoạn này">▶</button>
-      <input class="ve-s" type="number" min="0" step="0.1" value="${fmtSec(c.start)}" aria-label="Bắt đầu (giây)">
-      <input class="ve-e" type="number" min="0" step="0.1" value="${fmtSec(c.end)}" aria-label="Kết thúc (giây)">
+      <span class="ve-time"><input class="ve-s" type="text" inputmode="decimal" value="${veClock(c.start)}" title="Lúc câu bắt đầu hiện (phút:giây)" aria-label="Bắt đầu (phút:giây)"><span aria-hidden="true">→</span><input class="ve-e" type="text" inputmode="decimal" value="${veClock(c.end)}" title="Lúc câu tắt (phút:giây)" aria-label="Kết thúc (phút:giây)"></span>
       <textarea class="ve-t" rows="2" maxlength="200" aria-label="Nội dung">${esc(c.text)}</textarea>
       <span class="ve-acts"><button class="link ve-copy" type="button" title="Sao chép câu gốc để dịch ở nơi khác">Sao chép</button><button class="link ve-del" type="button" title="Xóa dòng này">Xóa</button></span>
       ${c.src ? `<div class="ve-src"><span>Gốc: ${esc(c.src)}</span></div>` : ""}
+      <div class="ve-cps"></div>
+      <div class="ve-short" hidden></div>
     </div>`).join("") : '<p class="hint">Chưa có phụ đề. Bấm "Phiên âm" ở bước 1, hoặc tự thêm từng dòng.</p>';
   if (ve.st && ve.st.translate) veTrUi();
+  veCpsAll();
 }
+// ---------- đọc quá nhanh: ký tự/giây ----------
+function veChars(t) { return String(t || "").replace(/\s+/g, " ").trim().length; }   // giống editor.char_count
+function veCpsMax() { const n = Number($("#ve-cps-max").value); return n >= 8 && n <= 30 ? n : 17; }
+function veSpeed() { return (Number($("#ve-speed").value) || 100) / 100; }
+function veCpsOf(start, end, text) { const d = (end - start) / veSpeed(); return d > 0 ? veChars(text) / Math.max(d, 0.05) : Infinity; }
+function veShortFor(row) {   // đề xuất viết gọn còn khớp câu đang hiện (cùng giờ bắt đầu, cùng chữ)
+  const s = Math.round(veTimeOf(row, ".ve-s") * 100) / 100, t = row.querySelector(".ve-t").value.split("\n").map((x) => x.trim()).filter(Boolean).join("\n");
+  return ((ve.st && ve.st.shorten) || []).find((p) => p.start === s && p.before === t);
+}
+function veCpsRow(row) {
+  const s = veTimeOf(row, ".ve-s"), e = veTimeOf(row, ".ve-e"), t = row.querySelector(".ve-t").value;
+  const v = veCpsOf(s, e, t), bad = v > veCpsMax() && veChars(t) > 0;
+  row.classList.toggle("fast", bad);
+  const el = row.querySelector(".ve-cps");
+  el.textContent = `${Math.max(e - s, 0).toFixed(1)}s · ${veChars(t)} ký tự · ${isFinite(v) ? v.toFixed(1) : "∞"} ký tự/giây${bad ? " · quá nhanh" : ""}`;
+  const p = veShortFor(row), box = row.querySelector(".ve-short");
+  box.hidden = !p;
+  if (p) {
+    const pv = veCpsOf(s, e, p.text);
+    box.innerHTML = `<span>Gọn hơn: <b>${esc(p.text)}</b> <small>(${veChars(p.text)} ký tự · ${pv.toFixed(1)}/giây${pv > veCpsMax() ? ", vẫn nhanh: nên kéo dài câu" : ""})</small></span>
+      <button class="link ve-short-use" type="button">Dùng</button><button class="link ve-short-no" type="button">Bỏ</button>`;
+  }
+  return bad;
+}
+function veCpsAll() {
+  const rows = [...document.querySelectorAll("#ve-cues .ve-cue")], bad = rows.filter((r) => veCpsRow(r));
+  const pending = ((ve.st && ve.st.shorten) || []).length;
+  $("#ve-fast").hidden = !bad.length && !pending;
+  $("#ve-fast-n").textContent = `(${bad.length})`;
+  $("#ve-fast-list").innerHTML = bad.map((r) => `<button class="chip ve-fast-go" type="button" data-i="${r.dataset.i}">#${Number(r.dataset.i) + 1}</button>`).join("");
+  const tr = ve.st && ve.st.translate;
+  $("#ve-shorten").disabled = !bad.length || ve.busy || !!(ve.st && ve.st.scheduled) || !(tr && tr.ok);
+  $("#ve-fast-hint").textContent = !bad.length ? (pending ? "Không còn câu đỏ. Vẫn còn đề xuất viết gọn chưa duyệt bên dưới." : "")
+    : tr && tr.ok ? "Bấm số để nhảy tới câu. Sửa tay cho gọn, kéo dài thời gian câu, hoặc bấm Viết gọn câu đỏ (AI đề xuất, bạn bấm Dùng/Bỏ từng câu)."
+    : "Bấm số để nhảy tới câu rồi sửa tay cho gọn hoặc kéo dài thời gian câu. (Viết gọn bằng AI cần cài đặt Dịch phụ đề.)";
+}
+function veShortRemove(p) { ve.st.shorten = (ve.st.shorten || []).filter((x) => x !== p); }
 function veTrUi() {
   const st = ve.st, any = ve.cues.length > 0, hasSrc = ve.cues.some((c) => c.src);
   $("#ve-tr-auto").disabled = !any || ve.busy || !!st.scheduled; $("#ve-tr-copyall").disabled = !any; $("#ve-tr-copy").hidden = !hasSrc; $("#ve-tr-paste").disabled = !any || !!st.scheduled;
@@ -1774,7 +1851,7 @@ function veReadCues() {
   const notVi = ve.st && ve.st.language && ve.st.language !== "vi";   // phiên âm từ ngôn ngữ khác: gõ tiếng Việt đè lên = bạn đang dịch
   return [...document.querySelectorAll("#ve-cues .ve-cue")].map((r) => {
     const i = Number(r.dataset.i), prev = ve.cues[i] || {}, text = r.querySelector(".ve-t").value;
-    const c = { start: Number(r.querySelector(".ve-s").value), end: Number(r.querySelector(".ve-e").value), text };
+    const c = { start: veTimeOf(r, ".ve-s"), end: veTimeOf(r, ".ve-e"), text };
     if (prev.src) c.src = prev.src;
     else if (notVi && prev.text && VE_VI.test(text) && !VE_VI.test(prev.text)) c.src = prev.text;   // dịch tay: giữ câu gốc để đối chiếu (sửa lỗi chính tả tiếng Anh thì KHÔNG tính là dịch)
     return c;
@@ -1835,13 +1912,13 @@ function veRender() {
 // ---- Cắt ngắn: các đoạn giữ lại (giây, theo video gốc) ----
 const veCut = { stopAt: null };
 function veCutRows() {
-  return $$("#ve-cut-list .ve-cutrow").map((r) => ({ start: Number($(".c-a", r).value), end: Number($(".c-b", r).value), note: r.dataset.note || "" }));
+  return $$("#ve-cut-list .ve-cutrow").map((r) => ({ start: veClockVal($(".c-a", r)), end: veClockVal($(".c-b", r)), note: r.dataset.note || "" }));
 }
 function veCutRowHtml(sg, i) {
   return `<div class="ve-cutrow" data-note="${esc(sg.note || "")}">
     <span class="ve-cut-n">${i + 1}</span>
-    <label>Từ <input type="number" class="c-a" min="0" step="0.1" value="${fmtSec(sg.start)}"></label>
-    <label>đến <input type="number" class="c-b" min="0" step="0.1" value="${fmtSec(sg.end)}"></label>
+    <label>Từ ${veClockInput("c-a", sg.start, "Giữ từ (phút:giây)")}</label>
+    <label>→ ${veClockInput("c-b", sg.end, "Giữ đến (phút:giây)")}</label>
     <span class="hint c-len"></span>
     <button class="ghost c-play" type="button" title="Phát đoạn này trên video gốc">▶</button>
     <button class="link c-del" type="button" title="Bỏ đoạn này">✕</button>
@@ -1861,7 +1938,7 @@ function veCutTotal() {
   const max = veMaxSec();
   let tot = 0;
   $$("#ve-cut-list .ve-cutrow").forEach((r) => {
-    const a = Number($(".c-a", r).value), b = Number($(".c-b", r).value);
+    const a = veClockVal($(".c-a", r)), b = veClockVal($(".c-b", r));
     const d = b > a ? b - a : 0;
     tot += d;
     $(".c-len", r).textContent = d ? `${fmtSec(d)} giây` : "đoạn không hợp lệ";
@@ -1906,7 +1983,7 @@ $("#ve-cut-list").addEventListener("click", (e) => {
   if (!row) return;
   if (e.target.classList.contains("c-del")) { row.remove(); $$("#ve-cut-list .ve-cut-n").forEach((n, i) => { n.textContent = i + 1; }); veCutTotal(); return; }
   if (e.target.classList.contains("c-play")) {
-    const a = Number($(".c-a", row).value), b = Number($(".c-b", row).value);
+    const a = veClockVal($(".c-a", row)), b = veClockVal($(".c-b", row));
     if (!(b > a)) return;
     if (ve.view !== "orig") veSetView("orig");   // đoạn tính theo giờ của video gốc
     const vid = $("#ve-video");
@@ -1951,13 +2028,13 @@ const PN_COLORS = { white: "Trắng", yellow: "Vàng", box: "Ô đỏ" };
 const PN_SOUNDS = { auto: "Theo kiểu", none: "Không tiếng", pop: "Pốp", swish: "Xoẹt", hit: "Trống", sparkle: "Lấp lánh", boing: "Lò xo", ding: "Ting", click: "Tách", whoosh: "Vút" };
 const veOpts = (map, v) => Object.entries(map).map(([k, n]) => `<option value="${k}"${k === v ? " selected" : ""}>${esc(n)}</option>`).join("");
 function vePunchRows() {
-  return $$("#ve-punch-list .ve-pnrow").map((r) => ({ t: Number($(".p-t", r).value), dur: Number(r.dataset.dur) || 1.4, text: $(".p-text", r).value,
+  return $$("#ve-punch-list .ve-pnrow").map((r) => ({ t: veClockVal($(".p-t", r)), dur: Number(r.dataset.dur) || 1.4, text: $(".p-text", r).value,
     anim: $(".p-anim", r).value, color: $(".p-color", r).value, sound: $(".p-sound", r).value }));
 }
 function vePunchRowHtml(p, i) {
   return `<div class="ve-cutrow ve-pnrow" data-dur="${p.dur || 1.4}">
     <span class="ve-cut-n">${i + 1}</span>
-    <label>Giây <input type="number" class="p-t" min="0" step="0.1" value="${fmtSec(p.t)}"></label>
+    <label>Lúc ${veClockInput("p-t", p.t, "Lúc chữ hiện (phút:giây)")}</label>
     <input type="text" class="p-text" maxlength="24" value="${esc(p.text)}" placeholder="CHỮ LỚN">
     <select class="p-anim" title="Kiểu bật">${veOpts(PN_ANIMS, p.anim || "pop")}</select>
     <select class="p-color" title="Màu">${veOpts(PN_COLORS, p.color || "white")}</select>
@@ -2020,7 +2097,7 @@ $("#ve-punch-list").addEventListener("click", (e) => {
   if (e.target.classList.contains("p-del")) { row.remove(); $$("#ve-punch-list .ve-cut-n").forEach((n, i) => { n.textContent = i + 1; }); vePunchCount(); return; }
   if (e.target.classList.contains("p-play")) {
     if (ve.view !== "orig") veSetView("orig");   // giờ tính theo video gốc
-    const vid = $("#ve-video"), t = Number($(".p-t", row).value) || 0;
+    const vid = $("#ve-video"), t = veClockVal($(".p-t", row));
     if (!$("#ve-punch-use").checked && !$("#ve-punch-use").disabled) $("#ve-punch-use").checked = true;
     veCut.stopAt = t + (Number(row.dataset.dur) || 1.4) + 0.3;
     const go = () => { try { vid.currentTime = Math.max(0, t - 0.5); vid.play(); } catch (err) { /* bỏ qua */ } };
@@ -2184,8 +2261,8 @@ async function veRunJob(path, body, label) {
   }
 }
 async function veSaveCues() {
-  const r = await api("/api/edit/subs", "POST", { rel: ve.rel, cues: veReadCues() });
-  ve.cues = r.cues; ve.st.cues = r.cues;
+  const r = await api("/api/edit/subs", "POST", { rel: ve.rel, cues: veReadCues(), shorten: ve.st.shorten || [] });
+  ve.cues = r.cues; ve.st.cues = r.cues; ve.st.shorten = r.shorten || [];
   veRenderCues();
   return r.cues;
 }
@@ -2206,10 +2283,56 @@ $("#ve-cues").addEventListener("click", (e) => {
   if (e.target.classList.contains("ve-del")) { ve.cues = veReadCues(); ve.cues.splice(i, 1); veRenderCues(); }
   if (e.target.classList.contains("ve-play")) {
     veSetView("orig");
-    const vid = $("#ve-video"), start = Number(row.querySelector(".ve-s").value) || 0;
+    const vid = $("#ve-video"), start = veTimeOf(row, ".ve-s");
     vid.addEventListener("loadedmetadata", () => { vid.currentTime = start; vid.play(); }, { once: true });
     if (vid.readyState >= 1) { vid.currentTime = start; vid.play(); }
   }
+});
+$("#ve-cues").addEventListener("input", (e) => {
+  const row = e.target.closest(".ve-cue");
+  if (row && e.target.matches(".ve-s, .ve-e, .ve-t")) veCpsAll();
+});
+$("#ve-cues").addEventListener("change", (e) => {   // gõ xong ô giờ: viết lại cho đúng dạng 00:01.5, gõ sai thì báo đỏ
+  if (!e.target.matches(".ve-s, .ve-e")) return;
+  const v = veParseClock(e.target.value), bad = !isFinite(v);
+  e.target.classList.toggle("bad", bad);
+  if (bad) toast("Giờ phải có dạng phút:giây, ví dụ 00:01.5 (hoặc chỉ số giây như 1.5). Chưa sửa thì giữ giờ cũ.", 6000);
+  else e.target.value = veClock(v);
+  veCpsAll();
+});
+$("#ve-cues").addEventListener("click", (e) => {
+  const row = e.target.closest(".ve-cue");
+  if (!row || !e.target.matches(".ve-short-use, .ve-short-no")) return;
+  const p = veShortFor(row);
+  if (!p) return;
+  if (e.target.classList.contains("ve-short-use")) row.querySelector(".ve-t").value = p.text;
+  veShortRemove(p);
+  veCpsAll();
+});
+$("#ve-cps-max").addEventListener("input", veCpsAll);
+$("#ve-speed").addEventListener("change", veCpsAll);
+$("#ve-fast-list").addEventListener("click", (e) => {
+  const b = e.target.closest(".ve-fast-go");
+  if (!b) return;
+  const row = document.querySelector(`#ve-cues .ve-cue[data-i="${b.dataset.i}"]`);
+  if (!row) return;
+  row.scrollIntoView({ block: "center", behavior: "smooth" });
+  row.querySelector(".ve-t").focus({ preventScroll: true });
+  const vid = $("#ve-video"), t = veTimeOf(row, ".ve-s");
+  if (ve.view === "orig" && vid.readyState >= 1) { vid.pause(); vid.currentTime = t; }
+});
+$("#ve-shorten").addEventListener("click", async () => {
+  const starts = [...document.querySelectorAll("#ve-cues .ve-cue.fast")].map((r) => veTimeOf(r, ".ve-s"));
+  if (!starts.length) return;
+  try {
+    await veSaveCues();
+    const r = await veRunJob("/api/edit/shorten", { rel: ve.rel, starts, max_cps: veCpsMax(), speed: veSpeed() }, "Đang viết gọn câu đọc quá nhanh...");
+    const st = await api("/api/edit/status?rel=" + encodeURIComponent(ve.rel));
+    ve.st.shorten = st.shorten || [];
+    veCpsAll();
+    const first = document.querySelector("#ve-cues .ve-short:not([hidden])");
+    if (first) first.scrollIntoView({ block: "center", behavior: "smooth" });
+  } catch (e) { $("#ve-msg").textContent = e.message; toast(e.message, 8000); }
 });
 $("#ve-tr-copyall").addEventListener("click", () => {
   const cues = veReadCues();

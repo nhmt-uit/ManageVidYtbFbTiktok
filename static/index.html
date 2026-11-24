@@ -542,7 +542,7 @@
           </section>
           <section class="ve-sec">
             <h3>2. Phụ đề <span class="count" id="ve-cuecount"></span></h3>
-            <p class="hint">Mỗi dòng có số thứ tự. Sửa lỗi chính tả, chỉnh thời gian (giây). Bấm ▶ để nghe lại đoạn đó.</p>
+            <p class="hint">Mỗi dòng có số thứ tự. Sửa lỗi chính tả, chỉnh giờ hiện → giờ tắt (phút:giây, ví dụ 00:01.5). Bấm ▶ để nghe lại đoạn đó.</p>
             <div class="actions ve-tr">
               <label class="ve-trto">Dịch sang <select id="ve-tr-to"><option value="vi">Tiếng Việt</option><option value="en">Tiếng Anh</option><option value="ja">Tiếng Nhật</option><option value="zh">Tiếng Trung</option></select></label>
               <button class="ghost" id="ve-tr-auto" type="button">Dịch tự động</button>
@@ -556,6 +556,13 @@
               <textarea id="ve-tr-text" rows="6" placeholder="Dán bản dịch tiếng Việt. Mỗi câu một dòng, đúng thứ tự (có thể có số thứ tự đầu dòng như 1. 2. 3.)"></textarea>
               <div class="actions"><button class="primary" id="ve-tr-apply" type="button">Áp dụng</button><button class="ghost" id="ve-tr-cancel" type="button">Hủy</button></div>
               <p class="msg" id="ve-tr-pmsg"></p>
+            </div>
+            <div id="ve-fast" class="ve-fast" hidden>
+              <div class="ve-fast-head"><strong>Đọc quá nhanh <span class="count" id="ve-fast-n"></span></strong>
+                <label title="Số ký tự (tính cả khoảng trắng) người xem phải đọc trong một giây. Phụ đề tiếng Việt dễ đọc khoảng 15–17.">Ngưỡng <input id="ve-cps-max" type="number" min="8" max="30" step="1" value="17"> ký tự/giây</label>
+                <button class="ghost" id="ve-shorten" type="button" title="Nhờ AI viết gọn các câu đỏ cho vừa ngưỡng; bạn duyệt từng câu">Viết gọn câu đỏ</button></div>
+              <div class="ve-fast-list" id="ve-fast-list"></div>
+              <p class="hint" id="ve-fast-hint"></p>
             </div>
             <div id="ve-cues" class="ve-cues"></div>
             <div class="actions">

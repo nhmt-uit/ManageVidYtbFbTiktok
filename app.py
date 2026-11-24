@@ -363,6 +363,26 @@ def api_edit_translate():
     return jsonify({"job": job.id})
 
 
+@app.post("/api/edit/shorten")
+def api_edit_shorten():
+    d = body()
+    try:
+        folder = library.resolve(_edit_rel(d))
+    except ValueError as e:
+        return err(str(e), 404)
+    if manager.has_running("edit"):
+        return err("Đang có một tác vụ chỉnh sửa khác chạy. Đợi nó xong rồi thử lại.", 409)
+    cfg = translate.settings()
+    if not cfg["ok"]:
+        return err(cfg["problem"], 409)
+    try:
+        max_cps, speed = float(d.get("max_cps") or editor.DEFAULT_CPS), float(d.get("speed") or 1.0)
+    except (TypeError, ValueError):
+        return err("Ngưỡng ký tự/giây không hợp lệ.")
+    job = manager.start("edit", f"Viết gọn phụ đề: {folder.name}", editor.shorten_job, _edit_rel(d), d.get("starts") or [], max_cps, speed)
+    return jsonify({"job": job.id})
+
+
 @app.post("/api/edit/origsubs/detect")
 def api_edit_origsubs_detect():
     d = body()
@@ -503,7 +523,7 @@ def api_translate_test():
 def api_edit_subs():
     d = body()
     try:
-        return jsonify(editor.save_subs(_edit_rel(d), d.get("cues")))
+        return jsonify(editor.save_subs(_edit_rel(d), d.get("cues"), d.get("shorten")))
     except ValueError as e:
         return err(str(e), 404)
     except editor.EditError as e:
