@@ -1765,8 +1765,7 @@ function veRenderCues() {
       <textarea class="ve-t" rows="2" maxlength="200" aria-label="Nội dung">${esc(c.text)}</textarea>
       <span class="ve-acts"><button class="link ve-copy" type="button" title="Sao chép câu gốc để dịch ở nơi khác">Sao chép</button><button class="link ve-del" type="button" title="Xóa dòng này">Xóa</button></span>
       ${c.src ? `<div class="ve-src"><span>Gốc: ${esc(c.src)}</span></div>` : ""}
-      <div class="ve-cps"></div>
-      <div class="ve-dub" hidden></div>
+      <div class="ve-meta"><span class="ve-cps"></span><span class="ve-dub" hidden></span></div>
       <div class="ve-short" hidden></div>
     </div>`).join("") : '<p class="hint">Chưa có phụ đề. Bấm "Phiên âm" ở bước 1, hoặc tự thêm từng dòng.</p>';
   if (ve.st && ve.st.translate) veTrUi();
@@ -1774,7 +1773,7 @@ function veRenderCues() {
   veDubAll();
 }
 // ---------- lồng tiếng từng câu (VieNeu) ----------
-const VE_DUB_LABEL = { none: "Chưa có giọng", stale: "Lời đã đổi, cần đọc lại", ok: "Khớp tốt", auto: "Tự tăng tốc", over: "Dài hơn chỗ trống" };
+const VE_DUB_LABEL = { none: "Chưa có giọng", stale: "Chữ đã đổi, cần đọc lại", ok: "Khớp tốt", auto: "Tự tăng tốc", over: "Lấn sang câu sau" };
 function veDubRowOf(row) {   // giọng của câu đang hiện: khớp theo giờ bắt đầu và đúng chữ đã lưu
   const dub = ve.st && ve.st.dub;
   if (!dub || !dub.rows) return null;
@@ -1809,13 +1808,14 @@ function veDubAll() {
     if (st === "over") over++;
     const lowCl = !changed && r.has && r.clarity != null && r.clarity < 0.8;
     if (lowCl) low++;
-    const tag = st === "auto" ? `Tự tăng tốc x${r.tempo.toFixed(2)}` : st === "over" ? `Dài hơn chỗ trống ${r.over.toFixed(1)}s` : VE_DUB_LABEL[st];
+    const tag = st === "auto" ? `Tự tăng tốc x${r.tempo.toFixed(2)}` : st === "over" ? `Lấn sang câu sau ${r.over.toFixed(1)}s` : VE_DUB_LABEL[st];
+    const lvl = st === "over" && r.over > 0.3 ? "bad" : st === "ok" ? "ok" : st === "none" ? "" : "warn";   // đỏ chỉ khi lấn rõ rệt
     const can = !changed && r.has;
-    el.innerHTML = `<span class="ve-dub-tag s-${st}">${tag}</span>`
-      + (can && r.clarity != null ? `<span class="ve-dub-cl${lowCl ? " low" : ""}" title="Whisper nghe lại khớp bao nhiêu với chữ cần đọc">rõ ${r.clarity.toFixed(2)}</span>` : "")
-      + (can ? `<span class="ve-dub-len">${r.duration.toFixed(1)}s</span><button class="link ve-dub-play" type="button" title="Nghe giọng câu này kèm hình (tắt tiếng video)">▶ Nghe</button>` : "")
+    el.innerHTML = `<span class="ve-dub-tag ${lvl}" title="Giọng máy của câu này">🔊 ${tag}</span>`
+      + (can && r.clarity != null ? `<span class="ve-dub-cl${lowCl ? " low" : ""}" title="Máy nghe lại giọng đọc và so với chữ: 100% là đọc đúng hết; dưới 80% nên đọc lại">nghe rõ ${Math.round(r.clarity * 100)}%</span>` : "")
+      + (can ? `<button class="link ve-dub-play" type="button" title="Nghe giọng câu này kèm hình (tắt tiếng video)">▶ Nghe</button>` : "")
       + `<button class="link ve-dub-redo" type="button" title="${changed ? "Lưu phụ đề rồi đọc câu này" : "Đọc lại câu này (lấy bản rõ nhất)"}">↻ ${r && r.has ? "Đọc lại" : "Đọc"}</button>`
-      + (can ? `<span class="ve-dub-sp">Tốc độ <button class="ghost ve-dub-minus" type="button" aria-label="Chậm hơn">−</button><b>${r.speed.toFixed(2)}</b><button class="ghost ve-dub-plus" type="button" aria-label="Nhanh hơn">+</button></span>` : "")
+      + (can ? `<span class="ve-dub-sp" title="Tốc độ đọc của riêng câu này (không phải tốc độ video)">Tốc độ đọc <button class="ghost ve-dub-minus" type="button" aria-label="Chậm hơn">−</button><b>${r.speed.toFixed(2)}</b><button class="ghost ve-dub-plus" type="button" aria-label="Nhanh hơn">+</button></span>` : "")
       + `<button class="link ve-dub-saytog" type="button" title="Viết cách đọc khác chữ hiện trên màn hình, ví dụ cardigan → các-đi-gần">Đọc là${r && r.say ? ": " + esc(r.say) : "…"}</button>`
       + `<input class="ve-dub-say" type="text" maxlength="200" value="${esc((r && r.say) || "")}" placeholder="Cách đọc (để trống = đọc đúng chữ phụ đề)" hidden>`;
   });
@@ -1823,7 +1823,7 @@ function veDubAll() {
   if (!d.ok) parts.push(d.problem);
   else if (!n) parts.push("Chưa có phụ đề để lồng tiếng.");
   else {
-    parts.push(`${has}/${n} câu có giọng` + (stale ? ` · ${stale} câu cần đọc lại` : "") + (over ? ` · ${over} câu dài hơn chỗ trống` : "") + (low ? ` · ${low} câu đọc chưa rõ` : ""));
+    parts.push(`${has}/${n} câu có giọng` + (stale ? ` · ${stale} câu cần đọc lại` : "") + (over ? ` · ${over} câu lấn sang câu sau` : "") + (low ? ` · ${low} câu đọc chưa rõ` : "") + ".");
     if (dirty && d.has_any) parts.push("Có thay đổi chưa lưu: bấm Lưu phụ đề để cập nhật trạng thái.");
     parts.push(d.built && has < n ? `Đã ghép vào giọng đọc nhưng còn ${n - has} câu chưa có giọng: đọc xong rồi bấm Ghép giọng lại.`
       : d.built ? "Đã ghép vào giọng đọc (bước 3). Nhớ hạ âm lượng gốc rồi Xuất video." : d.has_any ? "Chưa ghép bản mới nhất: bấm Ghép giọng." : "Mỗi câu đọc khoảng 2–6 giây. Câu nào chưa ưng thì sửa chữ / Đọc là rồi bấm ↻ ở câu đó.");
@@ -1831,8 +1831,11 @@ function veDubAll() {
   $("#ve-dub-sum").textContent = parts.join(" ");
 }
 const veDubAudio = new Audio();
-veDubAudio.addEventListener("ended", () => { const v = $("#ve-video"); v.pause(); v.muted = !!ve.dubMuted; });
-function veDubStop() { if (!veDubAudio.paused) { veDubAudio.pause(); const v = $("#ve-video"); v.pause(); v.muted = !!ve.dubMuted; } }
+function veDubDone() { if (!ve.dubPlaying) return; ve.dubPlaying = false; const v = $("#ve-video"); v.pause(); v.muted = !!ve.dubMuted; }
+veDubAudio.addEventListener("ended", veDubDone);
+veDubAudio.addEventListener("error", () => { if (ve.dubPlaying) toast("Không phát được giọng câu này. Bấm ↻ Đọc lại."); veDubAudio.pause(); veDubDone(); });
+function veDubStop() { if (!veDubAudio.paused) veDubAudio.pause(); veDubDone(); }
+$("#ve-video").addEventListener("pause", () => { if (ve.dubPlaying && !veDubAudio.paused) { veDubAudio.pause(); veDubDone(); } });   // dừng video = dừng nghe thử
 async function veDubSet(body) {
   try {
     const p = await api("/api/edit/dub/item", "POST", { rel: ve.rel, ...body });
@@ -1862,7 +1865,7 @@ function veCpsRow(row) {
   const v = veCpsOf(s, e, t), bad = v > veCpsMax() && veChars(t) > 0;
   row.classList.toggle("fast", bad);
   const el = row.querySelector(".ve-cps");
-  el.textContent = `${Math.max(e - s, 0).toFixed(1)}s · ${veChars(t)} ký tự · ${isFinite(v) ? v.toFixed(1) : "∞"} ký tự/giây${bad ? " · quá nhanh" : ""}`;
+  el.textContent = `${Math.max(e - s, 0).toFixed(1)}s · ${veChars(t)} ký tự · ${isFinite(v) ? v.toFixed(1) : "∞"} ký tự/giây${bad ? " (quá nhanh)" : ""}`;
   const p = veShortFor(row), box = row.querySelector(".ve-short");
   box.hidden = !p;
   if (p) {
@@ -2346,7 +2349,7 @@ async function veSaveCues() {
   return r.cues;
 }
 $("#ve-close").addEventListener("click", () => $("#ve-dlg").close());
-$("#ve-dlg").addEventListener("close", () => { $("#ve-video").pause(); loadLibrary(); });
+$("#ve-dlg").addEventListener("close", () => { veDubStop(); $("#ve-video").pause(); loadLibrary(); });
 $("#ve-dlg").addEventListener("click", (e) => { if (e.target === $("#ve-dlg") && !ve.busy) $("#ve-dlg").close(); });
 document.querySelectorAll("input[name=ve-view]").forEach((r) => r.addEventListener("change", (e) => veSetView(e.target.value)));
 $("#ve-video").addEventListener("timeupdate", () => { veCap(); veCover(); });
@@ -2361,6 +2364,7 @@ $("#ve-cues").addEventListener("click", (e) => {
   const i = Number(row.dataset.i);
   if (e.target.classList.contains("ve-del")) { ve.cues = veReadCues(); ve.cues.splice(i, 1); veRenderCues(); }
   if (e.target.classList.contains("ve-play")) {
+    veDubStop();
     veSetView("orig");
     const vid = $("#ve-video"), start = veTimeOf(row, ".ve-s");
     vid.addEventListener("loadedmetadata", () => { vid.currentTime = start; vid.play(); }, { once: true });
@@ -2382,6 +2386,7 @@ $("#ve-cues").addEventListener("change", (e) => {   // gõ xong ô giờ: viết
 $("#ve-cues").addEventListener("click", (e) => {
   const row = e.target.closest(".ve-cue");
   if (!row || !e.target.matches(".ve-short-use, .ve-short-no")) return;
+  if (ve.busy) { toast("Đợi tác vụ đang chạy xong đã."); return; }
   const p = veShortFor(row);
   if (!p) return;
   if (e.target.classList.contains("ve-short-use")) row.querySelector(".ve-t").value = p.text;
@@ -2393,15 +2398,19 @@ $("#ve-cues").addEventListener("input", (e) => { if (e.target.matches(".ve-s, .v
 $("#ve-cues").addEventListener("click", async (e) => {
   const row = e.target.closest(".ve-cue");
   if (!row || !e.target.closest(".ve-dub")) return;
+  if (ve.busy && !e.target.matches(".ve-dub-play, .ve-dub-saytog")) { toast("Đợi tác vụ đang chạy xong đã."); return; }
   const r = veDubRowOf(row), text = row.querySelector(".ve-t").value;
   if (e.target.matches(".ve-dub-play")) {
-    if (!veDubAudio.paused) { veDubStop(); return; }
+    if (ve.dubPlaying) { veDubStop(); return; }   // bấm lần nữa = dừng
     veSetView("orig");
     const vid = $("#ve-video");
     ve.dubMuted = vid.muted;
     veDubAudio.src = `/api/edit/dub/wav?rel=${encodeURIComponent(ve.rel)}&key=${r.key}&t=${encodeURIComponent(r.duration)}`;
     veDubAudio.playbackRate = r.tempo || 1;   // nghe đúng tốc độ sẽ ghép (giữ cao độ)
-    const go = () => { vid.muted = true; vid.currentTime = r.at; vid.play().catch(() => {}); veDubAudio.play().catch((err) => toast(err.message)); };
+    const go = () => {
+      ve.dubPlaying = true; vid.muted = true; vid.currentTime = r.at; vid.play().catch(() => {});
+      veDubAudio.play().catch((err) => { veDubDone(); toast("Không phát được giọng: " + err.message); });
+    };
     if (vid.readyState >= 1) go(); else vid.addEventListener("loadedmetadata", go, { once: true });
   } else if (e.target.matches(".ve-dub-redo")) {
     await veDubGen([veTimeOf(row, ".ve-s")], "Đang đọc lại câu " + (Number(row.dataset.i) + 1) + "...");
@@ -2416,6 +2425,7 @@ $("#ve-cues").addEventListener("click", async (e) => {
 });
 $("#ve-cues").addEventListener("change", (e) => {
   if (!e.target.matches(".ve-dub-say")) return;
+  if (ve.busy) { toast("Đợi tác vụ đang chạy xong rồi sửa lại ô Đọc là."); return; }
   const row = e.target.closest(".ve-cue");
   veDubSet({ text: row.querySelector(".ve-t").value, say: e.target.value });
 });
