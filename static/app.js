@@ -561,9 +561,20 @@ function fbShort(v) {
   if (["error", "missing"].includes(v.publish_status)) return ["Lỗi", "bad"];
   return v.overdue ? ["Quá giờ", "bad"] : ["Đã hẹn", "scheduled"];
 }
+// Chép nội dung + mở thư mục/video: mọi video đều có (kể cả Page không bật YouTube/TikTok, video chưa hẹn)
+function xpToolsHtml(links = []) {
+  return `<div class="xp-tools">
+      <button class="link xp-copy" type="button" data-what="title" title="Chép dòng đầu của nội dung đăng (bỏ hashtag), dùng làm tiêu đề YouTube">Copy tiêu đề</button>
+      <button class="link xp-copy" type="button" data-what="hashtags">Copy hashtag</button>
+      <button class="link xp-copy" type="button" data-what="caption" title="Chép cả nội dung đăng (như bài Facebook), dùng cho TikTok">Copy cả bài</button>
+      <button class="link xp-open" type="button" data-what="folder" title="Mở thư mục chứa video trong Finder">Mở thư mục</button>
+      <button class="link xp-open" type="button" data-what="video">Mở video</button>
+      ${links.join(" ")}
+    </div>`;
+}
 function xpostHtml(v) {
   const req = v.xpost_required || [];
-  if (!req.length || !v.scheduled) return "";
+  if (!req.length || !v.scheduled) return xpToolsHtml();
   const [fbText, fbCls] = fbShort(v);
   const links = [];
   const cells = req.map((p) => {
@@ -573,14 +584,7 @@ function xpostHtml(v) {
     return `<button class="xp-st xp-${esc(x.status)}" type="button" data-p="${esc(p)}" title="Bấm để đổi: Chưa đăng → Đã hẹn → Đã đăng${x.at ? " (đổi lúc " + esc(x.at.replace("T", " ").slice(0, 16)) + ")" : ""}"><small>${XP_LABEL[p]}</small>${XP_ST[x.status] || x.status}</button>`;
   }).join("");
   return `<div class="xp"><span class="xp-st xp-${fbCls} xp-fb"><small>Facebook</small>${fbText}</span>${cells}</div>
-    <div class="xp-tools">
-      <button class="link xp-copy" type="button" data-what="title" title="Chép dòng đầu của nội dung đăng (bỏ hashtag), dùng làm tiêu đề YouTube">Copy tiêu đề</button>
-      <button class="link xp-copy" type="button" data-what="hashtags">Copy hashtag</button>
-      <button class="link xp-copy" type="button" data-what="caption" title="Chép cả nội dung đăng (như bài Facebook), dùng cho TikTok">Copy cả bài</button>
-      <button class="link xp-open" type="button" data-what="folder">Mở thư mục</button>
-      <button class="link xp-open" type="button" data-what="video">Mở video</button>
-      ${links.join(" ")}
-    </div>`;
+    ${xpToolsHtml(links)}`;
 }
 async function xpostCycle(rel, platform) {
   const v = lib.videos.find((x) => x.rel === rel);
@@ -3204,7 +3208,7 @@ function renderPageSettings() {
       </div>
       <fieldset class="rules">
         <legend>Đăng đa nền tảng</legend>
-        <p class="hint">Video đã hẹn của Page này có thêm ô trạng thái YouTube / TikTok ở mục Video (bạn tự đăng, app ghi lại để không sót), nút chép tiêu đề, hashtag và mở file. Video chưa đánh dấu đã đăng đủ thì không xoá được (kể cả tự xoá), và app nhắc khi đã lên Facebook quá 2 ngày mà còn thiếu.</p>
+        <p class="hint">Video đã hẹn của Page này có thêm ô trạng thái YouTube / TikTok ở mục Video (bạn tự đăng, app ghi lại để không sót). Video chưa đánh dấu đã đăng đủ thì không xoá được (kể cả tự xoá), và app nhắc khi đã lên Facebook quá 2 ngày mà còn thiếu.</p>
         <div class="row2">
           <label class="check"><input class="pg-plat" type="checkbox" value="youtube" ${(p.platforms || []).includes("youtube") ? "checked" : ""}> <span>Đăng thêm YouTube Shorts</span></label>
           <label class="check"><input class="pg-plat" type="checkbox" value="tiktok" ${(p.platforms || []).includes("tiktok") ? "checked" : ""}> <span>Đăng thêm TikTok</span></label>
